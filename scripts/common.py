@@ -209,6 +209,25 @@ RETIRED_TOOL_PRUNING_KEYS = (
     "strip_scheduled_tasks_tools", # 同上（两套机制一起被客户端开关移除）
 )
 
+# 改过名的 tool_pruning 子键：旧名 → 新名（一个旧键可能拆成几个新键）。
+#
+# **改名时必须把旧值带过去，不能只删旧键。** 新键的默认值是 True，如果用户原来把
+# 旧键关掉过（= 想留着那批工具），直接删旧键 + 补新键会让它们被静默剥掉 ——
+# 他什么都没做，工具却没了。这类「升级后行为变了且没人知道」的问题最难排查。
+RENAMED_TOOL_PRUNING_KEYS = {
+    "strip_native_web_tools": ("strip_web_search_tools", "strip_web_fetch_tools"),
+    "strip_session_mgmt_tools": ("strip_session_tools", "strip_sidebar_tools",
+                                 "strip_window_tools", "strip_host_tools",
+                                 "strip_settings_tools", "strip_directory_tools"),
+    "strip_orchestration_tools": ("strip_workflow_tools", "strip_cross_session_tools"),
+}
+
+# 上面最后一条拆出来的两个新键没覆盖到的工具 —— 它们原本也算在那个旧键里，
+# 现在不属于任何类别。旧键开着的话，把它们落到自定义清单，保住原本的行为。
+RENAMED_LEFTOVER_TOOLS = {
+    "strip_orchestration_tools": ("TaskStop", "ReportFindings"),
+}
+
 
 # 默认配置文件完整脚手架模板
 DEFAULT_CONFIG = {
@@ -259,6 +278,26 @@ def ensure_config_initialized(config_path=None):
         for k, v in DEFAULT_CONFIG.items():
             if k not in cfg:
                 cfg[k] = v
+                updated = True
+
+        # 改名的键：把旧值带到新键上（见 RENAMED_TOOL_PRUNING_KEYS 的注释）
+        if isinstance(cfg.get("tool_pruning"), dict):
+            tp = cfg["tool_pruning"]
+            for old, news in RENAMED_TOOL_PRUNING_KEYS.items():
+                if old not in tp:
+                    continue
+                old_value = tp.pop(old)
+                for n in news:
+                    if n not in tp:        # 新键已经在了？以新键为准，不覆盖用户的明确设置
+                        tp[n] = old_value
+                leftovers = RENAMED_LEFTOVER_TOOLS.get(old)
+                if leftovers and old_value:
+                    custom = tp.get("custom_strip_tools")
+                    custom = list(custom) if isinstance(custom, list) else []
+                    for t in leftovers:
+                        if t not in custom:
+                            custom.append(t)
+                    tp["custom_strip_tools"] = custom
                 updated = True
 
         # 安全补充 tool_pruning 缺失的子配置项

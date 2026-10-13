@@ -544,6 +544,10 @@ function renderSwitches(d){
        '关闭后客户端不再提供创建/修改/运行定时任务的工具，定时任务页也会隐藏。' +
        '已存在的任务不会被删除，只是不再运行。',
        `id="schedTasks" ${d.client.scheduled_tasks ? 'checked' : ''}`, 'restart') +
+    SW('关掉 CoWork 的联网搜索',
+       '客户端原生开关：关闭后它在组装请求前就把 WebSearch 从工具列表摘掉。' +
+       '第 ⑤ 节的「网页搜索」是网关侧的同类处理，覆盖这个开关管不到的入口，两者可以并存。',
+       `id="coworkWebSearch" ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
     SW('关掉应用内浏览器工具（预览 / 截图 / 点击）',
        '内置浏览器里的打开页面、截图、点击，仅 Web 开发场景需要。' +
        (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
@@ -819,6 +823,7 @@ $('#btnSave').onclick = async () => {
     client_prefs: {
       coworkBrowserToolsEnabled: !$('#browserTools').checked,
       bypassPermissionsModeEnabled: $('#bypassPerm').checked,
+      coworkWebSearchEnabled: !$('#coworkWebSearch').checked,
     },
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }

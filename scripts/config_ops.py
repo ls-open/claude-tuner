@@ -270,6 +270,11 @@ DESKTOP_PREF_KEYS = (
     # 不开的话遇到需要免确认的操作会直接卡住（本机实测踩过：权限分类器不可用时，
     # 连一条 rm 都执行不了）。官方描述里标为 security 类。
     "bypassPermissionsModeEnabled",
+    # CoWork 会话的联网搜索。**这是官方的源头开关**：置 false 时客户端在组装请求之前
+    # 就把 WebSearch 从工具列表里摘掉（客户端源码：disallowedTools.push("WebSearch")），
+    # 比我们在网关里事后剥更干净 —— 连那段提示词都由客户端自己处理，不会留孤句。
+    # 我们保留网关侧的剥离作为兜底：它覆盖这台开关管不到的入口（比如 Code 标签页）。
+    "coworkWebSearchEnabled",
 )
 
 

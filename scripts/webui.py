@@ -305,6 +305,8 @@ def read_config_payload(handler):
                              .get("coworkBrowserToolsEnabled"),
             "bypass_permissions": (_read(paths["desktop_config_3p"]).get("preferences") or {})
                                   .get("bypassPermissionsModeEnabled"),
+            "cowork_web_search": (_read(paths["desktop_config_3p"]).get("preferences") or {})
+                                 .get("coworkWebSearchEnabled"),
             # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
             # 页面上却该并排放在一起（用户眼里都是「开不开某项能力」）
             "scheduled_tasks": three_p.get("scheduledTasksEnabled") is True,
