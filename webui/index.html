@@ -97,6 +97,11 @@
        box-shadow:0 0 0 1px var(--accent), 0 6px 20px var(--accent-glow)}
   .preset-card.active::after{content:"✓ 当前使用";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
        padding:1px 7px;border-radius:99px;background:var(--accent);color:#06101f;box-shadow:0 2px 8px var(--accent-glow)}
+  /* 「建议起点」：当前配置不等于任何一档时，给推荐档一个**建议**，而不是「当前使用」——
+     两者必须长得不一样。安装默认剥 13 类、推荐档只剥 9 类，本来就不是同一套开关。 */
+  .preset-card.suggested{border-color:rgba(59,130,246,0.5);background:rgba(59,130,246,0.06)}
+  .preset-card.suggested::after{content:"建议起点";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
+       padding:1px 7px;border-radius:99px;background:var(--dim2);color:#0b0e14}
   .preset-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .preset-name{font-size:13.5px;font-weight:600;color:var(--fg)}
   .preset-card.active .preset-name{color:#93c5fd}
@@ -300,7 +305,7 @@
     <!-- 一键场景预设 -->
     <div class="preset-bar" id="presetBar">
       <div class="preset-bar-head">
-        <b>⚡️ 一键场景预设 <span>一键应用推荐配置，也可在下方自由微调</span></b>
+        <b>⚡️ 一键场景预设 <span id="presetHead">一键应用推荐配置，也可在下方自由微调</span></b>
       </div>
       <div class="preset-cards">
         <div class="preset-card active" data-mode="balanced">
@@ -762,11 +767,12 @@ function renderSwitches(d){
 
 // ── 场景预设交互 ───────────────────────────────────────────
 function applyPreset(mode){
-  document.querySelectorAll('.preset-card').forEach(c => {
-    c.classList.toggle('active', c.dataset.mode === mode);
-  });
+  // 卡片标记与那句提示**不在这里写** —— 由 checkCurrentPresetMatch 统一按勾选结果决定。
+  // 这里各写一遍会立刻对不上：它只知道「你点了哪张卡」，不知道点完之后开关到底成了什么，
+  // 于是标记和提示会各自说谎（而且 suggested 那圈边框清不掉，两种标记会叠在同一张卡上）。
   if (mode === 'custom') {
-    say('已切为自定义模式，可随意调整下方各项开关');
+    checkCurrentPresetMatch();
+    say('下方每一项都按你自己勾的结果生效；改过之后卡片会自动切到「极客专家微调」');
     return;
   }
   const p = PRESETS[mode];
@@ -798,6 +804,7 @@ function applyPreset(mode){
   const comp = $(`#moneyBox input[data-key="autoCompactEnabled"]`);
   if (comp) comp.checked = !p.settings.autoCompactEnabled;
 
+  checkCurrentPresetMatch();
   say(`已应用「${p.name}」推荐配置，点击右上角【保存更改】即可生效！`, 'ok');
 }
 
@@ -837,6 +844,39 @@ function renderPresetDetails(){
   });
 }
 
+// 「当前有没有自己改过」得拿**安装默认**当基准 —— 它不出现在卡片上，但只有比过它才知道
+// 底下这套开关是「原封不动的默认值」还是「用户自己调的」。少了这一步，两者都会被算成
+// 「不匹配任何档位」，而它们该说的话完全不同（一个说「建议从这档开始」，一个说「这是你的自定义」）。
+function atInstallDefaults(){
+  const rdefs = (CFG && CFG.options && CFG.options.rules_defaults) || {};
+  const tdefs = (CFG && CFG.options && CFG.options.pruning_defaults) || {};
+  for (const [k, v] of Object.entries(rdefs)) {
+    const el = $(`#ruleBox input[data-rule="${k}"]`);
+    if (el && el.checked !== !!v) return false;
+  }
+  for (const [k, v] of Object.entries(tdefs)) {
+    // 不是每个默认键都有对应的勾选框（如 strip_workflow_tools 归合成开关管）
+    const el = $(`#pruneBox input[data-tp="${k}"]`);
+    if (el && el.checked !== !!v) return false;
+  }
+  // 合成开关：安装时不写 disableBundledSkills，所以它应当是关的
+  const comp = $('#pruneBox input[data-composite="workflowBundle"]');
+  if (comp && comp.checked) return false;
+  // 三个省钱开关：安装时缓存 1h、关联想、关自动压缩 —— 三个框都该是勾上的
+  for (const k of ['promptCacheTtl', 'promptSuggestionEnabled', 'autoCompactEnabled']) {
+    const el = $(`#moneyBox input[data-key="${k}"]`);
+    if (el && !el.checked) return false;
+  }
+  return true;
+}
+
+function markPresetCards(mode, kind){
+  document.querySelectorAll('.preset-card').forEach(c => {
+    c.classList.toggle('active',    kind === 'active'    && c.dataset.mode === mode);
+    c.classList.toggle('suggested', kind === 'suggested' && c.dataset.mode === mode);
+  });
+}
+
 function checkCurrentPresetMatch(){
   for (const [mode, p] of Object.entries(PRESETS)) {
     let match = true;
@@ -855,15 +895,20 @@ function checkCurrentPresetMatch(){
       if (el && el.checked !== v) { match = false; break; }
     }
     if (match) {
-      document.querySelectorAll('.preset-card').forEach(c => {
-        c.classList.toggle('active', c.dataset.mode === mode);
-      });
+      markPresetCards(mode, 'active');
+      $('#presetHead').textContent = '当前使用的档位已标出，也可在下方自由微调';
       return;
     }
   }
-  document.querySelectorAll('.preset-card').forEach(c => {
-    c.classList.toggle('active', c.dataset.mode === 'custom');
-  });
+  // 三态里的后两态。**推荐档不写「当前使用」** —— 安装默认与它不是同一套开关
+  // （默认剥 13 类含搜索/终端，推荐只剥 9 类），写上去就是在陈述一件不成立的事。
+  if (atInstallDefaults()) {
+    markPresetCards('balanced', 'suggested');
+    $('#presetHead').textContent = '当前是安装默认值、还没套用任何档位 —— 建议从「日常开发均衡档」开始';
+  } else {
+    markPresetCards('custom', 'active');
+    $('#presetHead').textContent = '当前是你的自定义配置，点任一档位可重新套用';
+  }
 }
 
 function renderVersions(d){
