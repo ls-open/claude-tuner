@@ -38,22 +38,25 @@
 
   /* ── 侧栏 ───────────────────────────────────────────── */
   nav.side{position:sticky;top:84px;font-size:13px}
-  /* 分组标题必须一眼看出「这不是链接」：比链接更小、更淡、有上分隔线、
-     且**不缩进到链接的位置**（之前两者左内边距相同，整栏看着全可点）。 */
-  nav.side .grp{margin:0 0 6px;padding:14px 0 0;border-top:1px solid var(--line);
-       font-size:10.5px;font-weight:600;letter-spacing:.09em;color:var(--dim2);
-       text-transform:uppercase}
-  nav.side > .grp:first-child{border-top:none;padding-top:0}
-  nav.side .grp em{display:block;font-style:normal;font-weight:400;letter-spacing:0;
-       font-size:10.5px;color:var(--dim2);opacity:.85;margin-top:2px;text-transform:none}
-  nav.side a{display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:1px;
-       border-radius:var(--radius-sm);color:var(--dim);transition:background .12s,color .12s}
-  nav.side a::before{content:"";width:2px;height:14px;border-radius:2px;
-       background:transparent;transition:background .12s;flex:none;margin-left:-6px}
+  /* 层级 = 缩进 + 字重，不靠字号。
+     一级（分组）不加缩进、加粗、用正文字色；二级（条目）缩进、常规字重、用弱化色。
+     之前把一级做得比二级更小，读起来是反的 —— 一般文档站的写法（标题 12px 无缩进 /
+     条目 14px 缩进 16px）层级信号在缩进上，我漏了那个信号却加了全大写和分隔线，
+     结果它反而更像「另一种东西」而不是「上级」。 */
+  nav.side .grp{margin:20px 0 6px;padding:0;border:none;
+       font-size:13px;font-weight:600;color:var(--fg);letter-spacing:0}
+  nav.side > .grp:first-child{margin-top:0}
+  nav.side .grp em{display:block;font-style:normal;font-weight:400;
+       font-size:11.5px;color:var(--dim2);margin-top:1px}
+  nav.side a{position:relative;display:block;padding:6px 10px 6px 22px;
+       border-radius:var(--radius-sm);color:var(--dim);font-weight:400;
+       transition:background .12s,color .12s}
+  nav.side a::before{content:"";position:absolute;left:11px;top:50%;
+       width:2px;height:0;border-radius:2px;background:var(--accent);
+       transform:translateY(-50%);transition:height .14s}
   nav.side a:hover{color:var(--fg);background:var(--panel)}
-  nav.side a.on{color:var(--fg);background:var(--panel2)}
-  nav.side a.on::before{background:var(--accent)}
-  nav.side .grp + a{margin-top:2px}
+  nav.side a.on{color:var(--fg);font-weight:500}
+  nav.side a.on::before{height:14px}
 
   /* ── 状态条 ─────────────────────────────────────────── */
   .status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
@@ -175,11 +178,11 @@
     <a href="#s1">接上模型</a>
     <a href="#s2">模型映射</a>
 
-    <div class="grp">Claude 自己的设置<em>原本散落在客户端各处的官方配置</em></div>
+    <div class="grp">Claude 自己的设置<em>官方配置，此处只是集中呈现</em></div>
     <a href="#s3">缓存与上下文</a>
     <a href="#s6">客户端偏好</a>
 
-    <div class="grp">claude-tuner 的加工<em>这个插件新增的处理</em></div>
+    <div class="grp">claude-tuner 的加工<em>本插件新增的处理</em></div>
     <a href="#s4">前缀稳定化</a>
     <a href="#s5">工具精简</a>
 
