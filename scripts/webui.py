@@ -38,7 +38,7 @@ from common import (  # noqa: E402
 
 HTML_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "webui", "index.html")
 TOKEN_FILE = os.path.join(config_ops.platform_paths()["bridge_home"], "webui.token")
-COOKIE_NAME = "ccds_token"
+COOKIE_NAME = "claude_tuner_token"
 CLAUDE_TUNER_UPSTREAM_TIMEOUT = 15
 
 _html_cache = (0.0, "")
@@ -618,16 +618,32 @@ def handle_get(handler, query):
             # 带 token 的链接一次性用完就丢：避免 token 留在浏览器历史与 Referer 里
             handler.send_response(302)
             handler.send_header("Location", "/")
+            # **必须带 Max-Age**。原来没带 → 是个会话级 cookie，浏览器一关就没了，
+            # 用户每次都得重新去找那个带 token 的链接 —— 他当然会觉得「为什么不能直接打开」。
+            # 带一年：拿链接开一次，之后直接访问 127.0.0.1:8789 就行。
             handler.send_header("Set-Cookie",
-                                "%s=%s; HttpOnly; SameSite=Strict; Path=/" % (COOKIE_NAME, token))
+                                "%s=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000"
+                                % (COOKIE_NAME, token))
             handler.send_header("Referrer-Policy", "no-referrer")
             handler.end_headers()
             return True
         if not authorized(handler, query):
-            handler._send_html(401, "<!doctype html><meta charset=utf-8>"
-                                    "<h1>需要一个带 token 的链接</h1>"
-                                    "<p>配置台地址在安装时自动打开过，也可以重新运行 "
-                                    "<code>install.sh</code> 拿回链接。</p>")
+            handler._send_html(401, """<!doctype html><meta charset=utf-8>
+<title>需要访问令牌</title>
+<style>body{font:14px/1.8 -apple-system,"PingFang SC",system-ui;background:#0b0d11;color:#e8ebf0;
+padding:60px 24px;max-width:640px;margin:0 auto}
+h1{font-size:19px;margin:0 0 14px}code{background:#1a1e26;border:1px solid #262b35;
+border-radius:6px;padding:2px 7px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+pre{background:#1a1e26;border:1px solid #262b35;border-radius:8px;padding:12px 14px;overflow:auto}
+p{margin:0 0 12px;color:#8b94a7}b{color:#e8ebf0}</style>
+<h1>需要访问令牌</h1>
+<p>这个页面能改你的客户端配置（上游地址、API&nbsp;Key、3P 配置），所以不能任人打开 ——
+浏览器里任何一个网页都可能偷偷对着本机端口发请求。</p>
+<p><b>只需要拿一次链接。</b>用下面这条命令打印出带令牌的地址，打开之后浏览器会记住一年，
+之后直接访问 <code>127.0.0.1:%d</code> 就行。</p>
+<pre>python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url</pre>
+<p>看到这一页通常说明：换了浏览器、清了 Cookie，或者距上次打开已超过一年。</p>"""
+                                    % _port(handler))
             return True
         handler._send_html(200, load_html())
         return True
