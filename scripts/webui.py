@@ -267,13 +267,17 @@ def read_config_payload(handler):
             "api_key_masked": config_ops.mask_api_key(three_p.get("inferenceGatewayApiKey", "")),
             "api_key_set": bool((three_p.get("inferenceGatewayApiKey") or "").strip()),
         },
-        "models": [{"name": m.get("name", ""), "label": m.get("labelOverride") or m.get("name", "")}
+        "models": [{"name": m.get("name", ""),
+                    "label": m.get("labelOverride") or m.get("name", ""),
+                    # 1M 是**按模型**的（官方就是这么设计的：每个条目各自带
+                    # supports1m / prefer1m），所以回显也要逐条给。
+                    "one_m": bool(m.get("prefer1m", m.get("supports1m", False)))}
                    for m in (three_p.get("inferenceModels") or []) if isinstance(m, dict)],
         "gateway": {
             "port": _port(handler),
             "upstream_url": upstream,
             "default_model": bridge_cfg.get("default_model", ""),
-            "one_m_context": bridge_cfg.get("one_m_context") is not False,
+
             "unknown_model_fallback": bridge_cfg.get("unknown_model_fallback", True) is not False,
         },
         "three_p": {
@@ -339,25 +343,20 @@ def apply_patch(handler, patch):
         three_p_changed = True
         notes.append("API Key 已更新")
         effects["restart_client"] = True
-    one_m = (bridge.get("one_m_context") is not False)
-    if isinstance(patch.get("one_m_context"), bool):
-        if bridge.get("one_m_context") != patch["one_m_context"]:
-            bridge["one_m_context"] = patch["one_m_context"]
-            one_m = patch["one_m_context"]
-            notes.append("1M 上下文：%s" % ("开" if one_m else "关"))
-            effects["restart_client"] = True
-            # 已经配好的映射表要跟着改 —— 否则页面上显示的和实际生效的不是一回事
-            if isinstance(three_p.get("inferenceModels"), list):
-                for m in three_p["inferenceModels"]:
-                    m["supports1m"] = m["prefer1m"] = one_m
-                three_p["modelPrefer1mContext"] = one_m
-                three_p_changed = True
     models = patch.get("models")
     if isinstance(models, list):
+        # 1M 逐条读 —— 官方就是这么设计的：每个模型条目各自带 supports1m / prefer1m。
+        # 不同上游对 1M 的支持不一样，一个全局开关表达不了这件事。
         cleaned = [{"name": (m.get("name") or "").strip(),
                     "labelOverride": (m.get("label") or m.get("name") or "").strip(),
-                    "supports1m": one_m, "prefer1m": one_m}
+                    "supports1m": bool(m.get("one_m")), "prefer1m": bool(m.get("one_m"))}
                    for m in models if isinstance(m, dict) and (m.get("name") or "").strip()]
+        # 顶层那个 modelPrefer1mContext 跟随「是否至少有一个模型开了」。
+        # 它对逐条标记的确切作用我们没有实测过，所以只让它跟着走、不靠它表达区别。
+        want_top = any(m["prefer1m"] for m in cleaned) if cleaned else False
+        if three_p.get("modelPrefer1mContext") != want_top:
+            three_p["modelPrefer1mContext"] = want_top
+            three_p_changed = True
         if cleaned and cleaned != three_p.get("inferenceModels"):
             three_p["inferenceModels"] = cleaned
             three_p_changed = True

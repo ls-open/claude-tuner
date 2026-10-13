@@ -193,21 +193,27 @@
     <section id="s2">
       <div class="head"><h2>② 模型映射</h2><span class="tag" id="mapTag"></span></div>
       <div class="body">
-        <p class="lead">左边是 Claude 的代号，右边是真正发给上游的模型名。
-          <b>右边要与上游逐字一致</b>（大小写敏感）。建议只留最新的两个。</p>
+        <p class="lead">左侧为 Claude 使用的代号，右侧为实际发送给上游的模型名。
+          <b>右侧须与上游接受的名称逐字一致</b>（区分大小写）。建议只保留最新的两个。</p>
         <div class="row" style="margin-bottom:12px">
           <button id="btnPull">拉取上游模型列表</button>
           <button id="btnAdd">+ 加一行</button>
-          <span class="hint" style="margin:0;flex:1" id="pullOut">列表是这家支持的全部模型，
-            但不代表每个都能在这条路上发出去（有些只支持 OpenAI 协议）—— 选完点「测试连接」逐个验。</span>
+          <span class="hint" style="margin:0;flex:1" id="pullOut">列表为该服务商支持的全部模型，但并非每个都能经此路径调用（部分仅支持 OpenAI 协议）。
+            选定后请用「测试连接」逐个验证。</span>
         </div>
         <table>
-          <thead><tr><th style="width:46%">Claude 代号</th><th>上游模型名</th><th style="width:40px"></th></tr></thead>
+          <thead><tr><th style="width:42%">Claude 代号</th><th>上游模型名</th>
+          <th style="width:58px" title="这个模型是否按 100 万 token 上下文窗口使用">1M</th>
+          <th style="width:40px"></th></tr></thead>
           <tbody id="models"></tbody>
         </table>
-        <div class="hint">客户端的选择器直接读这份映射：配几个，界面上就能选几个。
-          建议只留最新的两个 5.5 —— 客户端按代号注入的提示词不同，旧代号未必适配。</div>
-        <div id="oneMBox" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)"></div>
+        <div class="hint">客户端的选择器直接读取这份映射：配置几项，界面上即可选几项。
+          建议只保留最新的两个 5.5 —— 客户端按代号注入的提示词不同，旧代号未必适配。</div>
+        <div class="hint" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+          <b>1M</b> 列：勾选表示该模型按 100 万 token 的上下文窗口使用。
+          <b>它只决定客户端如何计算窗口</b>（多久触发一次自动压缩），与上游是否支持 1M 无关，
+          因此逐条单独设置（官方配置亦按模型逐条记录）。修改后需完全退出并重开 Claude。
+        </div>
       </div>
     </section>
 
@@ -223,8 +229,8 @@
         <span class="pill" style="font-size:10.5px;padding:1px 8px">claude-tuner 做的</span>
         <span class="tag">逐条可关</span></div>
       <div class="body">
-        <p class="lead">缓存命中的前提是这一轮的前缀字节和上一轮一样。客户端有几处会扰动它，
-          这里逐条处理。<b>每一条都能单独关掉。</b></p>
+        <p class="lead">缓存命中的前提是每轮请求的前缀字节与上一轮一致。客户端有若干处会扰动它，
+          此处逐条处理。<b>每条规则均可单独关闭。</b></p>
         <div id="ruleBox"></div>
       </div>
     </section>
@@ -234,12 +240,12 @@
         <span class="pill" style="font-size:10.5px;padding:1px 8px">claude-tuner 做的</span>
         <span class="tag">省静态上下文</span></div>
       <div class="body">
-        <p class="lead">每类工具每轮都要占一份上下文。关掉一类时，
-          <b>与它配套的那段系统提示词会一起恢复</b> —— 工具和提示词始终同步。</p>
+        <p class="lead">每类工具都会在每轮请求中占用静态上下文。关闭某一类时，
+          <b>与它配套的系统提示词段落会一并恢复</b>，工具与提示词始终保持同步。</p>
         <div id="pruneBox"></div>
 
         <details id="toolWrap">
-          <summary>你自己有哪些工具（按入口分档，可逐个勾选剥离）</summary>
+          <summary>工具清单（按入口分组，可逐项选择剥离）</summary>
           <div id="toolBox"></div>
         </details>
       </div>
@@ -312,20 +318,20 @@ const CUSTOM = '__custom__';
 // 描述都对着客户端自己的字段语义写（"Automatically compact conversation when
 // context fills" 这类），不写想当然的解释。
 const MONEY = [
-  ['promptCacheTtl', '缓存保温 1 小时',
-   '不设时客户端自己决定（订阅号 1 小时，用 Key 只有 5 分钟）。保温更久，但写入按更高价计费。'],
-  ['promptSuggestionEnabled', '关掉输入框联想', '输入框里那行灰色提示。开着时客户端为它反复发请求。'],
-  ['autoCompactEnabled', '关掉自动压缩', '上下文快满时自动压缩，会重写历史、丢掉已有缓存。'],
+  ['promptCacheTtl', '缓存保留 1 小时',
+   '未设置时由客户端决定（订阅账号为 1 小时，使用 API Key 时仅 5 分钟）。保留更久，但缓存写入按更高价计费。'],
+  ['promptSuggestionEnabled', '不启用输入框联想', '输入框中的灰色提示文字。启用时客户端会为此反复发起请求。'],
+  ['autoCompactEnabled', '不启用自动压缩', '上下文接近上限时自动压缩，会重写历史并丢弃已有缓存。'],
 ];
 
 // 会改变客户端行为的项，默认一律不动。
 // kind：'off' = 勾上表示把该键写成 false；'on' = 勾上表示写成 true。
 const ADVANCED = [
-  ['idleCompaction', 'off', '空闲时不压缩会话', '闲置一会儿后自动压缩长对话。'],
-  ['precomputeCompactionEnabled', 'off', '不后台预生成压缩摘要', '提前算好摘要，多花一次调用的钱。'],
-  ['showThinkingSummaries', 'off', '不请求思考摘要', '服务端额外生成一份摘要给你看。'],
-  ['disableBundledSkills', 'on', '去掉自带技能与工作流', '每轮都占上下文。是真的移除，可随时改回。'],
-  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 也计费。关掉会影响复杂任务的质量。'],
+  ['idleCompaction', 'off', '空闲时不压缩会话', '会话闲置一段时间后自动压缩长对话。'],
+  ['precomputeCompactionEnabled', 'off', '不后台预生成压缩摘要', '提前在后台生成压缩摘要，会增加一次调用开销。'],
+  ['showThinkingSummaries', 'off', '不请求思考摘要', '由服务端额外生成一份思考摘要。'],
+  ['disableBundledSkills', 'on', '去掉自带技能与工作流', '每轮都会占用上下文。此项为真正移除，可随时改回。'],
+  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
 ];
 
 // 每条规则：关掉之后哪一类内容会重新变得不稳定
@@ -341,16 +347,16 @@ const RULES = [
 
 // 前七项默认开（多数场景用不到）；后三项默认关 —— 删的是真本事，该不该省你说了算。
 const PRUNING = [
-  ['strip_native_web_tools', '原生联网工具', '模型自带的联网搜索与网页抓取'],
-  ['strip_session_mgmt_tools', '桌面端遥控与会话自省', '侧栏、窗口、目录、主机、设置那一批遥控工具'],
-  ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '把会话和 GitHub PR / CI 结果挂钩的自动化'],
-  ['strip_terminal_tools', '右侧终端面板', '读取桌面端右侧终端面板里的内容'],
+  ['strip_native_web_tools', '原生联网工具', '模型内置的联网搜索与网页抓取'],
+  ['strip_session_mgmt_tools', '桌面端遥控与会话自省', '侧栏、窗口、目录、主机、设置等界面遥控工具'],
+  ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '将会话与 GitHub PR / CI 结果关联的自动化'],
+  ['strip_terminal_tools', '右侧终端面板', '读取桌面端右侧终端面板的内容'],
   ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
   ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 下无法完成官方认证'],
-  ['strip_plugin_mgmt_tools', '插件市场与技能建议', '装插件、推荐技能那一套'],
+  ['strip_plugin_mgmt_tools', '插件市场与技能建议', '插件市场、技能推荐等工具'],
   ['strip_orchestration_tools', '多代理编排与后台任务', 'Workflow、跨会话消息、子代理列表、任务停止、结果上报'],
-  ['strip_worktree_tools', 'Git 工作树隔离', '把会话关进独立工作树里干活'],
-  ['strip_plan_tools', '计划模式', '先出计划、你批准后再动手'],
+  ['strip_worktree_tools', 'Git 工作树隔离', '将会话隔离在独立 git 工作树中运行'],
+  ['strip_plan_tools', '计划模式', '先给出计划，经确认后再执行'],
 ];
 
 const SW = (label, why, attr) =>
@@ -397,28 +403,30 @@ function onPresetChange(fill){
   if (fill && p.url) $('#upstream').value = p.url;
   $('#presetHint').textContent = p.url
     ? (p.key_hint ? 'API Key：' + p.key_hint : '')
-    : '这家要你自己填地址。填完点「拉取上游模型列表」，模型名就不用自己敲了。';
+    : '该服务商需自行填写接口地址。填好后可点「拉取上游模型列表」直接选择模型名。';
 }
 
 function renderModels(d){
   const body = $('#models'); body.innerHTML = '';
   const rows = d.models.length ? d.models
     : d.options.recommended.map(m => ({name: m, label: ''}));
-  rows.forEach(m => addModelRow(d, m.name, m.label));
+  rows.forEach(m => addModelRow(d, m.name, m.label, m.one_m));
   const tag = $('#mapTag');
   tag.textContent = d.models.some(m => m.name === m.label) ? '代号同名直通' : '';
   tag.style.display = tag.textContent ? '' : 'none';
 }
 
-function addModelRow(d, name, label){
+function addModelRow(d, name, label, oneM){
   const tr = document.createElement('tr');
   tr.innerHTML = `<td><select data-role="name">${d.options.client_models
       .map(m => `<option${m === name ? ' selected' : ''}>${m}</option>`).join('')}</select></td>
     <td data-slot="model"></td>
+    <td style="text-align:center"><input type="checkbox" data-role="one-m"></td>
     <td><button class="link danger" title="删除这一行">✕</button></td>`;
   tr.querySelector('button').onclick = () => tr.remove();
   $('#models').appendChild(tr);
   fillModelCell(tr.querySelector('[data-slot=model]'), label);
+  tr.querySelector('[data-role=one-m]').checked = oneM !== false;
 }
 
 function renderSwitches(d){
@@ -430,7 +438,7 @@ function renderSwitches(d){
 
   $('#moneyBox').insertAdjacentHTML('beforeend',
     `<div class="hint" style="margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)">
-       <b>更激进的省法</b> —— 这几项会改变客户端行为，默认一律不动。改之前先看清楚说明。</div>` +
+       <b>更激进的选择</b> —— 以下各项会改变客户端行为，默认一律不修改。</div>` +
     ADVANCED.map(([k, kind, label, why]) => {
       const val = d.settings[k];
       const checked = kind === 'off' ? val === false : val === true;
@@ -451,17 +459,16 @@ function renderSwitches(d){
   tag.style.display = running ? '' : 'none';
   $('#prefBox').innerHTML =
     SW('提交时不带 <code>Co-Authored-By: Claude</code> 署名',
-       '不勾时客户端会提示模型在 git 提交正文里附上这行署名 —— 很多人不想要它。勾上就不带。',
+       '未勾选时，客户端会提示模型在 git 提交正文中附上该署名行。勾选后不再附带。',
        `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`) +
     SW('终端 Claude Code 也走本网关',
-       '写进 ~/.claude/settings.json 的环境变量。想单独用官方账号跑 CLI 就关掉它。',
+       '写入 ~/.claude/settings.json 的环境变量。若需在终端单独使用官方账号，请关闭此项。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`) +
     SW('应用内浏览器工具（预览 / 截图 / 点击）',
-       '开着时 AI 能在客户端内置浏览器里打开页面、截图、点击，做 Web 开发才需要。' +
-       (running ? '<b> 客户端正在运行时这项改不动，先完全退出 Claude 再回来改。</b>' : ''),
+       '启用后可在客户端内置浏览器中打开页面、截图、点击，仅 Web 开发场景需要。' +
+       (running ? '<b> 客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
        `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`) +
-    `<div class="hint">「浏览器工具」勾上 = 关掉这一类工具，和上面的工具精简同一套：
-      关掉后模型也不会再看到介绍它们的提示词。</div>`;
+    ``;
 }
 
 function renderVersions(d){
@@ -477,18 +484,9 @@ function renderVersions(d){
   tag.textContent = newer ? '客户端比验过的版本新' : '';
   tag.style.display = newer ? '' : 'none';
   if (!v.source_configured) {
-    $('#updateOut').textContent = '这份安装没带来源信息（release.json 的 repo 还没填），检查更新用不了。';
+    $('#updateOut').textContent = '本安装未包含来源信息（release.json 的 repo 未填写），无法检查更新。';
     $('#btnCheckUpdate').disabled = true;
   }
-}
-
-function renderOneM(d){
-  // 这个开关在 3P 面板里叫「启用 1M 上下文」。它决定的是**客户端**怎么算上下文窗口
-  // （能长到多大、多久压缩一次）；上游吃不吃得下 1M 是另一回事，所以要能关。
-  $('#oneMBox').innerHTML = SW('启用 1M 上下文窗口',
-    '打开后客户端按 100 万 token 算窗口，能聊更久才压缩。⚠️ 上游若不真支持 1M，' +
-    '上下文涨过头会被它拒绝 —— 那种情况下关掉。<b>改完要完全退出并重开 Claude。</b>',
-    `id="oneM" ${d.gateway.one_m_context ? 'checked' : ''}`);
 }
 
 function renderGateway(d){
@@ -513,8 +511,7 @@ let TOOL_PICK = 0;   // 当前在看哪一档工具集（按最近使用倒序�
 function renderTools(){
   const box = $('#toolBox');
   if (!TOOLS.seen){
-    box.innerHTML = `<div class="hint">还没采集到 —— 网关要见过一次真实请求才知道你有哪些工具。
-      随便开个对话发一条消息，回来刷新这一页就有了。</div>`;
+    box.innerHTML = `<div class="hint">尚未采集到数据。需经网关发生一次真实请求，才能得到工具清单。</div>`;
     return;
   }
   const list = TOOLS.profiles;
@@ -535,13 +532,13 @@ function renderTools(){
     : '';
 
   const head = `<div class="hint" style="margin:0 0 10px">
-      这一档：<b>${esc(prof.label)}${prof.kind === 'subagent' ? ' · 子代理' : ''}</b>
-      ${prof.evidence ? `（依据：这一档有 <code>${esc(prof.evidence)}</code>）` : ''}
-      · 见过 <b>${prof.count}</b> 个工具、共 <b>${kb(sum(rows))}</b>
+      当前分组：<b>${esc(prof.label)}${prof.kind === 'subagent' ? ' · 子代理' : ''}</b>
+      ${prof.evidence ? `（识别依据：该分组含 <code>${esc(prof.evidence)}</code>）` : ''}
+      · 共 <b>${prof.count}</b> 个工具、共 <b>${kb(sum(rows))}</b>
       · 按当前配置会剥掉 <b>${gone.length}</b> 个（省 <b>${kb(sum(gone))}</b>）
-      <br>同一档里工具取的是<b>并集</b> —— 只要在这个入口出现过就记下来，不挑某一次对话。
-      <br>最近见到：${new Date(prof.last_seen*1000).toLocaleString('zh-CN')}（累计 ${num(prof.requests)} 次请求）
-      ${prof.models.length ? `<br>用过的模型：${prof.models.map(m => `<code>${esc(m)}</code>`).join('、')}` : ''}
+      <br>同一分组内取工具并集：在该入口出现过的工具都会记下，不限于某一次对话。
+      <br>最近出现：${new Date(prof.last_seen*1000).toLocaleString('zh-CN')}（累计 ${num(prof.requests)} 次请求）
+      ${prof.models.length ? `<br>使用过的模型：${prof.models.map(m => `<code>${esc(m)}</code>`).join('、')}` : ''}
       ${prof.cc_versions.length ? `<br>客户端版本：${prof.cc_versions.map(v => `<code>${esc(v)}</code>`).join('、')}` : ''}
     </div>`;
 
@@ -554,7 +551,7 @@ function renderTools(){
       : TOOLS.pruning_enabled === false
         ? `<span class="badge">总开关关着</span>`
         : owned
-          ? `<span class="badge auto" title="由上面的预设类别剥掉">${esc(r.reason_label)}</span>`
+          ? `<span class="badge auto" title="由上方预设类别剥离">${esc(r.reason_label)}</span>`
           : `<input type="checkbox" data-tool="${esc(r.name)}" ${r.custom ? 'checked' : ''}>`;
     return `<tr class="${r.stripped ? 'gone' : ''}">
       <td style="width:34px">${mark}</td>
@@ -583,8 +580,7 @@ async function renderStats(){
   if (!r.ok){ box.innerHTML = `<div class="hint">⚠️ ${esc(r.error || '读不到')}</div>`; return; }
   const d = r.data;
   if (!d.seen){
-    box.innerHTML = `<div class="hint">还没有可统计的请求。
-      走一遍网关（桌面端发一条消息，或终端跑一次 claude）之后回来看。</div>`;
+    box.innerHTML = `<div class="hint">尚无统计数据。经网关发生一次请求后即可查看。</div>`;
     return;
   }
   const t = d.tokens;
@@ -605,12 +601,10 @@ async function renderStats(){
     <div class="hint">单价取自 ${esc(d.price.label)} 公开价目（查证于 ${esc(d.price.as_of)}），
       只折算 token 费用，不含任何折扣或时段价。金额是估算，token 数是上游报回来的。</div>`;
   } else {
-    money = `<div class="hint">这家上游的价目我们没有查证过，所以只报 token 不折算金额 ——
-      编一个价码比不给更糟。</div>`;
+    money = `<div class="hint">未收录该上游的公开价目，故仅显示 token 数，不折算金额。</div>`;
   }
   const extra = d.stripped_tools
-    ? `<div class="hint" style="margin-top:12px">顺手统计：这段时间里工具精简一共剥掉了
-       <b>${num(d.stripped_tools)}</b> 条工具定义（每次请求剥掉的数量累加）。</div>` : '';
+    ? `<div class="hint" style="margin-top:12px">工具精简累计剥离 <b>${num(d.stripped_tools)}</b> 条工具定义（各次请求累加）。</div>` : '';
   box.innerHTML = `<div class="stat">${cards.join('')}</div>${money}${extra}`;
 }
 
@@ -629,7 +623,7 @@ function watchNav(){
 
 // ── 交互 ────────────────────────────────────────────────
 $('#preset').onchange = () => onPresetChange(true);
-$('#btnAdd').onclick = () => addModelRow(CFG, CFG.options.client_models[0], '');
+$('#btnAdd').onclick = () => addModelRow(CFG, CFG.options.client_models[0], '', true);
 
 $('#btnPull').onclick = async () => {
   $('#pullOut').textContent = '正在拉取……';
@@ -649,7 +643,7 @@ $('#btnPull').onclick = async () => {
 // 把映射表里用到的每个模型真打一次，是唯一的把关手段。
 $('#btnTest').onclick = async () => {
   const wanted = [...new Set([...document.querySelectorAll('#models tr')].map(modelValue).filter(Boolean))];
-  if (!wanted.length) { $('#testOut').textContent = '⚠️ 还没有填上游模型名'; return; }
+  if (!wanted.length) { $('#testOut').textContent = '⚠️ 尚未填写上游模型名'; return; }
   const out = [];
   for (const model of wanted) {
     $('#testOut').textContent = `正在测试 ${model} ……（共 ${wanted.length} 个）`;
@@ -658,14 +652,14 @@ $('#btnTest').onclick = async () => {
       const r = await api('/api/test-upstream', {
         upstream_url: $('#upstream').value.trim(), api_key: $('#apikey').value.trim(), model,
       });
-      line = r.ok ? `✅ ${esc(model)}　${r.data.ms} ms${r.data.reply ? '　上游回：' + esc(r.data.reply) : ''}`
+      line = r.ok ? `✅ ${esc(model)}　${r.data.ms} ms${r.data.reply ? '　上游返回：' + esc(r.data.reply) : ''}`
                   : `❌ ${esc(model)}　${esc(r.error)}`;
     } catch (e) { line = `❌ ${esc(model)}　${esc(e.message)}`; }
     out.push(line);
     $('#testOut').innerHTML = out.join('<br>');
   }
   const bad = out.filter(l => l.startsWith('❌')).length;
-  out.push(bad ? `<br>有 ${bad} 个模型在这条路上走不通 —— 换成这家支持 Anthropic 协议的模型，或换一家。`
+  out.push(bad ? `<br>有 ${bad} 个模型无法经此路径调用 —— 请改用该服务商支持 Anthropic 协议的模型，或更换服务商。`
                : '<br>全部可用。');
   $('#testOut').innerHTML = out.join('<br>');
 };
@@ -683,13 +677,13 @@ $('#btnCheckUpdate').onclick = async () => {
       $('#updateOut').textContent = `已是最新（${r.local || '未知'}）`;
     }
     if (r.client_newer_than_tested) {
-      $('#updateOut').textContent += '　⚠️ 你的客户端比本插件验证过的版本新，行为可能已经变了。';
+      $('#updateOut').textContent += '　⚠️ 客户端版本高于本插件验证过的版本，行为可能已变化。';
     }
   } catch (e) { $('#updateOut').textContent = '⚠️ ' + e.message; }
 };
 
 $('#btnUpdate').onclick = async () => {
-  $('#updateOut').textContent = '正在下载……（国内网络可能要等一会儿）';
+  $('#updateOut').textContent = '正在下载…（国内网络可能较慢）';
   $('#btnUpdate').disabled = true;
   const r = await api('/api/update', {});
   if (!r.ok) {
@@ -712,7 +706,8 @@ $('#dlgOk').onclick = () => $('#dlg').close();
 $('#btnSave').onclick = async () => {
   const models = [...document.querySelectorAll('#models tr')].map(tr => {
     const name = tr.querySelector('[data-role=name]').value;
-    return {name, label: modelValue(tr) || name};
+    const one_m = tr.querySelector('[data-role=one-m]').checked;
+    return {name, label: modelValue(tr) || name, one_m};
   }).filter(m => m.name);
   const on = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return el && el.checked; };
   const settings = {
@@ -746,7 +741,6 @@ $('#btnSave').onclick = async () => {
     models, settings, tool_pruning, rules,
     unset_settings: on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl'],
     cli_linked: $('#cliLinked').checked,
-    one_m_context: $('#oneM').checked,
     client_prefs: {coworkBrowserToolsEnabled: !$('#browserTools').checked},
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
@@ -775,8 +769,8 @@ $('#btnSave').onclick = async () => {
   sel.value = CFG.upstream.preset;
   $('#upstream').value = CFG.upstream.url || '';
   onPresetChange(false);
-  renderStatus(CFG); renderModels(CFG); renderSwitches(CFG); renderOneM(CFG);
-  renderGateway(CFG); renderVersions(CFG); renderOneM(CFG);
+  renderStatus(CFG); renderModels(CFG); renderSwitches(CFG);
+  renderGateway(CFG); renderVersions(CFG);
   watchNav();
   say('');
   // 这两块是「事实」，和配置分开拉 —— 拉不到也不影响配置区可用

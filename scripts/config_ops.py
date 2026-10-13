@@ -436,17 +436,17 @@ def is_already_installed(cfg_3p, bridge_cfg):
 UPSTREAM_PRESETS = (
     {"id": "deepseek", "name": "DeepSeek 官方",
      "url": "https://api.deepseek.com/anthropic", "model": "deepseek-flash",
-     "key_hint": "platform.deepseek.com 申请"},
+     "key_hint": "在 platform.deepseek.com 申请"},
     # OpenCode 是两家不同的服务，地址也不同 —— Zen 是充值制（84 个模型，含全套真正的
     # claude-* 官方模型），Go 是套餐制（38 个）。填错就调不通，所以分开列。
     {"id": "opencode-zen", "name": "OpenCode Zen（充值制）",
      "url": "https://opencode.ai/zen", "model": "",
-     "key_hint": "opencode.ai 控制台拿 Key"},
+     "key_hint": "在 opencode.ai 控制台获取"},
     {"id": "opencode-go", "name": "OpenCode Go（套餐制）",
      "url": "https://opencode.ai/zen/go", "model": "deepseek-flash",
-     "key_hint": "opencode.ai 订阅后拿 Key"},
+     "key_hint": "在 opencode.ai 订阅后获取"},
     {"id": "relay", "name": "Claude 官方模型中转站",
-     "url": "", "model": "", "key_hint": "中转站给你的 Key"},
+     "url": "", "model": "", "key_hint": "由中转站提供"},
     {"id": "custom", "name": "其他供应商 / 自建代理",
      "url": "", "model": "", "key_hint": ""},
 )
