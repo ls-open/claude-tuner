@@ -10,7 +10,7 @@ Claude 客户端的设置散落在好几个地方 —— 3P 推理面板、三�
   会让缓存失效的那些易变内容，也一并处理掉。
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/claude-tuner/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.sh | bash
 ```
 
 装完浏览器自动打开配置页，填一个 API Key 就能用 —— 模型名、接口地址、那一堆环境变量都不用你操心。
@@ -57,7 +57,7 @@ DeepSeek 官方对**命中缓存**的 token 收 `$0.003 / 1M`，没命中收 `$0
 ### 一条命令
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/OWNER/claude-tuner/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.sh | bash
 ```
 
 它会问你一次 API Key（也可以直接回车跳过，稍后在配置页里填），然后自动打开配置页。
@@ -76,7 +76,7 @@ bash install.sh
 
 **让 AI 帮你装：** 把下面这段粘给任意 AI Agent（Claude Code、Cursor 等）：
 
-> 请帮我安装 claude-tuner：先 `git clone https://github.com/OWNER/claude-tuner` 到任意目录，然后在那个目录里执行 `bash install.sh`，把输出完整贴给我。
+> 请帮我安装 claude-tuner：先 `git clone https://github.com/ls-open/claude-tuner` 到任意目录，然后在那个目录里执行 `bash install.sh`，把输出完整贴给我。
 
 ### 装完先验证一下
 
@@ -231,7 +231,7 @@ python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py uninstall --purge-3p
 ## 从源码安装（开发用）
 
 ```bash
-git clone https://github.com/OWNER/claude-tuner
+git clone https://github.com/ls-open/claude-tuner
 cd claude-tuner
 bash install.sh --dry-run   # 先看一眼会动什么，一个文件都不会写
 bash install.sh             # 真装

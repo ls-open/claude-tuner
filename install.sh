@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # ↓ 发布时改这两行（公开仓库的 owner/repo；镜像是给国内直连用的，可以留空）
-REPO_SLUG="${CLAUDE_TUNER_REPO:-OWNER/REPO}"
+REPO_SLUG="${CLAUDE_TUNER_REPO:-ls-open/claude-tuner}"
 MIRROR_REPO="${CLAUDE_TUNER_MIRROR:-}"
 REF="${CLAUDE_TUNER_REF:-main}"
 PLUGIN_NAME="claude-tuner"
