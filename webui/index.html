@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>claude-tuner 调控台</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --fg:#e6e9ef; --dim:#98a1b3; --accent:#5b9dff; --ok:#3ecf8e; --warn:#f0b429; --err:#f2555a;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",system-ui,sans-serif}
+  a{color:inherit;text-decoration:none}
+
+  header.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 90%,transparent);
+       backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  header.top .inner{max-width:1100px;margin:0 auto;padding:13px 20px;display:flex;
+       gap:16px;align-items:center;flex-wrap:wrap}
+  header.top h1{font-size:18px;margin:0 0 2px}
+  header.top .sub{margin:0;font-size:12.5px;color:var(--dim);max-width:640px}
+  header.top .act{display:flex;align-items:center;gap:12px;margin-left:auto}
+
+  .shell{max-width:1100px;margin:0 auto;padding:20px;display:grid;
+         grid-template-columns:172px 1fr;gap:24px;align-items:start}
+  nav.side{position:sticky;top:76px}
+  nav.side a{display:block;padding:7px 10px;border-radius:8px;font-size:13px;color:var(--dim);
+       border-left:2px solid transparent}
+  nav.side a:hover{color:var(--fg);background:var(--panel)}
+  nav.side a.on{color:var(--fg);border-left-color:var(--accent);background:var(--panel)}
+
+  .status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .pill{font-size:12px;padding:5px 11px;border-radius:99px;border:1px solid var(--line);
+        background:var(--panel)}
+  .pill.ok{border-color:#1d5c42;color:var(--ok)} .pill.warn{border-color:#5c4a1d;color:var(--warn)}
+
+  section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+          margin-bottom:16px;overflow:hidden;scroll-margin-top:84px}
+  .head{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--panel2);
+        border-bottom:1px solid var(--line)}
+  h2{font-size:15px;margin:0}
+  .head .tag{display:none;font-size:11px;color:var(--dim);border:1px solid var(--line);
+             border-radius:99px;padding:1px 8px;margin-left:auto;white-space:nowrap}
+  .body{padding:16px}
+
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0}
+  label{font-size:12px;color:var(--dim)}
+  input,select,button{font:inherit;color:var(--fg);background:var(--bg);
+        border:1px solid var(--line);border-radius:8px;padding:8px 10px;outline:none}
+  input:focus,select:focus{border-color:var(--accent)}
+  input[type=checkbox]{width:auto;padding:0;accent-color:var(--accent)}
+  button{cursor:pointer;background:var(--panel2);white-space:nowrap}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#08111f;font-weight:600}
+  button.link{background:none;border:none;color:var(--accent);padding:4px 6px}
+  button.link.danger{color:var(--err)}
+  .hint{font-size:12px;color:var(--dim);margin-top:6px}
+  .lead{font-size:12.5px;color:var(--dim);margin:0 0 12px}
+  .lead b{color:var(--fg);font-weight:600}
+
+  .sw{display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:9px 0;border-bottom:1px solid var(--line)}
+  .sw:last-child{border-bottom:none}
+  .sw .txt{flex:1;min-width:0}
+  .sw .txt b{font-weight:500;display:block;font-size:13.5px}
+  .sw .txt small{color:var(--dim);font-size:12px;display:block}
+  .sw .txt small b{display:inline;font-weight:600;color:var(--warn)}
+
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:12px;color:var(--dim);font-weight:400;padding:0 8px 6px}
+  td{padding:3px 4px}
+  td input,td select{width:100%}
+
+  #msg{font-size:13px;color:var(--dim);max-width:360px;text-align:right}
+  #msg.ok{color:var(--ok)} #msg.err{color:var(--err)}
+  dialog{background:var(--panel);color:var(--fg);border:1px solid var(--line);
+         border-radius:var(--radius);max-width:540px;padding:0}
+  dialog::backdrop{background:#000a}
+  dialog .body{padding:16px}
+  code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12px}
+  @media (max-width:820px){
+    .shell{grid-template-columns:1fr;gap:0}
+    nav.side{position:static;display:flex;gap:6px;overflow-x:auto;padding-bottom:12px}
+    nav.side a{white-space:nowrap;border-left:none;border-bottom:2px solid transparent}
+    nav.side a.on{border-left:none;border-bottom-color:var(--accent)}
+  }
+</style>
+</head>
+<body>
+<header class="top"><div class="inner">
+  <div>
+    <h1>claude-tuner 调控台</h1>
+    <p class="sub">这些设置原本分散在 <b>3P 推理面板</b>、<b>三个 JSON 文件</b>和<b>客户端设置窗口</b>里 ——
+       现在都在这一个页面上。改完保存即可。</p>
+  </div>
+  <div class="act">
+    <div id="msg"></div>
+    <button id="btnSave" class="primary">保存</button>
+  </div>
+</div></header>
+
+<div class="shell">
+  <nav class="side" id="nav">
+    <a href="#s1">接上模型</a>
+    <a href="#s2">模型映射</a>
+    <a href="#s3">缓存与上下文</a>
+    <a href="#s4">前缀稳定化</a>
+    <a href="#s5">工具精简</a>
+    <a href="#s6">客户端</a>
+    <a href="#s7">网关</a>
+  </nav>
+
+  <main>
+    <div class="status" id="status"></div>
+
+    <section id="s1">
+      <div class="head"><h2>① 接上模型</h2><span class="tag">必填</span></div>
+      <div class="body">
+        <div class="row">
+          <div class="field" style="flex:0 1 260px">
+            <label>服务商</label>
+            <select id="preset"></select>
+          </div>
+          <div class="field">
+            <label>接口地址（Anthropic 格式）</label>
+            <input id="upstream" placeholder="https://api.deepseek.com/anthropic" spellcheck="false">
+          </div>
+        </div>
+        <div class="hint" id="presetHint"></div>
+        <div class="row" style="margin-top:12px">
+          <div class="field">
+            <label>API Key</label>
+            <input id="apikey" placeholder="留空表示不修改" spellcheck="false" autocomplete="off">
+          </div>
+          <button id="btnTest">测试连接</button>
+        </div>
+        <div class="hint" id="testOut"></div>
+      </div>
+    </section>
+
+    <section id="s2">
+      <div class="head"><h2>② 模型映射</h2><span class="tag" id="mapTag"></span></div>
+      <div class="body">
+        <p class="lead"><b>左边是给 Claude 看的代号，右边是真正发给上游的模型名。</b>
+          代号必须是 Claude 认识的（客户端靠它决定用哪套提示词与思考预算）；
+          右边要与上游接受的模型名<b>逐字一致，大小写敏感</b>。</p>
+        <div class="row" style="margin-bottom:12px">
+          <button id="btnPull">拉取上游模型列表</button>
+          <button id="btnAdd">+ 加一行</button>
+          <span class="hint" style="margin:0;flex:1" id="pullOut">列表是这家支持的全部模型，
+            但不代表每个都能在这条路上发出去（有些只支持 OpenAI 协议）—— 选完点「测试连接」逐个验。</span>
+        </div>
+        <table>
+          <thead><tr><th style="width:46%">Claude 代号</th><th>上游模型名</th><th style="width:40px"></th></tr></thead>
+          <tbody id="models"></tbody>
+        </table>
+        <div class="hint">客户端的选择器直接读这份映射：配几个，界面上就能选几个。
+          建议只留最新的两个 5.5 —— 客户端按代号注入的提示词不同，旧代号未必适配。</div>
+      </div>
+    </section>
+
+    <section id="s3">
+      <div class="head"><h2>③ 缓存与上下文</h2><span class="tag">默认值即推荐值</span></div>
+      <div class="body" id="moneyBox"></div>
+    </section>
+
+    <section id="s4">
+      <div class="head"><h2>④ 前缀稳定化</h2><span class="tag">缓存命中的关键</span></div>
+      <div class="body">
+        <p class="lead">缓存命中的前提是「这一轮的前缀字节和上一轮完全一样」。
+          下面每关掉一条，对应那类内容就会重新变得每轮都在变 —— <b>关掉等于放弃那部分缓存</b>。默认全开。</p>
+        <div id="ruleBox"></div>
+      </div>
+    </section>
+
+    <section id="s5">
+      <div class="head"><h2>⑤ 工具精简</h2><span class="tag">省静态上下文</span></div>
+      <div class="body">
+        <p class="lead">每类工具每轮都要占一份静态上下文，关掉省的是每轮的钱。
+          <b>关掉某一类时，与它配套的那段系统提示词会一起恢复</b> —— 工具和提示词始终同步，
+          不会出现「工具没了、提示词还在」那种状态。默认关掉的不是用不了，是多数场景用不到。</p>
+        <div id="pruneBox"></div>
+      </div>
+    </section>
+
+    <section id="s6">
+      <div class="head"><h2>⑥ 客户端</h2><span class="tag" id="clientTag"></span></div>
+      <div class="body" id="prefBox"></div>
+    </section>
+
+    <section id="s7">
+      <div class="head"><h2>⑦ 网关</h2><span class="tag" id="gwTag"></span></div>
+      <div class="body">
+        <div class="row">
+          <div class="hint" style="margin:0;flex:1">
+            端口 <code id="port"></code>，上游 <code id="gwUpstream"></code>
+          </div>
+          <button id="btnRestart">重启网关</button>
+        </div>
+        <div class="hint">前缀稳定化与工具精简是网关做的，改完立即生效、不用重启客户端。</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg"><div class="body"><div id="dlgText"></div>
+  <div class="row" style="margin-top:16px;justify-content:flex-end">
+    <button id="dlgOk" class="primary">知道了</button></div></div></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const api = async (path, body) => {
+  const opt = body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {};
+  const res = await fetch(path, opt);
+  const data = await res.json().catch(() => ({ok:false, error:{message:'响应不是 JSON'}}));
+  if (!res.ok && data.ok !== false) throw new Error('HTTP ' + res.status);
+  return data;
+};
+const say = (text, kind) => { const m = $('#msg'); m.textContent = text; m.className = kind || ''; };
+const tell = (text) => { $('#dlgText').innerHTML = text; $('#dlg').showModal(); };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+let CFG = null;
+let UPSTREAM_MODELS = [];
+const CUSTOM = '__custom__';
+
+// ── 每个开关：名字 + 一句话说清它做什么 ────────────────────────
+// 描述都对着客户端自己的字段语义写（"Automatically compact conversation when
+// context fills" 这类），不写想当然的解释。
+const MONEY = [
+  ['promptCacheTtl', '把缓存有效期改成 1 小时（只对官方模型有用）',
+   '不设时客户端自己决定：订阅号 1 小时，用 API Key 只有 5 分钟 —— 中断超过 5 分钟，下一轮就要把整段前缀重新计费一遍。' +
+   '改成 1 小时能跨更长的空闲保温，但缓存写入本身更贵。' +
+   '第三方模型走它们自己的缓存策略，这一项对它们不起作用。'],
+  ['promptSuggestionEnabled', '关掉输入框联想',
+   '就是输入框里那行灰色提示。开着时客户端会为它反复发请求，关掉省一份 token 消耗。'],
+  ['autoCompactEnabled', '关掉自动压缩',
+   '上下文快填满时客户端会自动压缩。压缩那一次会重写历史、丢掉已有缓存，之后正常重建；' +
+   '关掉就不自动压缩（注意别把上下文写满）。'],
+];
+
+// 每条规则：关掉之后哪一类内容会重新变得每轮都变
+const RULES = [
+  ['strip_date', '动态日期', '客户端每轮注入当天日期，跨天就变'],
+  ['strip_git_status', 'git 状态快照', '每次 commit 后客户端会重写这段仓库状态'],
+  ['strip_model_declarations', '模型自称行', '「你由某模型驱动」那类声明，客户端版本一变就变'],
+  ['strip_billing_header', '计费标记头', '随请求变化的计费标识'],
+  ['restore_thinking', '回填思维链', '客户端多轮后会从历史里剥离思考块，补回来前缀才恒定'],
+  ['split_mixed_user_messages', '拆分混合消息', '把「文本 + 工具结果」混在一条里的 user 消息拆开'],
+  ['probe_interception', '探针本地秒回', '那种连通性探测本地直接答，不上云、不扣费'],
+];
+
+const PRUNING = [
+  ['strip_native_web_tools', '原生联网工具', '模型自带的联网搜索与网页抓取'],
+  ['strip_session_mgmt_tools', '桌面端遥控与会话自省', '侧栏、窗口、目录、主机、设置那一批界面遥控工具'],
+  ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '把会话和 GitHub PR / CI 结果挂上钩的自动化'],
+  ['strip_terminal_tools', '右侧终端面板', '读取桌面端右侧终端面板里的内容'],
+  ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
+  ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 模式下无法完成官方认证'],
+  ['strip_plugin_mgmt_tools', '插件市场与技能建议', '装插件、推荐技能那一套'],
+];
+
+const SW = (label, why, attr) =>
+  `<div class="sw"><div class="txt"><b>${label}</b><small>${why}</small></div>
+   <input type="checkbox" ${attr}></div>`;
+
+// ── 上游模型名单元格 ────────────────────────────────────────
+function fillModelCell(td, value){
+  const v = value || '';
+  if (!UPSTREAM_MODELS.length){
+    td.innerHTML = `<input data-role="model" value="${esc(v)}" spellcheck="false"
+                          placeholder="点上面的按钮拉列表，或手填">`;
+    return;
+  }
+  const names = UPSTREAM_MODELS.slice();
+  if (v && !names.includes(v)) names.unshift(v);   // 拉列表不能把用户已填的值吞掉
+  td.innerHTML = `<select data-role="model">
+      ${names.map(n => `<option${n === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}
+      <option value="${CUSTOM}">自定义…</option></select>`;
+  td.querySelector('select').addEventListener('change', ev => {
+    if (ev.target.value !== CUSTOM) return;
+    fillModelCell(td, '');
+    td.querySelector('input').focus();
+  });
+}
+const modelValue = tr => {
+  const el = tr.querySelector('[data-role=model]');
+  return el ? el.value.trim() : '';
+};
+
+// ── 渲染 ────────────────────────────────────────────────
+function renderStatus(d){
+  const out = [];
+  const push = (cls, t) => out.push(`<span class="pill ${cls}">${t}</span>`);
+  push('ok', `网关运行中 · 端口 ${d.gateway.port}`);
+  push(d.upstream.api_key_set ? 'ok' : 'warn', d.upstream.api_key_set ? 'API Key 已填' : 'API Key 未填');
+  push(d.three_p.activated ? 'ok' : 'warn', d.three_p.activated ? '3P 已接管' : '3P 未接管');
+  push('', `模型映射 ${d.models.length} 条`);
+  $('#status').innerHTML = out.join('');
+}
+
+function onPresetChange(fill){
+  const p = (CFG.options.presets || []).find(x => x.id === $('#preset').value) || {};
+  if (fill && p.url) $('#upstream').value = p.url;
+  $('#presetHint').textContent = p.url
+    ? (p.key_hint ? 'API Key：' + p.key_hint : '')
+    : '这家要你自己填地址。填完点「拉取上游模型列表」，模型名就不用自己敲了。';
+}
+
+function renderModels(d){
+  const body = $('#models'); body.innerHTML = '';
+  const rows = d.models.length ? d.models
+    : d.options.recommended.map(m => ({name: m, label: ''}));
+  rows.forEach(m => addModelRow(d, m.name, m.label));
+  const tag = $('#mapTag');
+  tag.textContent = d.models.some(m => m.name === m.label) ? '代号同名直通' : '';
+  tag.style.display = tag.textContent ? '' : 'none';
+}
+
+function addModelRow(d, name, label){
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td><select data-role="name">${d.options.client_models
+      .map(m => `<option${m === name ? ' selected' : ''}>${m}</option>`).join('')}</select></td>
+    <td data-slot="model"></td>
+    <td><button class="link danger" title="删除这一行">✕</button></td>`;
+  tr.querySelector('button').onclick = () => tr.remove();
+  $('#models').appendChild(tr);
+  fillModelCell(tr.querySelector('[data-slot=model]'), label);
+}
+
+function renderSwitches(d){
+  $('#moneyBox').innerHTML = MONEY.map(([k, label, why]) => SW(label, why, `data-key="${k}"`)).join('');
+  const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
+  check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
+  check('promptSuggestionEnabled', d.settings.promptSuggestionEnabled === false);
+  check('autoCompactEnabled', d.settings.autoCompactEnabled === false);
+
+  const rules = d.rules || {}, rdefs = d.options.rules_defaults;
+  $('#ruleBox').innerHTML = RULES.map(([k, label, why]) =>
+    SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`)).join('');
+
+  const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
+  $('#pruneBox').innerHTML = PRUNING.map(([k, label, why]) =>
+    SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`)).join('');
+
+  const running = d.client.running;
+  const tag = $('#clientTag');
+  tag.textContent = running ? '客户端正在运行' : '';
+  tag.style.display = running ? '' : 'none';
+  $('#prefBox').innerHTML =
+    SW('提交不带 Co-Authored-By 署名', '关掉后 git 提交正文里不再附那一行。',
+       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`) +
+    SW('终端 Claude Code 也走本网关',
+       '写进 ~/.claude/settings.json 的环境变量。想单独用官方账号跑 CLI 就关掉它。',
+       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`) +
+    SW('应用内浏览器工具（预览 / 截图 / 点击）',
+       '开着时 AI 能在客户端内置浏览器里打开页面、截图、点击，做 Web 开发才需要。' +
+       (running ? '<b> 客户端正在运行时这项改不动，先完全退出 Claude 再回来改。</b>' : ''),
+       `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`) +
+    `<div class="hint">「浏览器工具」勾上 = 关掉这一类工具，和上面的工具精简同一套：
+      关掉后模型也不会再看到介绍它们的提示词。</div>`;
+}
+
+function renderGateway(d){
+  $('#port').textContent = d.gateway.port;
+  $('#gwUpstream').textContent = d.gateway.upstream_url || '未设置';
+  const tag = $('#gwTag');
+  tag.textContent = d.gateway.unknown_model_fallback ? '漏配兜底：开' : '漏配兜底：关';
+  tag.style.display = '';
+  $('#apikey').placeholder = d.upstream.api_key_masked
+    ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填这里';
+}
+
+// ── 左侧导航跟随滚动 ──────────────────────────────────────
+function watchNav(){
+  const links = [...document.querySelectorAll('#nav a')];
+  const sections = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const mark = () => {
+    let current = sections[0];
+    for (const s of sections) if (s.getBoundingClientRect().top <= 120) current = s;
+    links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + current.id));
+  };
+  window.addEventListener('scroll', mark, {passive:true});
+  mark();
+}
+
+// ── 交互 ────────────────────────────────────────────────
+$('#preset').onchange = () => onPresetChange(true);
+$('#btnAdd').onclick = () => addModelRow(CFG, CFG.options.client_models[0], '');
+
+$('#btnPull').onclick = async () => {
+  $('#pullOut').textContent = '正在拉取……';
+  try {
+    const r = await api('/api/upstream-models');
+    if (!r.ok) { $('#pullOut').textContent = '⚠️ ' + (r.error || '拉取失败'); return; }
+    UPSTREAM_MODELS = r.data.models.map(m => m.id);
+    document.querySelectorAll('#models tr').forEach(tr => {
+      const td = tr.querySelector('[data-slot=model]');
+      fillModelCell(td, modelValue(tr));
+    });
+    $('#pullOut').textContent = `拉到 ${UPSTREAM_MODELS.length} 个模型，右边点开就能选。`;
+  } catch (e) { $('#pullOut').textContent = '⚠️ ' + e.message; }
+};
+
+// 上游的模型列表不带协议信息，所以「列表里有」不等于「发得出去」——
+// 把映射表里用到的每个模型真打一次，是唯一的把关手段。
+$('#btnTest').onclick = async () => {
+  const wanted = [...new Set([...document.querySelectorAll('#models tr')].map(modelValue).filter(Boolean))];
+  if (!wanted.length) { $('#testOut').textContent = '⚠️ 还没有填上游模型名'; return; }
+  const out = [];
+  for (const model of wanted) {
+    $('#testOut').textContent = `正在测试 ${model} ……（共 ${wanted.length} 个）`;
+    let line;
+    try {
+      const r = await api('/api/test-upstream', {
+        upstream_url: $('#upstream').value.trim(), api_key: $('#apikey').value.trim(), model,
+      });
+      line = r.ok ? `✅ ${esc(model)}　${r.data.ms} ms${r.data.reply ? '　上游回：' + esc(r.data.reply) : ''}`
+                  : `❌ ${esc(model)}　${esc(r.error)}`;
+    } catch (e) { line = `❌ ${esc(model)}　${esc(e.message)}`; }
+    out.push(line);
+    $('#testOut').innerHTML = out.join('<br>');
+  }
+  const bad = out.filter(l => l.startsWith('❌')).length;
+  out.push(bad ? `<br>有 ${bad} 个模型在这条路上走不通 —— 换成这家支持 Anthropic 协议的模型，或换一家。`
+               : '<br>全部可用。');
+  $('#testOut').innerHTML = out.join('<br>');
+};
+
+$('#btnRestart').onclick = async () => {
+  say('正在重启网关……');
+  await api('/api/restart', {});
+  setTimeout(() => location.reload(), 2500);
+};
+$('#dlgOk').onclick = () => $('#dlg').close();
+
+$('#btnSave').onclick = async () => {
+  const models = [...document.querySelectorAll('#models tr')].map(tr => {
+    const name = tr.querySelector('[data-role=name]').value;
+    return {name, label: modelValue(tr) || name};
+  }).filter(m => m.name);
+  const on = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return el && el.checked; };
+  const settings = {
+    promptSuggestionEnabled: !on('promptSuggestionEnabled'),
+    autoCompactEnabled: !on('autoCompactEnabled'),
+    includeCoAuthoredBy: !$('#coauthor').checked,
+  };
+  // 缓存 TTL：只在打开时写 1h，关掉就把自己写的键删掉，回到客户端自动决定
+  if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
+  const tool_pruning = {}, rules = {};
+  document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
+  document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
+
+  say('保存中……');
+  const r = await api('/api/config', {
+    upstream_url: $('#upstream').value.trim(),
+    api_key: $('#apikey').value.trim(),
+    models, settings, tool_pruning, rules,
+    unset_settings: on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl'],
+    cli_linked: $('#cliLinked').checked,
+    client_prefs: {coworkBrowserToolsEnabled: !$('#browserTools').checked},
+  });
+  if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
+  const fx = r.data.effects;
+  $('#apikey').value = '';
+  say('✅ 已保存', 'ok');
+  const need = [];
+  if (fx.restart_client) need.push('<b>完全退出并重开 Claude</b>（3P 的地址、Key、模型映射只在启动时读）');
+  else if (fx.restart_session) need.push('<b>新开一个会话</b>（这些开关在会话启动时读）');
+  if (fx.restart_gateway) need.push('网关下次请求时自动读到新上游，不用重启');
+  tell(`已保存：<br>${(r.data.notes || []).map(esc).join('<br>') || '（无实际变化）'}` +
+       (need.length ? `<br><br>还需要：<br>· ${need.join('<br>· ')}` : '') +
+       (r.data.problems && r.data.problems.length
+          ? `<br><br>⚠️ 还有问题：<br>· ${r.data.problems.map(esc).join('<br>· ')}` : ''));
+  const fresh = await api('/api/config');
+  if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
+};
+
+(async () => {
+  const r = await api('/api/config');
+  if (!r.ok) { say('❌ 读不到配置', 'err'); return; }
+  CFG = r.data;
+  const sel = $('#preset');
+  sel.innerHTML = CFG.options.presets.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+  sel.value = CFG.upstream.preset;
+  $('#upstream').value = CFG.upstream.url || '';
+  onPresetChange(false);
+  renderStatus(CFG); renderModels(CFG); renderSwitches(CFG); renderGateway(CFG);
+  watchNav();
+  say('');
+})();
+</script>
+</body>
+</html>

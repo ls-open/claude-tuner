@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+config.json
+captures/
+logs/
+*.pid
+.env
+**/.env
+!.env.example
+webui.token
+backups/
