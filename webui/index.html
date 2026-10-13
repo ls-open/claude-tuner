@@ -30,6 +30,36 @@
        border-left:2px solid transparent}
   nav.side a:hover{color:var(--fg);background:var(--panel)}
   nav.side a.on{color:var(--fg);border-left-color:var(--accent);background:var(--panel)}
+  /* 侧栏分组：把「客户端自己的设置」和「我们做的加工」分开。
+     两者性质不同 —— 前者我们只是搬过来显示，后者是这插件真正新增的东西。 */
+  nav.side .grp{font-size:11px;color:var(--dim);opacity:.8;letter-spacing:.06em;
+       margin:16px 0 5px;padding-left:10px}
+  nav.side .grp:first-child{margin-top:0}
+  nav.side .grp em{display:block;font-style:normal;font-size:10.5px;opacity:.75;margin-top:1px}
+
+  /* 工具清单：体积条 + 勾选 */
+  table.tools{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.tools th{text-align:left;font-weight:500;color:var(--dim);font-size:11.5px;
+       padding:0 8px 6px;border-bottom:1px solid var(--line)}
+  table.tools td{padding:6px 8px;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+  table.tools tr:last-child td{border-bottom:none}
+  table.tools tr.gone{opacity:.42}
+  table.tools td.nm{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+  table.tools td.sz{text-align:right;white-space:nowrap;color:var(--dim);
+       font-variant-numeric:tabular-nums}
+  table.tools .bar{height:5px;border-radius:3px;background:var(--accent);opacity:.55;min-width:2px}
+  .badge{font-size:10.5px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);
+       color:var(--dim);white-space:nowrap}
+  .badge.you{border-color:#1d5c42;color:var(--ok)}
+  .badge.auto{border-color:#5c4a1d;color:var(--warn)}
+
+  /* 实时战绩 */
+  .stat{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .stat .k{flex:1 1 150px;background:var(--panel2);border:1px solid var(--line);
+       border-radius:8px;padding:11px 13px}
+  .stat .k b{display:block;font-size:20px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .stat .k small{color:var(--dim);font-size:11.5px}
+  .stat .k.ok b{color:var(--ok)} .stat .k.mute b{color:var(--dim)}
 
   .status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
   .pill{font-size:12px;padding:5px 11px;border-radius:99px;border:1px solid var(--line);
@@ -104,12 +134,20 @@
 
 <div class="shell">
   <nav class="side" id="nav">
+    <div class="grp">接入</div>
     <a href="#s1">接上模型</a>
     <a href="#s2">模型映射</a>
+
+    <div class="grp">Claude 自己的设置<em>我们只是搬到这里</em></div>
     <a href="#s3">缓存与上下文</a>
+    <a href="#s6">客户端偏好</a>
+
+    <div class="grp">claude-tuner 的加工<em>我们做的</em></div>
     <a href="#s4">前缀稳定化</a>
     <a href="#s5">工具精简</a>
-    <a href="#s6">客户端</a>
+
+    <div class="grp">看效果与维护</div>
+    <a href="#s9">实时战绩</a>
     <a href="#s7">网关</a>
     <a href="#s8">版本与更新</a>
   </nav>
@@ -164,36 +202,58 @@
     </section>
 
     <section id="s3">
-      <div class="head"><h2>③ 缓存与上下文</h2><span class="tag">默认值即推荐值</span></div>
+      <div class="head"><h2>③ 缓存与上下文</h2>
+        <span class="pill" style="font-size:10.5px;padding:1px 8px">Claude 官方设置</span>
+        <span class="tag">默认值即推荐值</span></div>
       <div class="body" id="moneyBox"></div>
     </section>
 
     <section id="s4">
-      <div class="head"><h2>④ 前缀稳定化</h2><span class="tag">缓存命中的关键</span></div>
+      <div class="head"><h2>④ 前缀稳定化</h2>
+        <span class="pill" style="font-size:10.5px;padding:1px 8px">claude-tuner 做的</span>
+        <span class="tag">逐条可关</span></div>
       <div class="body">
         <p class="lead">缓存命中的前提是「这一轮的前缀字节和上一轮完全一样」。
-          下面每关掉一条，对应那类内容就会重新变得每轮都在变 —— <b>关掉等于放弃那部分缓存</b>。默认全开。</p>
+          客户端有几处会扰动这个前缀，这里逐条处理 —— 每一条都是独立开关，哪条对你的用法不合适就关掉。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
 
     <section id="s5">
-      <div class="head"><h2>⑤ 工具精简</h2><span class="tag">省静态上下文</span></div>
+      <div class="head"><h2>⑤ 工具精简</h2>
+        <span class="pill" style="font-size:10.5px;padding:1px 8px">claude-tuner 做的</span>
+        <span class="tag">省静态上下文</span></div>
       <div class="body">
-        <p class="lead">每类工具每轮都要占一份静态上下文，关掉省的是每轮的钱。
-          <b>关掉某一类时，与它配套的那段系统提示词会一起恢复</b> —— 工具和提示词始终同步，
-          不会出现「工具没了、提示词还在」那种状态。默认关掉的不是用不了，是多数场景用不到。</p>
+        <p class="lead">每一类工具都要在每轮请求里占一份静态上下文 —— 这是每轮都在花的钱。
+          <b>关掉某一类时，与它配套的那段系统提示词会一起恢复</b>，工具和提示词始终同步，
+          不会出现「工具没了、提示词还在」那种状态。</p>
         <div id="pruneBox"></div>
+
+        <div class="hint" style="margin:18px 0 10px;padding-top:14px;border-top:1px solid var(--line)">
+          <b>你实际有哪些工具</b> —— 下面是网关在最近一次真实请求里看到的清单，
+          连每一条占多少都称出来了。预设的类别是粗的，哪个用不上只有你自己知道：
+          在这里勾掉的那一条，不会因为类别开关改动而回来。
+        </div>
+        <div id="toolBox"></div>
       </div>
     </section>
 
     <section id="s6">
-      <div class="head"><h2>⑥ 客户端</h2><span class="tag" id="clientTag"></span></div>
+      <div class="head"><h2>⑥ 客户端偏好</h2>
+        <span class="pill" style="font-size:10.5px;padding:1px 8px">Claude 官方设置</span>
+        <span class="tag" id="clientTag"></span></div>
       <div class="body" id="prefBox"></div>
     </section>
 
+    <section id="s9">
+      <div class="head"><h2>⑦ 实时战绩</h2><span class="tag">数字来自上游，不是我们算的</span></div>
+      <div class="body">
+        <div id="statBox"></div>
+      </div>
+    </section>
+
     <section id="s7">
-      <div class="head"><h2>⑦ 网关</h2><span class="tag" id="gwTag"></span></div>
+      <div class="head"><h2>⑧ 网关</h2><span class="tag" id="gwTag"></span></div>
       <div class="body">
         <div class="row">
           <div class="hint" style="margin:0;flex:1">
@@ -206,7 +266,7 @@
     </section>
 
     <section id="s8">
-      <div class="head"><h2>⑧ 版本与更新</h2><span class="tag" id="verTag"></span></div>
+      <div class="head"><h2>⑨ 版本与更新</h2><span class="tag" id="verTag"></span></div>
       <div class="body">
         <div id="verBox"></div>
         <div class="row" style="margin-top:12px">
@@ -430,6 +490,117 @@ function renderGateway(d){
     ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填这里';
 }
 
+let TOOLS = {seen:false, profiles:[], pruning_enabled:true};
+
+// ── 工具清单（来自网关记录的真实请求）──────────────────────
+const kb = n => n >= 1048576 ? (n/1048576).toFixed(2)+' MB'
+            : n >= 1024 ? (n/1024).toFixed(1)+' KB' : n+' B';
+const num = n => (n||0).toLocaleString('zh-CN');
+
+let TOOL_PICK = 0;   // 当前在看哪一档工具集（按最近使用倒序）
+
+function renderTools(){
+  const box = $('#toolBox');
+  if (!TOOLS.seen){
+    box.innerHTML = `<div class="hint">还没采集到 —— 网关要见过一次真实请求才知道你有哪些工具。
+      随便开个对话发一条消息，回来刷新这一页就有了。</div>`;
+    return;
+  }
+  const list = TOOLS.profiles;
+  if (TOOL_PICK >= list.length) TOOL_PICK = 0;
+  const prof = list[TOOL_PICK];
+  const rows = prof.tools;
+  const max = Math.max(1, ...rows.map(r => r.bytes));
+  const sum = a => a.reduce((x, r) => x + r.bytes, 0);
+  const gone = rows.filter(r => r.stripped);
+
+  // 档位切换：不同入口的工具集差得很远（桌面端 85 个 vs 终端 17 个），
+  // 只给一份清单会让人照着这边的去勾那边用不上的工具。
+  const tabs = list.length > 1
+    ? `<div class="row" style="gap:8px;margin:0 0 12px">
+        ${list.map((p, i) => `<button class="${i === TOOL_PICK ? 'primary' : ''}"
+            data-pick="${i}">${esc(p.label)}${p.kind === 'subagent' ? '（子代理）' : ''} · ${p.count} 个</button>`).join('')}
+      </div>`
+    : '';
+
+  const head = `<div class="hint" style="margin:0 0 10px">
+      这一档：<b>${esc(prof.label)}${prof.kind === 'subagent' ? ' · 子代理' : ''}</b>
+      ${prof.evidence ? `（依据：这一档有 <code>${esc(prof.evidence)}</code>）` : ''}
+      · 见过 <b>${prof.count}</b> 个工具、共 <b>${kb(sum(rows))}</b>
+      · 按当前配置会剥掉 <b>${gone.length}</b> 个（省 <b>${kb(sum(gone))}</b>）
+      <br>同一档里工具取的是<b>并集</b> —— 只要在这个入口出现过就记下来，不挑某一次对话。
+      <br>最近见到：${new Date(prof.last_seen*1000).toLocaleString('zh-CN')}（累计 ${num(prof.requests)} 次请求）
+      ${prof.models.length ? `<br>用过的模型：${prof.models.map(m => `<code>${esc(m)}</code>`).join('、')}` : ''}
+      ${prof.cc_versions.length ? `<br>客户端版本：${prof.cc_versions.map(v => `<code>${esc(v)}</code>`).join('、')}` : ''}
+    </div>`;
+
+  const body = rows.map(r => {
+    // 被预设类别剥掉的，勾选框交给那条类别管 —— 这里只显示它被谁剥的，
+    // 免得用户看到一个自己没勾过的勾（或者以为自己勾了却关不掉）。
+    const owned = r.stripped && r.reason !== 'custom';
+    const mark = TOOLS.pruning_enabled === false
+      ? `<span class="badge">总开关关着</span>`
+      : owned
+        ? `<span class="badge auto" title="由上面的预设类别剥掉">${esc(r.reason_label)}</span>`
+        : `<input type="checkbox" data-tool="${esc(r.name)}" ${r.custom ? 'checked' : ''}>`;
+    return `<tr class="${r.stripped ? 'gone' : ''}">
+      <td style="width:34px">${mark}</td>
+      <td class="nm">${esc(r.name)}</td>
+      <td class="sz" style="width:74px">${kb(r.bytes)}</td>
+      <td style="width:120px"><div class="bar" style="width:${Math.max(2, r.bytes/max*100)}%"></div></td>
+    </tr>`;
+  }).join('');
+
+  box.innerHTML = tabs + head + `<table class="tools">
+      <thead><tr><th></th><th>工具</th><th style="text-align:right">体积</th><th></th></tr></thead>
+      <tbody>${body}</tbody></table>`;
+
+  box.querySelectorAll('button[data-pick]').forEach(b => {
+    b.onclick = () => { TOOL_PICK = +b.dataset.pick; renderTools(); };
+  });
+}
+
+// ── 实时战绩（数字来自上游返回的 usage）─────────────────────
+async function renderStats(){
+  const box = $('#statBox');
+  box.innerHTML = '<div class="hint">正在读取……</div>';
+  let r;
+  try { r = await api('/api/stats'); }
+  catch (e) { box.innerHTML = `<div class="hint">⚠️ ${esc(e.message)}</div>`; return; }
+  if (!r.ok){ box.innerHTML = `<div class="hint">⚠️ ${esc(r.error || '读不到')}</div>`; return; }
+  const d = r.data;
+  if (!d.seen){
+    box.innerHTML = `<div class="hint">还没有可统计的请求。
+      走一遍网关（桌面端发一条消息，或终端跑一次 claude）之后回来看。</div>`;
+    return;
+  }
+  const t = d.tokens;
+  const pct = (d.hit_rate*100).toFixed(1);
+  const cards = [
+    `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>缓存命中率<br>已统计 ${num(d.requests)} 次请求</small></div>`,
+    `<div class="k"><b>${num(t.cache_read)}</b><small>命中缓存的输入 token<br>按便宜的那档计价</small></div>`,
+    `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>按贵的那档计价</small></div>`,
+    `<div class="k"><b>${num(t.output)}</b><small>输出 token</small></div>`,
+  ];
+  let money = '';
+  if (d.cost){
+    money = `<div class="stat" style="margin-top:2px">
+      <div class="k"><b>$${d.cost.actual.toFixed(2)}</b><small>按 ${esc(d.price.label)} 单价估算的实付</small></div>
+      <div class="k mute"><b>$${d.cost.if_no_cache.toFixed(2)}</b><small>同样这些输入，一次都没命中缓存的话</small></div>
+      <div class="k ok"><b>$${d.cost.saved.toFixed(2)}</b><small>差额</small></div>
+    </div>
+    <div class="hint">单价取自 ${esc(d.price.label)} 公开价目（查证于 ${esc(d.price.as_of)}），
+      只折算 token 费用，不含任何折扣或时段价。金额是估算，token 数是上游报回来的。</div>`;
+  } else {
+    money = `<div class="hint">这家上游的价目我们没有查证过，所以只报 token 不折算金额 ——
+      编一个价码比不给更糟。</div>`;
+  }
+  const extra = d.stripped_tools
+    ? `<div class="hint" style="margin-top:12px">顺手统计：这段时间里工具精简一共剥掉了
+       <b>${num(d.stripped_tools)}</b> 条工具定义（每次请求剥掉的数量累加）。</div>` : '';
+  box.innerHTML = `<div class="stat">${cards.join('')}</div>${money}${extra}`;
+}
+
 // ── 左侧导航跟随滚动 ──────────────────────────────────────
 function watchNav(){
   const links = [...document.querySelectorAll('#nav a')];
@@ -547,6 +718,14 @@ $('#btnSave').onclick = async () => {
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
 
+  // 自己勾的工具清单：已渲染的以勾选框为准，**没渲染到的原样保留** ——
+  // 清单只来自最近一次请求，某个工具这次没出现不代表用户当初不该勾它。
+  const shown = [...document.querySelectorAll('#toolBox input[data-tool]')];
+  const checked = shown.filter(el => el.checked).map(el => el.dataset.tool);
+  const rendered = new Set(shown.map(el => el.dataset.tool));
+  tool_pruning.custom_strip_tools =
+    [...new Set([...checked, ...(TOOLS.custom || []).filter(n => !rendered.has(n))])];
+
   say('保存中……');
   const r = await api('/api/config', {
     upstream_url: $('#upstream').value.trim(),
@@ -570,6 +749,7 @@ $('#btnSave').onclick = async () => {
           ? `<br><br>⚠️ 还有问题：<br>· ${r.data.problems.map(esc).join('<br>· ')}` : ''));
   const fresh = await api('/api/config');
   if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
+  try { const t = await api('/api/tools'); if (t.ok) { TOOLS = t.data; renderTools(); } } catch(e){}
 };
 
 (async () => {
@@ -585,6 +765,9 @@ $('#btnSave').onclick = async () => {
   renderGateway(CFG); renderVersions(CFG);
   watchNav();
   say('');
+  // 这两块是「事实」，和配置分开拉 —— 拉不到也不影响配置区可用
+  try { const t = await api('/api/tools'); if (t.ok) { TOOLS = t.data; renderTools(); } } catch(e){}
+  renderStats();
 })();
 </script>
 </body>

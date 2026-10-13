@@ -156,51 +156,74 @@ def version_payload():
 
 
 def tool_inventory_payload():
-    """最近一次真实请求里的工具清单 + **按当前配置现算的**剥离结论。
+    """按入口分档的工具清单 + **按当前配置现算的**剥离结论。
 
-    清单只能来自真实请求 —— 客户端发什么工具是它决定的，我们猜不出来，
-    所以没跑过请求时如实报「还没采集到」，而不是编一份默认列表糊弄。
+    分档的粒度与理由见 gateway.record_tool_inventory：入口 + 主/子代理是稳定的粗粒度，
+    档内工具取并集。实测桌面端 85 个工具、终端 17 个 —— 差这么远，只给「最近一次」
+    会让人照着这边的清单去勾那边用不上的工具。
 
-    剥没剥按**现值**算，不读落盘里那份判断：用户刚改完开关就在这里看到结果，
-    而不是要等下一次请求才刷新。判断用的是 tool_rules —— 网关真拿它做决定的那份，
-    所以这里显示的「会剥」和请求里实际发生的必然是同一个答案。
+    只来自真实请求：客户端发什么工具是它决定的，我们猜不出来，所以没跑过请求时如实
+    报「还没采集到」，而不是编一份默认列表糊弄。
+
+    剥没剥按**现值**算，不读落盘里那份判断：用户刚改完开关就在这里看到结果，而不是要
+    等下一次请求才刷新。判断用的是 tool_rules —— 网关真拿它做决定的那份，所以这里显示
+    的「会剥」和请求里实际发生的必然是同一个答案。
     """
     from tool_rules import CATEGORY_LABELS, get_stripped_tool_names, strip_reason
 
-    path = os.path.join(_paths()["bridge_home"], "tool_inventory.json")
-    snap = _read(path)
-    tools = snap.get("tools") if isinstance(snap.get("tools"), list) else []
+    store = _read(os.path.join(_paths()["bridge_home"], "tool_inventory.json"))
+    profiles = [p for p in (store.get("profiles") or []) if isinstance(p, dict)]
     pruning = _read(bridge_path()).get("tool_pruning") or {}
     pruning = {**DEFAULT_TOOL_PRUNING_CONFIG, **pruning}
     custom = [c for c in (pruning.get("custom_strip_tools") or []) if isinstance(c, str)]
     stripped_names = get_stripped_tool_names(pruning)
 
-    rows = []
-    for t in tools:
-        if not isinstance(t, dict) or not t.get("name"):
+    out = []
+    for prof in profiles:
+        known = prof.get("tools")
+        if not isinstance(known, dict):
             continue
-        name = t["name"]
-        reason = strip_reason(name, stripped_names, pruning)
-        rows.append({
-            "name": name,
-            "bytes": t.get("bytes") or 0,
-            "tokens": t.get("tokens") or 0,
-            "stripped": bool(reason),
-            "reason": reason,
-            "reason_label": CATEGORY_LABELS.get(reason, reason),
-            "custom": name in custom,
+        rows = []
+        for name, meta in known.items():
+            if not isinstance(name, str) or not name:
+                continue
+            meta = meta if isinstance(meta, dict) else {}
+            reason = strip_reason(name, stripped_names, pruning)
+            rows.append({
+                "name": name,
+                "bytes": meta.get("bytes") or 0,
+                "tokens": meta.get("tokens") or 0,
+                "stripped": bool(reason),
+                "reason": reason,
+                "reason_label": CATEGORY_LABELS.get(reason, reason),
+                "custom": name in custom,
+            })
+        if not rows:
+            continue
+        rows.sort(key=lambda r: (-r["bytes"], r["name"]))
+        out.append({
+            "slot": prof.get("slot") or "",
+            "label": prof.get("label") or "未识别",
+            "evidence": prof.get("evidence") or "",
+            "kind": (prof.get("slot") or "|").split("|")[-1],
+            "first_seen": prof.get("first_seen") or 0,
+            "last_seen": prof.get("last_seen") or 0,
+            "requests": prof.get("requests") or 0,
+            "models": [m for m in (prof.get("models") or []) if isinstance(m, str)],
+            "cc_versions": [v for v in (prof.get("cc_versions") or []) if isinstance(v, str)],
+            "tools": rows,
+            "count": len(rows),
+            "raw_bytes": sum(r["bytes"] for r in rows),
+            "kept_bytes": sum(r["bytes"] for r in rows if not r["stripped"]),
+            "raw_tokens": sum(r["tokens"] for r in rows),
+            "kept_tokens": sum(r["tokens"] for r in rows if not r["stripped"]),
         })
+    out.sort(key=lambda p: p["last_seen"], reverse=True)
     return {
-        "seen": bool(rows),
-        "ts": snap.get("ts") or 0,
-        "count": len(rows),
-        "raw_bytes": sum(r["bytes"] for r in rows),
-        "kept_bytes": sum(r["bytes"] for r in rows if not r["stripped"]),
-        "raw_tokens": sum(r["tokens"] for r in rows),
-        "kept_tokens": sum(r["tokens"] for r in rows if not r["stripped"]),
+        "seen": bool(out),
+        "profiles": out,
         "custom": custom,
         "pruning_enabled": pruning.get("enabled") is not False,
-        "tools": rows,
     }
 
 
