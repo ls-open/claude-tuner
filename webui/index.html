@@ -139,6 +139,11 @@
   table.tools .bar{height:4px;border-radius:2px;background:var(--accent);opacity:.5;min-width:2px}
   .badge{font-size:10.5px;padding:2px 8px;border-radius:99px;border:1px solid var(--line2);
        color:var(--dim2);white-space:nowrap}
+  .when{font-size:10.5px;font-weight:400;padding:1px 7px;border-radius:99px;
+       margin-left:8px;vertical-align:1px;white-space:nowrap;
+       border:1px solid var(--line2);color:var(--dim2)}
+  .when.gateway{border-color:color-mix(in srgb,var(--ok) 40%,var(--line2));color:var(--ok)}
+  .when.restart{border-color:color-mix(in srgb,var(--warn) 45%,var(--line2));color:var(--warn)}
   .badge.auto{border-color:color-mix(in srgb,var(--warn) 40%,var(--line2));color:var(--warn)}
 
   /* ── 战绩卡片 ───────────────────────────────────────── */
@@ -224,7 +229,7 @@
       <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span></div>
       <div class="body">
         <p class="lead">左侧为 Claude 使用的代号，右侧为实际发送给上游的模型名。
-          <b>右侧须与上游接受的名称逐字一致</b>（区分大小写）。建议只保留最新的两个。</p>
+          <b>右侧须与上游接受的名称逐字一致</b>（区分大小写）。</p>
         <div class="row" style="margin-bottom:12px">
           <button id="btnPull">拉取上游模型列表</button>
           <button id="btnAdd">+ 加一行</button>
@@ -237,8 +242,7 @@
           <th style="width:40px"></th></tr></thead>
           <tbody id="models"></tbody>
         </table>
-        <div class="hint">客户端的选择器直接读取这份映射：配置几项，界面上即可选几项。
-          建议只保留最新的两个 5.5 —— 客户端按代号注入的提示词不同，旧代号未必适配。</div>
+        <div class="hint">客户端的选择器直接读取这份映射：配置几项，界面上即可选几项。</div>
         <div class="hint" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
           <b>1M</b> 列：勾选表示该模型按 100 万 token 的上下文窗口使用。
           <b>它只决定客户端如何计算窗口</b>（多久触发一次自动压缩），与上游是否支持 1M 无关，
@@ -357,10 +361,9 @@ const ADVANCED = [
   ['precomputeCompactionEnabled', 'off', '不后台预生成压缩摘要', '提前在后台生成压缩摘要，会增加一次调用开销。'],
   ['showThinkingSummaries', 'off', '不请求思考摘要', '由服务端额外生成一份思考摘要。'],
   ['disableBundledSkills', 'on', '去掉客户端自带的技能与工作流',
-   '移除客户端随附的那批技能与工作流。' +
-   '<b>你自己的技能、插件、<code>.claude/skills/</code> 与 <code>.claude/commands/</code> 不受影响。</b>' +
-   '⚠️ 单独开这一项，客户端会把「Workflow 编写参考」搬进 <code>Workflow</code> 工具的说明里，' +
-   '每轮多约 17 KB —— 要与上面「多代理编排与后台任务」一起开才有得省。'],  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
+   '移除客户端随附的技能与工作流；<b>你自己的技能与插件不受影响。</b>' +
+   '⚠️ 需与上面「多代理编排与后台任务」一起开才省得下来 —— 单独开反而每轮多约 17 KB。'],
+  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
 ];
 
 // 每条规则：关掉之后哪一类内容会重新变得不稳定
@@ -388,9 +391,19 @@ const PRUNING = [
   ['strip_plan_tools', '计划模式', '先给出计划，经确认后再执行'],
 ];
 
-const SW = (label, why, attr) =>
-  `<div class="sw"><div class="txt"><b>${label}</b><small>${why}</small></div>
+// 生效时机：用户点完开关后，最想知道的就是「现在有没有用」。
+// 不标出来，他改完发现没反应，会以为坏了。三种，按改动落在哪一层决定。
+const WHEN = {
+  now:     ['立即生效', 'gateway'],      // 网关配置，热加载
+  session: ['新会话生效', 'session'],    // ~/.claude/settings.json
+  restart: ['需重启客户端', 'restart'],  // 3P 配置 / 桌面偏好
+};
+const SW = (label, why, attr, when) => {
+  const w = WHEN[when];
+  return `<div class="sw"><div class="txt"><b>${label}${w
+      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}</b><small>${why}</small></div>
    <input type="checkbox" ${attr}></div>`;
+};
 
 // ── 上游模型名单元格 ────────────────────────────────────────
 function fillModelCell(td, value){
@@ -459,7 +472,8 @@ function addModelRow(d, name, label, oneM){
 }
 
 function renderSwitches(d){
-  $('#moneyBox').innerHTML = MONEY.map(([k, label, why]) => SW(label, why, `data-key="${k}"`)).join('');
+  $('#moneyBox').innerHTML = MONEY.map(([k, label, why]) =>
+    SW(label, why, `data-key="${k}"`, 'session')).join('');
   const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
   check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
   check('promptSuggestionEnabled', d.settings.promptSuggestionEnabled === false);
@@ -471,16 +485,16 @@ function renderSwitches(d){
     ADVANCED.map(([k, kind, label, why]) => {
       const val = d.settings[k];
       const checked = kind === 'off' ? val === false : val === true;
-      return SW(label, why, `data-adv="${k}" data-kind="${kind}" ${checked ? 'checked' : ''}`);
+      return SW(label, why, `data-adv="${k}" data-kind="${kind}" ${checked ? 'checked' : ''}`, 'session');
     }).join(''));
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
   $('#ruleBox').innerHTML = RULES.map(([k, label, why]) =>
-    SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`)).join('');
+    SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`, 'now')).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
   $('#pruneBox').innerHTML = PRUNING.map(([k, label, why]) =>
-    SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`)).join('');
+    SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('');
 
   const running = d.client.running;
   const tag = $('#clientTag');
@@ -489,26 +503,26 @@ function renderSwitches(d){
   $('#prefBox').innerHTML =
     SW('提交时不带 <code>Co-Authored-By: Claude</code> 署名',
        '未勾选时，客户端会提示模型在 git 提交正文中附上该署名行。勾选后不再附带。',
-       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`) +
+       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'session') +
     SW('终端 Claude Code 也走本网关',
        '把环境变量写入 <code>~/.claude/settings.json</code>，终端里的 <code>claude</code> 命令同样经本网关转发 —— ' +
        '与桌面端共用同一套上游、模型映射与处理规则。<br>' +
        '两者注入的工具集并不相同（实测桌面端 85 个、终端 17 个），但剥离规则按名字匹配，对哪一边都适用。' +
        '若需在终端单独使用官方账号，关闭此项即可。',
-       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`) +
+       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
     SW('允许 bypass permissions 模式',
        '客户端这边先允许，会话里才切得到「跳过所有确认」那个模式。' +
        '不开的话遇到需要免确认的操作会直接卡住。<b>开启后 Claude 可无提示执行任意命令，风险自负。</b>' +
        (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
-       `id="bypassPerm" ${d.client.bypass_permissions === true ? 'checked' : ''}`) +
+       `id="bypassPerm" ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
     SW('允许定时任务',
        '关闭后客户端不再提供创建/修改/运行定时任务的工具，定时任务页也会隐藏。' +
        '已存在的任务不会被删除，只是不再运行。',
-       `id="schedTasks" ${d.client.scheduled_tasks ? 'checked' : ''}`) +
+       `id="schedTasks" ${d.client.scheduled_tasks ? 'checked' : ''}`, 'restart') +
     SW('关掉应用内浏览器工具（预览 / 截图 / 点击）',
        '内置浏览器里的打开页面、截图、点击，仅 Web 开发场景需要。' +
        (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
-       `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`) +
+       `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart') +
     ``;
 }
 
