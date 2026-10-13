@@ -176,6 +176,11 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_design_sync_tools": True,      # 剥离 DesignSync (3P模式下无法官方认证)
     "strip_plugin_mgmt_tools": True,      # 剥离插件市场管理与技能建议死重 (mcp__plugins__*, mcp__skills__*)
     "custom_strip_tools": [],             # 自定义额外剥离工具名列表
+    # 以下三项默认**关**：删掉的是真本事（多代理编排 / 工作树隔离 / 计划模式），
+    # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
+    "strip_orchestration_tools": False,   # Workflow / SendMessage / ListAgents / TaskStop / ReportFindings
+    "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
+    "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
 }
 
 
@@ -203,6 +208,11 @@ DEFAULT_CONFIG = {
     # 原样透传会让上游以 404 打回 —— 那是首次安装最像「装坏了」的失败。
     "default_model": "",
     "unknown_model_fallback": True,
+    # 「1M 上下文」：写进 3P 的 inferenceModels（supports1m / prefer1m）与顶层的
+    # modelPrefer1mContext，并决定 CLI 的 ANTHROPIC_MODEL 带不带 [1m] 后缀。
+    # 它影响的是**客户端**怎么算上下文窗口（能长到多大、多久压缩一次）；
+    # 上游吃不吃得下 1M 是另一回事 —— 所以做成开关，上游不支持时能关掉。
+    "one_m_context": True,
     "rules": DEFAULT_RULES,
     "tool_pruning": DEFAULT_TOOL_PRUNING_CONFIG,
 }

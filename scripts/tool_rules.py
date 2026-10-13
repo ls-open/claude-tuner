@@ -20,6 +20,20 @@ def tp_flag(cfg, key):
     return cfg.get(key, DEFAULT_TOOL_PRUNING_CONFIG[key])
 
 
+# **永不被剥的工具**：不管哪个类别开关、也不管用户自己在清单里怎么勾。
+#
+# 为什么要在代码里拦，而不是只靠界面不给勾：这些是「没有它就没法干活」的那几个
+# （读文件、写文件、跑命令、列目录、找内容，以及提问与派子代理）。剥掉它们不是省钱，
+# 是把这个会话弄成残废 —— 而且症状会很怪（模型说要用某工具，工具却不在列表里）。
+# 界面不给勾是便利，这里拦是底线；配置里残留的旧值也一并无效化。
+PROTECTED_TOOLS = frozenset({
+    "Bash", "Read", "Write", "Edit", "MultiEdit",
+    "Glob", "Grep", "LS", "TodoWrite", "TodoRead",
+    # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 那几个本来就是可剥类别，
+    # 放进保护名单会把对应开关废掉（写完立刻自测发现的）。
+    "Agent", "Task", "Skill", "AskUserQuestion",
+})
+
 # 与任何开关无关、恒定剥离的名单。WaitForMcpServers 是客户端等待 MCP 就绪的内部工具，
 # 对模型毫无意义，任何配置下都不该占一份上下文。
 ALWAYS_STRIPPED = ("WaitForMcpServers", "wait_for_mcp_servers")
@@ -36,12 +50,18 @@ CATEGORY_NAMESPACES = (
     ("strip_terminal_tools", ("mcp__terminal",)),
 )
 
-# 类别键 → 该类别覆盖的精确工具名
+# 类别键 → 该类别覆盖的精确工具名。
+# 前三个默认开（多数场景用不到）；后三个默认**关** —— 它们删掉的是真本事，
+# 该不该省由用户自己判断，我们只负责把体积摆出来。
 CATEGORY_NAMES = {
     "strip_native_web_tools": ("WebSearch", "WebFetch", "web_search", "web_fetch",
                                "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
     "strip_design_sync_tools": ("DesignSync", "design_sync"),
+    "strip_orchestration_tools": ("Workflow", "SendMessage", "ListAgents",
+                                  "TaskStop", "ReportFindings"),
+    "strip_worktree_tools": ("EnterWorktree", "ExitWorktree"),
+    "strip_plan_tools": ("EnterPlanMode", "ExitPlanMode"),
 }
 
 # 页面与 CLI 共用的类别中文名（配置页直接显示它，避免两处各译一遍）
@@ -53,6 +73,9 @@ CATEGORY_LABELS = {
     "strip_notebook_tools": "Notebook 单元格编辑",
     "strip_design_sync_tools": "DesignSync",
     "strip_plugin_mgmt_tools": "插件市场与技能建议",
+    "strip_orchestration_tools": "多代理编排与后台任务",
+    "strip_worktree_tools": "Git 工作树隔离",
+    "strip_plan_tools": "计划模式",
     "custom": "你自己勾的",
     "builtin": "恒定剥离",
     "enabled": "总开关关着时的名单",
@@ -80,6 +103,8 @@ def strip_reason(tool_name, stripped_names, cfg):
     之所以要连原因一起给出来：配置页要把「哪些是预设规则替你剥的、哪些是你自己勾的」
     分开显示 —— 只说剥了不说谁剥的，用户看到一个自己没勾过的勾会以为是界面出错。
     """
+    if tool_name in PROTECTED_TOOLS:
+        return ""   # 底线：任何配置都剥不动
     if not tp_flag(cfg, "enabled"):
         return "enabled" if tool_name in stripped_names else ""
 

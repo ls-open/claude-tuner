@@ -169,7 +169,8 @@ def tool_inventory_payload():
     等下一次请求才刷新。判断用的是 tool_rules —— 网关真拿它做决定的那份，所以这里显示
     的「会剥」和请求里实际发生的必然是同一个答案。
     """
-    from tool_rules import CATEGORY_LABELS, get_stripped_tool_names, strip_reason
+    from tool_rules import (CATEGORY_LABELS, PROTECTED_TOOLS, get_stripped_tool_names,
+                            strip_reason)
 
     store = _read(os.path.join(_paths()["bridge_home"], "tool_inventory.json"))
     profiles = [p for p in (store.get("profiles") or []) if isinstance(p, dict)]
@@ -197,6 +198,8 @@ def tool_inventory_payload():
                 "reason": reason,
                 "reason_label": CATEGORY_LABELS.get(reason, reason),
                 "custom": name in custom,
+                # 受保护的（读/写/跑命令这些）在页面上不给勾 —— 剥了会话就残了
+                "protected": name in PROTECTED_TOOLS,
             })
         if not rows:
             continue
@@ -270,6 +273,7 @@ def read_config_payload(handler):
             "port": _port(handler),
             "upstream_url": upstream,
             "default_model": bridge_cfg.get("default_model", ""),
+            "one_m_context": bridge_cfg.get("one_m_context") is not False,
             "unknown_model_fallback": bridge_cfg.get("unknown_model_fallback", True) is not False,
         },
         "three_p": {
@@ -335,11 +339,24 @@ def apply_patch(handler, patch):
         three_p_changed = True
         notes.append("API Key 已更新")
         effects["restart_client"] = True
+    one_m = (bridge.get("one_m_context") is not False)
+    if isinstance(patch.get("one_m_context"), bool):
+        if bridge.get("one_m_context") != patch["one_m_context"]:
+            bridge["one_m_context"] = patch["one_m_context"]
+            one_m = patch["one_m_context"]
+            notes.append("1M 上下文：%s" % ("开" if one_m else "关"))
+            effects["restart_client"] = True
+            # 已经配好的映射表要跟着改 —— 否则页面上显示的和实际生效的不是一回事
+            if isinstance(three_p.get("inferenceModels"), list):
+                for m in three_p["inferenceModels"]:
+                    m["supports1m"] = m["prefer1m"] = one_m
+                three_p["modelPrefer1mContext"] = one_m
+                three_p_changed = True
     models = patch.get("models")
     if isinstance(models, list):
         cleaned = [{"name": (m.get("name") or "").strip(),
                     "labelOverride": (m.get("label") or m.get("name") or "").strip(),
-                    "supports1m": True, "prefer1m": True}
+                    "supports1m": one_m, "prefer1m": one_m}
                    for m in models if isinstance(m, dict) and (m.get("name") or "").strip()]
         if cleaned and cleaned != three_p.get("inferenceModels"):
             three_p["inferenceModels"] = cleaned

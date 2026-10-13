@@ -188,12 +188,14 @@ SETTINGS_TOP_KEYS = (
 )
 
 
-def cli_env(base_url, api_key, model):
+def cli_env(base_url, api_key, model, one_m=True):
     """CLI 联动环境变量：照抄 DeepSeek 官方 Claude Code 接入文档，只换 base_url。
 
     官方要用户手工 export 这一整套；这里由安装器一次写好，用户一个都不用碰。
     """
-    model_1m = model + "[1m]"
+    # [1m] 是**客户端自己的**上下文标记，网关转发前会剥掉（见 gateway.map_model）。
+    # 上游看到的始终是干净模型名，所以加不加它只影响客户端怎么算窗口。
+    model_1m = (model + "[1m]") if one_m else model
     return {
         "ANTHROPIC_BASE_URL": base_url,
         "ANTHROPIC_AUTH_TOKEN": api_key,
@@ -305,24 +307,29 @@ CLIENT_MODEL_IDS = (
     "claude-fable-5-1", "claude-fable-5",
 )
 
-def default_model_mapping(target="deepseek-flash"):
+def _1m_flags(one_m):
+    """1M 上下文相关的三个字段。关掉时一并置否，不留半开半关的状态。"""
+    return {"supports1m": bool(one_m), "prefer1m": bool(one_m)}
+
+
+def default_model_mapping(target="deepseek-flash", one_m=True):
     """只推荐最新代的两个代号，都指向同一个上游模型。
 
     客户端的选择器直接读这份映射，列全量代号只会让它变脏。上游是第三方模型时
     拿不到按代号区分的提示词，只配最新的两个最省事；要用别的自己在页面里换。
     """
-    return [{"name": mid, "labelOverride": target, "supports1m": True, "prefer1m": True}
+    return [{"name": mid, "labelOverride": target, **_1m_flags(one_m)}
             for mid in RECOMMENDED_MODEL_IDS]
 
 
-def identity_model_mapping():
+def identity_model_mapping(one_m=True):
     """官方模型中转站用的映射：每个代号都指向同名的真实模型。
 
     这类用户要的就是 Claude 官方模型本身（中转站转发过来），映射表不该改写模型名，
     但必须**列全** —— 客户端选择器里出现的每个代号都得有对应条目，
     漏一个就会走到兜底逻辑、把用户的 Opus 悄悄换成别的模型。
     """
-    return [{"name": mid, "labelOverride": mid, "supports1m": True, "prefer1m": True}
+    return [{"name": mid, "labelOverride": mid, **_1m_flags(one_m)}
             for mid in CLIENT_MODEL_IDS]
 
 
@@ -340,7 +347,7 @@ _3P_FORCED = {
 _3P_DEFAULTS = {
     "coworkEgressAllowedHosts": ["*"],   # 不填 Agent 就跑不了 curl
     "scheduledTasksEnabled": False,      # 定时任务整套工具从源头消失
-    "modelPrefer1mContext": True,
+    "modelPrefer1mContext": True,   # 由 build_3p_bundle 按配置项 one_m_context 覆盖
 }
 
 
@@ -348,7 +355,7 @@ def new_config_id():
     return str(uuid.uuid4())
 
 
-def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None):
+def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m=None):
     """在现有 3P 配置上合并出新的配置，返回 (新配置, 变动的键)。
 
     **绝不删未知键** —— 客户端自己会往这份文件里写别的字段，删掉会触发它的校验告警。
@@ -366,6 +373,9 @@ def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None):
     for k, v in _3P_FORCED.items():
         put(k, v)
     for k, v in _3P_DEFAULTS.items():
+        if k == "modelPrefer1mContext" and one_m is not None:
+            put(k, bool(one_m))   # 装配时按配置项决定，不留半开半关的状态
+            continue
         if k not in new:          # 用户已经设置过的，不覆盖
             put(k, v)
     if gateway_url:
@@ -458,7 +468,7 @@ def get_preset(preset_id):
     return UPSTREAM_PRESETS[-1]
 
 
-def preset_mapping(preset_id, target=""):
+def preset_mapping(preset_id, target="", one_m=True):
     """默认映射表只有一条规则，不按用户分类型：
 
     - **知道上游模型名**（预设带了、或用户指定了）→ 两个最新代号映射到它，
@@ -471,5 +481,5 @@ def preset_mapping(preset_id, target=""):
     preset = get_preset(preset_id)
     target = (target or preset["model"] or "").strip()
     if target:
-        return default_model_mapping(target)
-    return identity_model_mapping()
+        return default_model_mapping(target, one_m)
+    return identity_model_mapping(one_m)

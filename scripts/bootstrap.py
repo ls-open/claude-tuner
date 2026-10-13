@@ -139,10 +139,11 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
         notes.append("新建 3P 配置：%s" % three_p_path)
     else:
         notes.append("就地合并 3P 配置：%s" % three_p_path)
-    mapping = config_ops.preset_mapping(preset_id, model)
+    one_m = (state["bridge_cfg"].get("one_m_context") is not False)
+    mapping = config_ops.preset_mapping(preset_id, model, one_m)
     bundle, changed = config_ops.build_3p_bundle(
         state["three_p"], api_key=api_key or None, gateway_url=gateway_url,
-        models=mapping)
+        models=mapping, one_m=one_m)
     actions.append(_write_action(three_p_path, bundle,
                                  "3P 推理配置（连接本地网关 + 模型映射）"))
     notes.append("  上游预设：%s → %s" % (preset_info["name"], upstream))
@@ -192,7 +193,7 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
     # 3) 客户端行为开关与 CLI 联动
     settings_patch = {
         "env": config_ops.cli_env(gateway_url, api_key or state["three_p"].get(
-            "inferenceGatewayApiKey", ""), model) if with_cli else {},
+            "inferenceGatewayApiKey", ""), model, one_m) if with_cli else {},
         # 省钱相关，默认帮用户开：
         # - promptCacheTtl：不设时客户端自己决定（订阅号 1 小时、API Key 只有 5 分钟）。
         #   1 小时的缓存写入更贵，但能跨更长的中断保温；上游认不认这个时长各家不同。
