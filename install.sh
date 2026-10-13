@@ -184,7 +184,16 @@ fi
 
 # ── 问 Key ─────────────────────────────────────────────────
 if [ -z "$API_KEY" ] && [ "$DRY_RUN" = 0 ] && [ -r /dev/tty ]; then
-  printf '\n请输入上游 API Key（直接回车可跳过，装完在配置页里填也行）: '
+  # 这一问是新用户唯一要做的事，必须能照着做：说清「哪一家」「去哪申请」
+  # 「长什么样」「能不能跳」。原来只写「请输入上游 API Key」——
+  # 新用户不知道「上游」是什么，也不知道该去谁家申请。
+  printf '\n'
+  printf '本插件默认接 DeepSeek 官方，模型会自动配好，你只需要一个 API Key。\n'
+  printf '\n'
+  printf '  没有的话：打开 https://platform.deepseek.com 注册，在「API Keys」里建一个\n'
+  printf '  （新账号通常有赠送额度，够试很久）\n'
+  printf '\n'
+  printf '粘贴在这里（形如 sk-xxxxxx，输入时不显示），直接回车可跳过、装完在网页里填也行：\n'
   read -r -s API_KEY </dev/tty || API_KEY=""
   printf '\n'
 fi
