@@ -140,10 +140,11 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
     else:
         notes.append("就地合并 3P 配置：%s" % three_p_path)
     one_m = (state["bridge_cfg"].get("one_m_context") is not False)
+    sched = (state["bridge_cfg"].get("scheduled_tasks") is True)
     mapping = config_ops.preset_mapping(preset_id, model, one_m)
     bundle, changed = config_ops.build_3p_bundle(
         state["three_p"], api_key=api_key or None, gateway_url=gateway_url,
-        models=mapping, one_m=one_m)
+        models=mapping, one_m=one_m, scheduled_tasks=sched)
     actions.append(_write_action(three_p_path, bundle,
                                  "3P 推理配置（连接本地网关 + 模型映射）"))
     notes.append("  上游预设：%s → %s" % (preset_info["name"], upstream))

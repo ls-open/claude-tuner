@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""实时战绩：从网关日志里读**上游自己报回来的**真实用量，算命中率与省下的量。
+"""实时战绩：从网关日志里读**上游自己报回来的**真实用量，算命中率与 token 量。
 
 这个文件存在的理由
 ------------------
@@ -29,39 +29,20 @@ if SCRIPT_DIR not in sys.path:
 TAIL_BYTES = 4 * 1024 * 1024
 MAX_EVENTS = 20000  # 单次汇总最多统计的事件行数上限（防御异常大的日志）
 
-# 上游公开单价（美元 / 百万 token）。**这些数字会变**，所以：
-#  1. 只登记查证过的，没查证的不猜；
-#  2. 页面上必须连着「按什么价、什么时候查的」一起显示，不能只甩一个金额；
-#  3. 查不到价的供应商就只报 token，不折算金额 —— 编一个价码比不给更糟。
-# DeepSeek 官方（2026-10 查证，off-peak）：
-PRICES = {
-    "deepseek": {"label": "DeepSeek 官方", "currency": "USD", "per_million": {
-        "cache_hit": 0.003,      # 缓存命中
-        "cache_miss": 0.15,      # 缓存未命中（输入）
-        "output": 0.60,          # 输出
-    }, "as_of": "2026-10"},
-}
-
-# 上游 URL 片段 → 价目表键。认不出来的就只报 token。
-PRICE_MATCH = (
-    ("api.deepseek.com", "deepseek"),
-)
+# 这里**刻意不算钱**。
+#
+# 本项目支持任意上游，而每家的价目都不一样、还随时会调 —— 硬编码一张价目表，
+# 用户看到的金额就是编的（他接的是另一家）。编一个价码比不给更糟：数字看着精确，
+# 实际没有依据。所以只报 token 与命中率，那两个是上游自己数出来的。
+#
+# 要算钱的话，客户端本身带了官方机制：3P 配置里的 inferenceModelPricing（价目表）
+# 与 inferenceModelPricingEnabled（显示估算费用）—— 由用户填自己那家的价，客户端算。
+# 我们不去重复造一张会过时的表。
 
 
 def log_path(home=None):
     base = home or os.environ.get("CLAUDE_TUNER_HOME") or os.path.expanduser("~/.claude-tuner")
     return os.path.join(base, "logs", "gateway.log")
-
-
-def price_for(upstream_url):
-    """按上游地址找价目。找不到返回 None —— 调用方据此决定只报 token。"""
-    url = (upstream_url or "").lower()
-    for fragment, key in PRICE_MATCH:
-        if fragment in url:
-            entry = dict(PRICES[key])
-            entry["key"] = key
-            return entry
-    return None
 
 
 def tail_lines(path, max_bytes=TAIL_BYTES):
@@ -96,7 +77,7 @@ def _usage_of(event):
     }
 
 
-def summarize(lines, price=None):
+def summarize(lines):
     """把日志行汇总成战绩。纯函数（喂行数组，返回结果），便于单测直接调。"""
     total = {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     requests = 0
@@ -150,37 +131,24 @@ def summarize(lines, price=None):
         "stripped_events": stripped_events,
         "stripped_tools": stripped_tools,
         "last": last,
-        "price": None,
-        "cost": None,
     }
-
-    if price and billed_input:
-        per = price["per_million"]
-        cost = (total["cache_read"] / 1e6) * per["cache_hit"] \
-            + (total["input"] + total["cache_creation"]) / 1e6 * per["cache_miss"] \
-            + (total["output"] / 1e6) * per["output"]
-        # 「全都当没命中」的反面假设：同样这些输入，一个都不命中要花多少
-        worst = (billed_input / 1e6) * per["cache_miss"] + (total["output"] / 1e6) * per["output"]
-        result["price"] = price
-        result["cost"] = {"actual": cost, "if_no_cache": worst, "saved": worst - cost}
     return result
 
 
-def read_recent_usage(upstream_url=None, home=None):
+def read_recent_usage(home=None):
     """读日志尾部并汇总。日志不存在（还没跑过请求）时如实返回空战绩。"""
     path = log_path(home)
     if not os.path.isfile(path):
         return dict(summarize([]), log_missing=True)
-    return summarize(tail_lines(path), price=price_for(upstream_url))
+    return summarize(tail_lines(path))
 
 
 def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description="claude-tuner 实时战绩")
-    parser.add_argument("--upstream", default="")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
-    data = read_recent_usage(args.upstream)
+    data = read_recent_usage()
     if args.as_json:
         print(json.dumps(data, ensure_ascii=False, indent=1))
         return 0
@@ -192,10 +160,6 @@ def main(argv=None):
     print("  命中缓存 %.0f  (%.1f%%)" % (t["cache_read"], data["hit_rate"] * 100))
     print("  未命中   %d" % (t["input"] + t["cache_creation"]))
     print("  输出     %d" % t["output"])
-    if data["cost"]:
-        c = data["cost"]
-        print("  按 %s 单价：实付 ~$%.4f；若全不命中 ~$%.4f" % (
-            data["price"]["label"], c["actual"], c["if_no_cache"]))
     return 0
 
 

@@ -231,10 +231,14 @@ def tool_inventory_payload():
 
 
 def stats_payload():
-    """实时战绩：从网关日志读上游自己报回来的真实用量。"""
+    """实时战绩：从网关日志读上游自己报回来的真实用量。
+
+    **不折算金额** —— 本项目支持任意上游，硬编码一张价目表只会给出没有依据的数字。
+    客户端本身有官方机制（3P 的 inferenceModelPricing / inferenceModelPricingEnabled），
+    要算钱应该由用户填自己那家的价，而不是我们替他猜。
+    """
     import live_stats
-    upstream = _read(bridge_path()).get("upstream_url") or ""
-    return live_stats.read_recent_usage(upstream)
+    return live_stats.read_recent_usage()
 
 
 def client_running():
@@ -299,6 +303,11 @@ def read_config_payload(handler):
             "running": client_running(),
             "browser_tools": (_read(paths["desktop_config_3p"]).get("preferences") or {})
                              .get("coworkBrowserToolsEnabled"),
+            "bypass_permissions": (_read(paths["desktop_config_3p"]).get("preferences") or {})
+                                  .get("bypassPermissionsModeEnabled"),
+            # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
+            # 页面上却该并排放在一起（用户眼里都是「开不开某项能力」）
+            "scheduled_tasks": three_p.get("scheduledTasksEnabled") is True,
         },
         "options": {
             "presets": [{k: p[k] for k in ("id", "name", "url", "model", "key_hint")}
@@ -380,6 +389,13 @@ def apply_patch(handler, patch):
 
     # 客户端偏好（浏览器工具等）。它在 preferences 里，客户端运行时会覆盖回去，
     # 所以跑着的时候不写，直接告诉用户先退出客户端。
+    sched = patch.get("scheduled_tasks")
+    if isinstance(sched, bool) and (three_p.get("scheduledTasksEnabled") is True) != sched:
+        three_p["scheduledTasksEnabled"] = sched
+        three_p_changed = True
+        notes.append("定时任务：%s" % ("允许" if sched else "不允许"))
+        effects["restart_client"] = True
+
     prefs = patch.get("client_prefs")
     if isinstance(prefs, dict) and prefs:
         if client_running():

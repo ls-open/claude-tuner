@@ -356,11 +356,11 @@ const ADVANCED = [
   ['idleCompaction', 'off', '空闲时不压缩会话', '会话闲置一段时间后自动压缩长对话。'],
   ['precomputeCompactionEnabled', 'off', '不后台预生成压缩摘要', '提前在后台生成压缩摘要，会增加一次调用开销。'],
   ['showThinkingSummaries', 'off', '不请求思考摘要', '由服务端额外生成一份思考摘要。'],
-  ['disableBundledSkills', 'on', '去掉自带技能与工作流',
-   '自带技能按需加载，本身不占每轮上下文。⚠️ 实测：单独开这一项会让客户端把' +
-   '「Workflow 编写参考」整份搬进 <code>Workflow</code> 工具的说明里 —— 每轮多约 17 KB。' +
-   '<b>要与「多代理编排与后台任务」一起开才有得省</b>（工具被剥掉，说明才随之消失）。'],
-  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
+  ['disableBundledSkills', 'on', '去掉客户端自带的技能与工作流',
+   '移除客户端随附的那批技能与工作流。' +
+   '<b>你自己的技能、插件、<code>.claude/skills/</code> 与 <code>.claude/commands/</code> 不受影响。</b>' +
+   '⚠️ 单独开这一项，客户端会把「Workflow 编写参考」搬进 <code>Workflow</code> 工具的说明里，' +
+   '每轮多约 17 KB —— 要与上面「多代理编排与后台任务」一起开才有得省。'],  ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
 ];
 
 // 每条规则：关掉之后哪一类内容会重新变得不稳定
@@ -496,9 +496,18 @@ function renderSwitches(d){
        '两者注入的工具集并不相同（实测桌面端 85 个、终端 17 个），但剥离规则按名字匹配，对哪一边都适用。' +
        '若需在终端单独使用官方账号，关闭此项即可。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`) +
-    SW('应用内浏览器工具（预览 / 截图 / 点击）',
-       '启用后可在客户端内置浏览器中打开页面、截图、点击，仅 Web 开发场景需要。' +
-       (running ? '<b> 客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
+    SW('允许 bypass permissions 模式',
+       '客户端这边先允许，会话里才切得到「跳过所有确认」那个模式。' +
+       '不开的话遇到需要免确认的操作会直接卡住。<b>开启后 Claude 可无提示执行任意命令，风险自负。</b>' +
+       (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
+       `id="bypassPerm" ${d.client.bypass_permissions === true ? 'checked' : ''}`) +
+    SW('允许定时任务',
+       '关闭后客户端不再提供创建/修改/运行定时任务的工具，定时任务页也会隐藏。' +
+       '已存在的任务不会被删除，只是不再运行。',
+       `id="schedTasks" ${d.client.scheduled_tasks ? 'checked' : ''}`) +
+    SW('关掉应用内浏览器工具（预览 / 截图 / 点击）',
+       '内置浏览器里的打开页面、截图、点击，仅 Web 开发场景需要。' +
+       (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
        `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`) +
     ``;
 }
@@ -564,14 +573,11 @@ function renderTools(){
     : '';
 
   const head = `<div class="hint" style="margin:0 0 10px">
-      当前分组：<b>${esc(prof.label)}${prof.kind === 'subagent' ? ' · 子代理' : ''}</b>
-      ${prof.evidence ? `（识别依据：该分组含 <code>${esc(prof.evidence)}</code>）` : ''}
-      · 共 <b>${prof.count}</b> 个工具、共 <b>${kb(sum(rows))}</b>
-      · 按当前配置会剥掉 <b>${gone.length}</b> 个（省 <b>${kb(sum(gone))}</b>）
-      <br>同一分组内取工具并集：在该入口出现过的工具都会记下，不限于某一次对话。
-      <br>最近出现：${new Date(prof.last_seen*1000).toLocaleString('zh-CN')}（累计 ${num(prof.requests)} 次请求）
-      ${prof.models.length ? `<br>使用过的模型：${prof.models.map(m => `<code>${esc(m)}</code>`).join('、')}` : ''}
-      ${prof.cc_versions.length ? `<br>客户端版本：${prof.cc_versions.map(v => `<code>${esc(v)}</code>`).join('、')}` : ''}
+      <b>${esc(prof.label)}</b>${prof.kind === 'subagent' ? ' · 子代理' : ''}
+      · ${prof.count} 个工具 / ${kb(sum(rows))}
+      · 按当前配置剥掉 ${gone.length} 个（省 ${kb(sum(gone))}）
+      ${prof.models.length ? `<br>模型 ${prof.models.map(esc).join('、')}` : ''}
+      ${prof.cc_versions.length ? ` · 客户端 ${prof.cc_versions.map(esc).join('、')}` : ''}
     </div>`;
 
   const body = rows.map(r => {
@@ -623,21 +629,9 @@ async function renderStats(){
     `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>按贵的那档计价</small></div>`,
     `<div class="k"><b>${num(t.output)}</b><small>输出 token</small></div>`,
   ];
-  let money = '';
-  if (d.cost){
-    money = `<div class="stat" style="margin-top:2px">
-      <div class="k"><b>$${d.cost.actual.toFixed(2)}</b><small>按 ${esc(d.price.label)} 单价估算的实付</small></div>
-      <div class="k mute"><b>$${d.cost.if_no_cache.toFixed(2)}</b><small>同样这些输入，一次都没命中缓存的话</small></div>
-      <div class="k ok"><b>$${d.cost.saved.toFixed(2)}</b><small>差额</small></div>
-    </div>
-    <div class="hint">单价取自 ${esc(d.price.label)} 公开价目（查证于 ${esc(d.price.as_of)}），
-      只折算 token 费用，不含任何折扣或时段价。金额是估算，token 数是上游报回来的。</div>`;
-  } else {
-    money = `<div class="hint">未收录该上游的公开价目，故仅显示 token 数，不折算金额。</div>`;
-  }
   const extra = d.stripped_tools
     ? `<div class="hint" style="margin-top:12px">工具精简累计剥离 <b>${num(d.stripped_tools)}</b> 条工具定义（各次请求累加）。</div>` : '';
-  box.innerHTML = `<div class="stat">${cards.join('')}</div>${money}${extra}`;
+  box.innerHTML = `<div class="stat">${cards.join('')}</div>${extra}`;
 }
 
 // ── 左侧导航跟随滚动 ──────────────────────────────────────
@@ -773,7 +767,11 @@ $('#btnSave').onclick = async () => {
     models, settings, tool_pruning, rules,
     unset_settings: on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl'],
     cli_linked: $('#cliLinked').checked,
-    client_prefs: {coworkBrowserToolsEnabled: !$('#browserTools').checked},
+    scheduled_tasks: $('#schedTasks').checked,
+    client_prefs: {
+      coworkBrowserToolsEnabled: !$('#browserTools').checked,
+      bypassPermissionsModeEnabled: $('#bypassPerm').checked,
+    },
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
   const fx = r.data.effects;

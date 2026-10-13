@@ -213,6 +213,9 @@ DEFAULT_CONFIG = {
     # 它影响的是**客户端**怎么算上下文窗口（能长到多大、多久压缩一次）；
     # 上游吃不吃得下 1M 是另一回事 —— 所以做成开关，上游不支持时能关掉。
     "one_m_context": True,
+    # 「允许定时任务」：写进 3P 的 scheduledTasksEnabled。默认关 —— 定时任务整套工具
+    # 会从源头消失（客户端干脆不提供创建/修改/运行它们的工具），比事后剥离干净。
+    "scheduled_tasks": False,
     "rules": DEFAULT_RULES,
     "tool_pruning": DEFAULT_TOOL_PRUNING_CONFIG,
 }

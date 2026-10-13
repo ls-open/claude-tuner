@@ -266,6 +266,10 @@ def managed_settings_present(existing):
 DESKTOP_PREF_KEYS = (
     "coworkBrowserToolsEnabled",   # 应用内浏览器/预览/截图工具
     "coworkPreferredBrowser",      # built_in / chrome
+    # 允许 bypass permissions 模式。**必须在客户端这边先允许**，会话里才切得到那个模式 ——
+    # 不开的话遇到需要免确认的操作会直接卡住（本机实测踩过：权限分类器不可用时，
+    # 连一条 rm 都执行不了）。官方描述里标为 security 类。
+    "bypassPermissionsModeEnabled",
 )
 
 
@@ -355,7 +359,8 @@ def new_config_id():
     return str(uuid.uuid4())
 
 
-def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m=None):
+def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m=None,
+                    scheduled_tasks=None):
     """在现有 3P 配置上合并出新的配置，返回 (新配置, 变动的键)。
 
     **绝不删未知键** —— 客户端自己会往这份文件里写别的字段，删掉会触发它的校验告警。
@@ -375,6 +380,9 @@ def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m
     for k, v in _3P_DEFAULTS.items():
         if k == "modelPrefer1mContext" and one_m is not None:
             put(k, bool(one_m))   # 装配时按配置项决定，不留半开半关的状态
+            continue
+        if k == "scheduledTasksEnabled" and scheduled_tasks is not None:
+            put(k, bool(scheduled_tasks))
             continue
         if k not in new:          # 用户已经设置过的，不覆盖
             put(k, v)
