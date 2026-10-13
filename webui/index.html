@@ -363,10 +363,6 @@ const ADVANCED = [
   ['idleCompaction', 'off', '空闲时不压缩会话', '会话闲置一段时间后自动压缩长对话。'],
   ['precomputeCompactionEnabled', 'off', '不后台预生成压缩摘要', '提前在后台生成压缩摘要，会增加一次调用开销。'],
   ['showThinkingSummaries', 'off', '不请求思考摘要', '由服务端额外生成一份思考摘要。'],
-  ['disableBundledSkills', 'on', '去掉客户端自带的技能与工作流',
-   '移除客户端随附的技能与工作流；<b>你自己的技能与插件不受影响。</b>' +
-   '⚠️ 需与第 ⑤ 节「工具精简」里的<b>多代理编排与后台任务</b>一起开才省得下来 —— ' +
-   '单独开反而每轮多约 17 KB。'],
   ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
 ];
 
@@ -405,11 +401,20 @@ const PRUNING_GROUPS = [
     ['strip_plugin_mgmt_tools', '插件市场与技能建议', '装插件、推荐技能'],
   ]],
   ['智能体能力', '删的是真本事，默认一律不动', [
-    ['strip_workflow_tools', '工作流编排', '执行一段工作流脚本，确定性地编排多个子代理'],
     ['strip_cross_session_tools', '跨会话消息', '给另一个代理发消息；列出你能发消息的对象。两者成对'],
     ['strip_worktree_tools', 'Git 工作树隔离', '把会话关进独立的工作树里干活；干完退回原目录。两者成对'],
     ['strip_plan_tools', '计划模式', '先出计划、经你确认后再执行；写完计划后退出计划模式。两者成对'],
   ]],
+];
+
+// 搭配开关：必须一起生效的两件事，合成一个开关 —— 分开写会让人只开一半，
+// 而只开一半不但不省，反而每轮多约 17 KB（客户端会把那份长说明内联进工具里）。
+const COMPOSITE = [
+  ['workflowBundle', '工作流编排与自带技能',
+   '去掉客户端随附的技能与工作流，并剥掉 Workflow 工具 —— 它俩必须一起动：' +
+   '只关技能的话，客户端会把那份长的「Workflow 编写参考」内联进工具说明里，每轮反而多约 17 KB。' +
+   '<b>你自己的技能与插件不受影响。</b>',
+   {settings: {disableBundledSkills: true}, pruning: {strip_workflow_tools: true}}],
 ];
 
 // 生效时机：用户点完开关后，最想知道的就是「现在有没有用」。
@@ -518,7 +523,12 @@ function renderSwitches(d){
     `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
     items.map(([k, label, why]) =>
       SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('')
-  ).join('');
+  ).join('') +
+  COMPOSITE.map(([id, label, why, spec]) => {
+    const on = Object.entries(spec.settings || {}).every(([k, v]) => (d.settings[k] ?? false) === v)
+            && Object.entries(spec.pruning || {}).every(([k, v]) => (tp[k] ?? defs[k]) === v);
+    return SW(label, why, `data-composite="${id}" ${on ? 'checked' : ''}`, 'now');
+  }).join('');
 
   const running = d.client.running;
   const tag = $('#clientTag');
@@ -543,11 +553,8 @@ function renderSwitches(d){
     SW('允许 bypass permissions 模式',
        '客户端这边先允许，会话里才切得到「跳过所有确认」那个模式。' +
        '不开的话遇到需要免确认的操作会直接卡住。<b>开启后 Claude 可无提示执行任意命令，风险自负。</b>' +
-       (running ? '<br><b>客户端正在运行，此项暂时改不了</b> —— 它写在 ' +
-         '<code>claude_desktop_config.json</code> 里，那是客户端自己的运行时状态文件，' +
-         '它会往里面回写（会话级窗口状态之类），我们这时写进去会被覆盖。' +
-         '完全退出 Claude 后回这一页改即可 —— <b>网关不随客户端退出，这个页面照常打得开</b>。' : ''),
-       `id="bypassPerm" ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
+
+       `id="bypassPerm" data-needs-closed ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
     SW('允许定时任务',
        '关闭后客户端不再提供创建/修改/运行定时任务的工具，定时任务页也会隐藏。' +
        '已存在的任务不会被删除，只是不再运行。',
@@ -555,14 +562,11 @@ function renderSwitches(d){
     SW('关掉 CoWork 的联网搜索',
        '客户端原生开关：关闭后它在组装请求前就把 WebSearch 从工具列表摘掉。' +
        '第 ⑤ 节的「网页搜索」是网关侧的同类处理，覆盖这个开关管不到的入口，两者可以并存。',
-       `id="coworkWebSearch" ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
+       `id="coworkWebSearch" data-needs-closed ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
     SW('关掉应用内浏览器工具（预览 / 截图 / 点击）',
        '内置浏览器里的打开页面、截图、点击，仅 Web 开发场景需要。' +
-       (running ? '<br><b>客户端正在运行，此项暂时改不了</b> —— 它写在 ' +
-         '<code>claude_desktop_config.json</code> 里，那是客户端自己的运行时状态文件，' +
-         '它会往里面回写（会话级窗口状态之类），我们这时写进去会被覆盖。' +
-         '完全退出 Claude 后回这一页改即可 —— <b>网关不随客户端退出，这个页面照常打得开</b>。' : ''),
-       `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart') +
+
+       `id="browserTools" data-needs-closed ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart') +
     ``;
 }
 
@@ -697,6 +701,23 @@ async function renderStats(){
   box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}${extra}`;
 }
 
+// 这三项写在 claude_desktop_config.json 里 —— 那是客户端自己的运行时状态文件，
+// 它会往里面回写，运行期间我们写进去会被覆盖。所以**在用户动手的那一刻拦住**，
+// 而不是在页面上写一段话等他去读（写了也没人看）。
+function guardClientRunningSwitches(){
+  if (!CFG.client.running) return;
+  document.querySelectorAll('input[data-needs-closed]').forEach(el => {
+    const was = el.checked;
+    el.addEventListener('change', () => {
+      el.checked = was;                       // 退回原状，不让改动看起来生效了
+      tell('这一项要先把 Claude <b>完全退出</b>（菜单里的「退出」，不是关窗口）才能改。' +
+           '<br><br>原因是它写在客户端自己的运行时状态文件里 —— 客户端正在运行时，' +
+           '我们的改动会被它回写覆盖掉，你改完保存了也不会生效。' +
+           '<br><br>网关<b>不随客户端退出</b>，退出后直接回到这个页面改就行。');
+    });
+  });
+}
+
 // ── 左侧导航跟随滚动 ──────────────────────────────────────
 function watchNav(){
   const links = [...document.querySelectorAll('#nav a')];
@@ -806,14 +827,21 @@ $('#btnSave').onclick = async () => {
   };
   // 缓存 TTL：只在打开时写 1h，关掉就把自己写的键删掉，回到客户端自动决定
   if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
+  const tool_pruning = {}, rules = {}, compositePruning = {};
+  COMPOSITE.forEach(([id, , , spec]) => {
+    const el = $(`#pruneBox input[data-composite="${id}"]`);
+    if (!el) return;
+    Object.entries(spec.settings || {}).forEach(([k, v]) => settings[k] = el.checked ? v : !v);
+    Object.entries(spec.pruning || {}).forEach(([k, v]) => { compositePruning[k] = el.checked ? v : !v; });
+  });
   ADVANCED.forEach(([k, kind]) => {
     const el = $(`#moneyBox input[data-adv="${k}"]`);
     if (!el) return;
     settings[k] = kind === 'off' ? !el.checked : el.checked;
   });
-  const tool_pruning = {}, rules = {};
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
+  Object.assign(tool_pruning, compositePruning);  // 合成开关写的值覆盖同名项
 
   // 自己勾的工具清单：已渲染的以勾选框为准，**没渲染到的原样保留** ——
   // 清单只来自最近一次请求，某个工具这次没出现不代表用户当初不该勾它。
@@ -870,6 +898,7 @@ $('#btnSave').onclick = async () => {
   onPresetChange(false);
   renderStatus(CFG); renderModels(CFG); renderSwitches(CFG);
   renderGateway(CFG); renderVersions(CFG);
+  guardClientRunningSwitches();
   watchNav();
   say('');
   // 这两块是「事实」，和配置分开拉 —— 拉不到也不影响配置区可用
