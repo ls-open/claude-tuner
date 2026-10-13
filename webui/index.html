@@ -91,7 +91,7 @@
   .preset-card{background:linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
        border:1px solid var(--line2);border-radius:var(--radius-sm);
        padding:15px;cursor:pointer;transition:all .2s cubic-bezier(0.16, 1, 0.3, 1);position:relative;
-       display:flex;flex-direction:column;justify-content:space-between}
+       display:flex;flex-direction:column}
   .preset-card:hover{border-color:rgba(255,255,255,0.25);background:rgba(255,255,255,0.04);transform:translateY(-2px);box-shadow:0 6px 16px rgba(0,0,0,0.4)}
   .preset-card.active{border-color:var(--accent);background:linear-gradient(180deg, rgba(59,130,246,0.14) 0%, rgba(59,130,246,0.04) 100%);
        box-shadow:0 0 0 1px var(--accent), 0 6px 20px var(--accent-glow)}
@@ -103,8 +103,8 @@
   .preset-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim2)}
   .preset-badge.rec{background:var(--ok-dim);color:var(--ok);border-color:rgba(52,211,153,0.3)}
   .preset-badge.hot{background:var(--accent-dim);color:var(--accent-hover);border-color:rgba(59,130,246,0.3)}
-  .preset-desc{font-size:11.5px;color:var(--dim);line-height:1.55}
-  .preset-detail{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:8px;padding-top:8px;
+  .preset-desc{font-size:11.5px;color:var(--dim);line-height:1.55;margin-bottom:8px}
+  .preset-detail{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:auto;padding-top:8px;
        border-top:1px dashed var(--line);word-break:break-word}
   .preset-detail b{color:var(--dim);font-weight:600}
 
@@ -244,9 +244,9 @@
     <a href="#s2"><span class="nav-ico">🔀</span>模型映射</a>
 
     <div class="grp">核心调优</div>
+    <a href="#s3"><span class="nav-ico">💾</span>缓存与上下文</a>
     <a href="#s4"><span class="nav-ico">🛡️</span>前缀稳定化</a>
     <a href="#s5"><span class="nav-ico">✂️</span>工具精简</a>
-    <a href="#s3"><span class="nav-ico">💾</span>缓存与上下文</a>
     <a href="#s6"><span class="nav-ico">🎛️</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
@@ -300,7 +300,7 @@
     <!-- 一键场景预设 -->
     <div class="preset-bar" id="presetBar">
       <div class="preset-bar-head">
-        <b>⚡️ 一键场景预设 <span>点一下自动配置下方 30+ 项开关，避免逐项手动摸索</span></b>
+        <b>⚡️ 一键场景预设 <span>一键应用推荐配置，也可在下方自由微调</span></b>
       </div>
       <div class="preset-cards">
         <div class="preset-card active" data-mode="balanced">
@@ -308,7 +308,7 @@
             <span class="preset-name">⚖️ 日常开发均衡档</span>
             <span class="preset-badge rec">推荐</span>
           </div>
-          <div class="preset-desc">只关「界面遥控」那一类，加上几个用不到的集成。带着真本事的都留：终端面板、网页搜索与抓取、跨会话消息、工作树、计划模式，以及<b>随附技能与 Workflow</b>。</div>
+          <div class="preset-desc">精简冷门与 UI 遥控工具，保留搜索、终端与工作流。日常开发兼顾轻量与全能。</div>
           <div class="preset-detail" data-detail="balanced"></div>
         </div>
         <div class="preset-card" data-mode="pure_code">
@@ -316,7 +316,7 @@
             <span class="preset-name">⚡️ 纯代码极限档</span>
             <span class="preset-badge hot">极致省钱</span>
           </div>
-          <div class="preset-desc">能关的都关：界面遥控、终端面板、网页搜索与抓取、各类集成全剥，只留下读写文件、跑命令、找内容这些干活必需的能力。</div>
+          <div class="preset-desc">精简外围工具与预置技能，专注代码编写与终端执行。首字极速响应，极致省 Token。</div>
           <div class="preset-detail" data-detail="pure_code"></div>
         </div>
         <div class="preset-card" data-mode="vanilla">
@@ -324,7 +324,7 @@
             <span class="preset-name">🛠 原生全功能档</span>
             <span class="preset-badge">官方原味</span>
           </div>
-          <div class="preset-desc">工具面一个不剥，客户端给什么就是什么；只做接上游与前缀稳定化。<b>三个客户端设置也回到官方默认</b>（见下）。</div>
+          <div class="preset-desc">不剥离任何工具，保持官方客户端默认设置。适合功能排错或原版体验。</div>
           <div class="preset-detail" data-detail="vanilla"></div>
         </div>
         <div class="preset-card" data-mode="custom">
@@ -332,7 +332,11 @@
             <span class="preset-name">🎛 极客专家微调</span>
             <span class="preset-badge">自由</span>
           </div>
-          <div class="preset-desc">不动任何预设，下方每一项都按你自己勾的结果生效。</div>
+          <div class="preset-desc">完全自定义下方所有开关，按个性化勾选生效。</div>
+          <div class="preset-detail">
+            <b>自由定制模式</b>
+            <div>随下方开关改动实时调整</div>
+          </div>
         </div>
       </div>
     </div>
@@ -340,7 +344,7 @@
     <section id="s1">
       <div class="head"><span class="num">①</span><h2>接上模型</h2><span class="tag">必填</span></div>
       <div class="body">
-        <p class="lead">填入 Anthropic Messages 协议接口与 API Key。官方 API、DeepSeek、自建反代与各类兼容中转均可直连（不做 OpenAI 跨协议转换）。</p>
+        <p class="lead">填入 Anthropic Messages 协议接口与 API Key。支持官方 API、各类兼容中转及第三方模型直连。</p>
         <div class="row">
           <div class="field" style="flex:0 1 260px">
             <label>服务商预设</label>
@@ -366,21 +370,11 @@
     <section id="s2">
       <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span></div>
       <div class="body">
-        <p class="lead">左列是 Claude 在请求里发的<b>代号</b>（<code>claude-opus-5-5</code> 这类，客户端只认这些）；
-          右列是发给上游时<b>换成的那个名字</b>。<b>右列一个值管两件事</b>，填之前先知道：</p>
-        <div class="hint" style="margin:0 0 4px">
-          <b>① 发给上游的模型名</b> —— 每轮请求真正送到上游的就是它，必须与上游接受的名称<b>逐字一致</b>（区分大小写），
-          否则上游直接打回。
-        </div>
-        <div class="hint" style="margin:0 0 12px">
-          <b>② 客户端里显示的名字</b> —— 你在 Claude 的模型选择器里看到的也是它。客户端这个字段就叫
-          <code>labelOverride</code>（覆盖显示名），所以填什么就显示什么：填 <code>deepseek-flash</code> 显示的就是它，
-          填一串内部编号也会原样显示。
-        </div>
+        <p class="lead">左列为客户端选择器代号，右列为发给上游的真实模型名（区分大小写，同时作为客户端内的显示名称）。</p>
         <div class="row" style="margin-bottom:12px">
           <button id="btnPull">拉取上游模型列表</button>
           <button id="btnAdd">+ 加一行</button>
-          <span class="hint" style="margin:0;flex:1" id="pullOut">可从服务商拉取可用模型列表，选定后建议点击上方「测试连接」验证。</span>
+          <span class="hint" style="margin:0;flex:1" id="pullOut">支持在线拉取可用模型，或手动指定上游模型名。</span>
         </div>
         <table>
           <thead><tr><th style="width:42%">Claude 代号</th><th>上游模型名</th>
@@ -388,11 +382,8 @@
           <th style="width:40px"></th></tr></thead>
           <tbody id="models"></tbody>
         </table>
-        <div class="hint">客户端的选择器直接读取这份映射：配置几项，界面上即可选几项。</div>
-        <div class="hint" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
-          <b>1M</b> 列：勾选表示该模型按 100 万 token 的上下文窗口使用。
-          <b>它只决定客户端如何计算窗口</b>（多久触发一次自动压缩），与上游是否支持 1M 无关，
-          因此逐条单独设置（官方配置亦按模型逐条记录）。修改后需完全退出并重开 Claude。
+        <div class="hint" style="margin-top:10px">
+          注：客户端选择器直接读取此表；<b>1M</b> 列仅控制客户端内部窗口计算（修改后需完全退出并重启 Claude）。
         </div>
       </div>
     </section>
@@ -401,7 +392,7 @@
       <div class="head"><span class="num">③</span><h2>缓存与上下文</h2>
         <span class="who">Claude 官方设置</span><span class="tag">默认值即推荐值</span></div>
       <div class="body">
-        <p class="lead"><b>【降低重复消费】</b>控制缓存保留时长与会话压缩。API Key 模式下官方默认只留 5 分钟，延长到 1 小时能让中断一会儿再回来时仍然命中。<b>但它不是白拿的：1 小时的缓存写入单价更高</b>，换的是「跨更长的间隔还能命中」—— 连着聊净赚，隔很久才聊一次可能反而贵一点。这里默认开着，不合适就关。</p>
+        <p class="lead">控制客户端缓存保留时长与历史压缩。延长至 1 小时可显著提高连续对话命中率；按需关闭自动压缩可避免前缀频繁重建失效。</p>
         <div id="moneyBox"></div>
       </div>
     </section>
@@ -410,7 +401,7 @@
       <div class="head"><span class="num">④</span><h2>前缀稳定化</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">逐条可关</span></div>
       <div class="body">
-        <p class="lead"><b>【防缓存击穿 · 省钱神器】</b>以 DeepSeek 官方为例，命中缓存的 Token 单价是未命中的 <b>1/50</b>（各家上游价目不同）。但客户端每轮暗中塞入的动态时间、Git 状态会破坏前缀，让这部分本该便宜的 Token 按原价重算。这里把扰动逐项抹平，保持前缀字节恒定。<b>每条规则均可单独开关。</b></p>
+        <p class="lead">抹平客户端每轮自动注入的动态时间、Git 状态等扰动，保持前缀字节恒定以最大化命中上游低价缓存。每项规则均可独立开关。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
@@ -419,7 +410,7 @@
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">按需精简工具</span></div>
       <div class="body">
-        <p class="lead">客户端会为<b>每一个可用的工具</b>附上一段说明，这些定义随每一轮请求一起发出去 —— 是固定开销里最大的一块（多少取决于客户端版本与你开了哪些扩展）。若当前场景用不到其中一些，可在此分类勾选移除；移除工具时，配套的系统提示词段落也会自动联动清理，省下上下文、降低延迟并释放模型注意力。</p>
+        <p class="lead">客户端默认注入的大量工具定义会随每轮请求重复发送。在此按需移除用不到的工具，配套系统提示词段落将同步自动清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -428,7 +419,7 @@
       <div class="head"><span class="num">⑥</span><h2>客户端偏好</h2>
         <span class="who">Claude 官方设置</span><span class="tag" id="clientTag"></span></div>
       <div class="body">
-        <p class="lead"><b>【客户端行为定制】</b>控制 Claude 桌面端的各项原生开关（界面标签页、代码提交署名、终端联动等）。</p>
+        <p class="lead">控制 Claude 桌面端的各项原生偏好（界面标签页、Git 提交签名、终端联动等）。</p>
         <div id="prefBox"></div>
       </div>
     </section>
@@ -436,7 +427,7 @@
     <section id="s9">
       <div class="head"><span class="num">⑦</span><h2>实时战绩</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
       <div class="body">
-        <p class="lead">直接提取自网关日志中每次上游响应的 usage 字段。缓存命中率越高，实际账单越省、响应越快。</p>
+        <p class="lead">基于网关真实响应统计。缓存命中率越高，实际费用越省、首字响应越快。</p>
         <div id="statBox"></div>
       </div>
     </section>
@@ -450,7 +441,7 @@
           </div>
           <button id="btnRestart">重启网关</button>
         </div>
-        <div class="hint">前缀稳定化与工具精简由常驻网关处理，改动后立即生效，无需重启 Claude 客户端。</div>
+        <div class="hint">网关规则改动后立即生效，无需重启 Claude 客户端。</div>
       </div>
     </section>
 
@@ -504,10 +495,10 @@ const MONEY = [
 ];
 
 const ADVANCED = [
-  ['idleCompaction', 'off', '禁止空闲时压缩会话', '防止会话闲置一段时间后被客户端静默重写导致缓存丢失。'],
-  ['precomputeCompactionEnabled', 'off', '禁止后台预生成压缩摘要', '避免客户端提前在后台额外发起一次调用生成压缩摘要。'],
+  ['idleCompaction', 'off', '禁止空闲时压缩会话', '防止会话闲置后被客户端静默重写导致缓存失效。'],
+  ['precomputeCompactionEnabled', 'off', '禁止后台预生成压缩摘要', '避免客户端后台提前发起调用生成摘要。'],
   ['showThinkingSummaries', 'off', '不请求额外思考摘要', '关闭服务端额外生成思考摘要的请求。'],
-  ['alwaysThinkingEnabled', 'off', '关闭模型强制思考（注意：会降低复杂任务质量）', '思考 Token 同样产生计费。如需极限压缩成本可关闭，但复杂代码推理能力会受影响。'],
+  ['alwaysThinkingEnabled', 'off', '关闭强制深度思考', '降低 Token 消耗，但复杂代码推理质量会受影响。'],
 ];
 
 const RULES = [
@@ -521,26 +512,26 @@ const RULES = [
 ];
 
 const PRUNING_GROUPS = [
-  ['桌面界面遥控类（勾选即移除，写代码通常用不到）', '控制客户端窗口、侧栏与分屏的辅助工具', [
+  ['桌面界面遥控类', '控制窗口、侧栏与分屏等界面辅助工具', [
     ['strip_sidebar_tools', '移除侧栏管理工具', '在侧栏建立分区、归档、置顶/取消置顶等界面操作工具'],
     ['strip_window_tools', '移除窗口与分屏遥控', '分屏并列展示会话、折叠/展开主窗口等界面操作工具'],
     ['strip_settings_tools', '移除界面偏好控制', '读取或修改 Code 标签页界面偏好的工具及配套提示词'],
     ['strip_directory_tools', '移除会话目录切换', '将会话切换至本机其他项目目录的工具'],
   ]],
-  ['会话与系统交互类（按需勾选精简）', '操作其他会话及本地系统辅助能力的工具', [
+  ['会话与系统交互类', '操作历史会话及系统联动的辅助工具', [
     ['strip_session_tools', '移除会话管理工具', '列出会话、重命名、切换模型、归档或删除等会话管理工具'],
-    ['strip_host_tools', '移除编辑器与系统联动', '在 VS Code/Cursor 中打开文件、阻止系统休眠等操作的工具及配套提示词'],
-    ['strip_terminal_tools', '移除右侧终端控制工具', '直接向终端标签页写入并执行命令的工具及配套提示词'],
+    ['strip_host_tools', '移除编辑器与系统联动', '唤起外部编辑器打开文件、防休眠等操作'],
+    ['strip_terminal_tools', '移除右侧终端控制工具', '向客户端内置终端标签页写入并执行命令'],
   ]],
-  ['联网与集成扩展类（按需勾选精简）', '调用外部服务或扩展工具，可按需精简以节省上下文', [
-    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '搜索公开网页内容的工具，精简后可节省静态上下文'],
-    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取指定网页并提炼正文的工具，精简后可节省静态上下文'],
-    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub PR 与查看 CI 运行状态的工具及配套提示词，精简后可节省静态上下文'],
+  ['联网与扩展集成类', '外部联网搜索与三方集成工具', [
+    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '搜索公开网页内容'],
+    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取并提炼指定网页正文内容'],
+    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub PR 与查看 CI 运行状态'],
     ['strip_notebook_tools', '移除 Notebook 编辑工具', '编辑 Jupyter Notebook (.ipynb) 单元格的专用工具'],
     ['strip_design_sync_tools', '移除 DesignSync 设计稿同步', '同步 Figma/UI 设计稿的扩展工具'],
     ['strip_plugin_mgmt_tools', '移除插件推荐工具', '向用户推荐或安装扩展插件的辅助工具'],
   ]],
-  ['智能体协作能力类（Agent 核心能力，建议保留）', '多 Agent 协作与任务规划工具，推荐保持开启', [
+  ['智能体协作能力类', '多 Agent 协同与任务规划工具（核心能力，建议保留）', [
     ['strip_cross_session_tools', '移除跨会话消息工具', '向其他子代理发送跨会话消息的协作工具'],
     ['strip_worktree_tools', '移除 Git 工作树隔离工具', '将任务限制在独立 Git 工作树中运行的隔离工具'],
     ['strip_plan_tools', '移除计划确认模式（Plan）', '生成执行计划并等待用户确认后再执行的工具'],
@@ -549,7 +540,7 @@ const PRUNING_GROUPS = [
 
 const COMPOSITE = [
   ['workflowBundle', '移除随附工作流与预置技能',
-   '【防膨胀联动】同时移除客户端随附预置技能与工作流工具。彻底杜绝只关工具导致客户端反向内联 17KB 提示词的问题。用户自建技能不受影响。',
+   '同步移除客户端预置工作流工具与随附技能提示词（约 17KB）。用户自建技能不受影响。',
    {settings: {disableBundledSkills: true}, pruning: {strip_workflow_tools: true}}],
 ];
 
@@ -672,7 +663,7 @@ function onPresetChange(fill){
   if (fill && p.url) $('#upstream').value = p.url;
   $('#presetHint').textContent = p.url
     ? (p.key_hint ? 'API Key 格式提示：' + p.key_hint : '')
-    : '该服务商需自行填写接口地址（须支持 Anthropic Messages 协议）。填好后可点「拉取上游模型列表」直接选择模型名。';
+    : '请填写兼容 Anthropic Messages 协议的接口地址。填好后可点「拉取上游模型列表」选择模型。';
 }
 
 function renderModels(d){
@@ -742,29 +733,28 @@ function renderSwitches(d){
   tag.textContent = running ? '客户端正在运行' : '';
   tag.style.display = running ? '' : 'none';
   $('#prefBox').innerHTML =
-    SW('提交时不带 <code>Co-Authored-By: Claude</code> 署名',
-       '未勾选时，客户端会要求模型在 git commit 提交中附带该签名行。勾选后保持纯净提交。',
+    SW('Git 提交不带 Claude 联署签名',
+       '勾选后不在 git commit 中追加 Co-Authored-By: Claude 签名行。',
        `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'session') +
     SW('终端 Claude Code 同样走本网关',
-       '把环境变量写入 <code>~/.claude/settings.json</code>，终端里的 <code>claude</code> 同样经本网关转发并享受规则加速。<br>' +
-       '若需在终端单独使用官方账号，关闭此项即可。',
+       '终端 <code>claude</code> 命令行工具同样经本网关转发加速。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
-    `<div class="subgrp">客户端界面标签页<em>用不到的可以关掉，保持界面清爽</em></div>` +
-    SW('Chat 标签页', '客户端基础对话界面', `id="surfChat" ${d.client.surfaces.chatTabEnabled ? 'checked' : ''}`, 'restart') +
-    SW('Cowork 标签页', '协作模式界面（本地代理任务）', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
+    `<div class="subgrp">客户端界面标签页<em>至少需保留一个开启</em></div>` +
+    SW('Chat 标签页', '基础对话界面', `id="surfChat" ${d.client.surfaces.chatTabEnabled ? 'checked' : ''}`, 'restart') +
+    SW('Cowork 标签页', '本地代理协作模式界面', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
     SW('Code 标签页', '代码开发模式界面', `id="surfCode" ${d.client.surfaces.isClaudeCodeForDesktopEnabled ? 'checked' : ''}`, 'restart') +
     `<div class="hint" style="margin:-4px 0 12px">注意：上述三个标签页至少需保留一个开启，客户端才能正常启动。</div>` +
     SW('允许切换免确认执行模式（Bypass Permissions）',
-       '开启后可在客户端会话中直接免确认执行命令。<b>开启后 Claude 可无提示直接执行终端命令，请务必确认环境安全。</b>',
+       '开启后可在客户端免确认直接执行终端命令（请务必确认环境安全）。',
        `id="bypassPerm" data-needs-closed ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
     SW('关闭客户端定时任务（Scheduled Tasks）',
-       '勾选后隐藏客户端定时任务页面并移除注入的定时任务工具集。已存在的任务不会被删，只是不再执行。',
+       '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
     SW('关闭 CoWork 协作界面的联网搜索',
-       '客户端原生选项：勾选后 CoWork 协作模式组装请求时不带 WebSearch 工具。',
+       'CoWork 协作模式下不附带 WebSearch 工具。',
        `id="coworkWebSearch" data-needs-closed ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
     SW('关闭应用内无头浏览器工具（截图/预览/点击）',
-       '客户端内置无头浏览器工具，占用工具定义数量庞大。常规编程与代码调试通常完全不需要。',
+       '移除客户端内置的页面渲染截屏与交互测试工具。',
        `id="browserTools" data-needs-closed ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart');
 
   checkCurrentPresetMatch();
@@ -833,14 +823,9 @@ function renderPresetDetails(){
 
     const tpKeys = Object.keys(p.tool_pruning);
     const off = tpKeys.filter(k => p.tool_pruning[k]).map(k => presetTpLabel(k));
-    // 合成开关单独说，不并进上面那个分数 —— 它不是一个「类」，混进分子分母会看着对不上
-    const bundle = !!(p.composite && p.composite.workflowBundle);
-
-    // 具体是哪几类挂在 tooltip 上，不铺进卡片 —— 铺进去卡片会被撑成高矮不一的一排，
-    // 而「当前使用」的那张卡点一下就变，下面那些开关会立刻显示勾到了哪几项。
-    parts.push((off.length
+    parts.push(off.length
       ? `<b title="${esc(off.join("、"))}">剥掉 ${off.length}/${tpKeys.length} 项工具</b>`
-      : `<b>工具一项不剥</b>`) + (bundle ? "，另加随附技能与 Workflow" : ""));
+      : `<b>工具一项不剥</b>`);
 
     parts.push(`<b>客户端设置</b>：${[
       p.settings.promptCacheTtl ? "缓存留 1 小时" : "缓存回官方默认",
@@ -960,13 +945,17 @@ function guardClientRunningSwitches(){
   });
 }
 
-// ── 导航与滚动跟随 ──────────────────────────────────────────
 function watchNav(){
   const links = [...document.querySelectorAll('#nav a')];
-  const sections = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const sections = links
+    .map(a => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean)
+    .sort((a, b) => a.offsetTop - b.offsetTop);
   const mark = () => {
     let current = sections[0];
-    for (const s of sections) if (s.getBoundingClientRect().top <= 120) current = s;
+    for (const s of sections) {
+      if (s.getBoundingClientRect().top <= 140) current = s;
+    }
     links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + current.id));
   };
   window.addEventListener('scroll', mark, {passive:true});
