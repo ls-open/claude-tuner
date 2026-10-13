@@ -244,7 +244,7 @@ def report_orphan_mentions(parsed, stripped_names):
         text = _system_text(parsed)
         if not text:
             return
-        hits = orphan_mentions(text, removed_names)
+        hits = orphan_mentions(text, stripped_names)
         if hits == _orphan_memo[0]:
             return   # 和上一轮一样就闭嘴：这个检查每个请求都跑，重复报会把日志刷满
         _orphan_memo[0] = hits
@@ -731,7 +731,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         changed.extend(["strip_git_status_system"] * sys_n)
         changed.extend(["strip_git_status_msg"] * msg_n)
 
-    # 4.5. 精准剥离已剔除死重工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
+    # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
     _ghost_names = get_stripped_tool_names(tp)
     sys_n, _ = map_request_texts(
