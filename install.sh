@@ -261,13 +261,26 @@ step "⑥ 打开配置页"
 PAGE_URL="$("$PY" "$SCRIPTS/webui.py" --url 2>/dev/null || true)"
 if [ -n "$PAGE_URL" ]; then
   if [ "$OPEN_PAGE" = 1 ]; then
-    act open "$PAGE_URL" && ok "已在浏览器打开（这个链接带密码，别分享）"
+    if act open "$PAGE_URL"; then
+      ok "配置页已在浏览器打开 —— 在上面填一个 API Key 就能用了"
+      log "  这个地址带访问令牌，别分享给别人"
+    else
+      # 自动打开失败（SSH、没配默认浏览器等）时，必须把「接下来做什么」说清楚，
+      # 否则用户就卡在这里了 —— 安装脚本最后一步不能只丢一个地址。
+      warn "浏览器没能自动打开。请手动复制下面这一整行到浏览器地址栏："
+      log ""
+      log "  $PAGE_URL"
+      log ""
+      # PORT 是在上面那个等待循环里赋的值；用 :- 兜底，免得循环没跑到时
+      # 在 set -u 下直接报错（安装脚本的最后一步不该因为这种事失败）
+      log "  打开一次之后，以后直接访问 http://127.0.0.1:${PORT:-8789} 即可（浏览器会记住一年）"
+    fi
   else
     log "  配置页：$PAGE_URL"
   fi
-  log "  以后随时可以回到页面：$PY $DEST/scripts/webui.py --url"
 else
-  warn "没拿到配置页地址，装完在客户端里发一条消息会自动拉起网关"
+  warn "没拿到配置页地址。装完在客户端里发一条消息会自动拉起网关，"
+  warn "然后运行这条命令拿地址：$PY $DEST/scripts/webui.py --url"
 fi
 
 log ""
