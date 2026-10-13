@@ -84,6 +84,11 @@
   .preset-bar-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
   .preset-bar-head b{font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
   .preset-bar-head span{font-size:12px;color:var(--dim)}
+  .preset-now{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 0 14px}
+  .preset-now .now-lead{font-size:11.5px;color:var(--dim2);margin-right:2px}
+  .preset-now .now-chip{font-size:11px;color:var(--dim);background:rgba(255,255,255,0.04);
+       border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap}
+  .preset-now .now-chip b{color:var(--fg);font-weight:600}
   .preset-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
   @media (min-width: 920px){
     .preset-cards{grid-template-columns:repeat(4, 1fr)}
@@ -97,11 +102,6 @@
        box-shadow:0 0 0 1px var(--accent), 0 6px 20px var(--accent-glow)}
   .preset-card.active::after{content:"✓ 当前使用";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
        padding:1px 7px;border-radius:99px;background:var(--accent);color:#06101f;box-shadow:0 2px 8px var(--accent-glow)}
-  /* 「建议起点」：当前配置不等于任何一档时，给推荐档一个**建议**，而不是「当前使用」——
-     两者必须长得不一样。安装默认剥 13 类、推荐档只剥 9 类，本来就不是同一套开关。 */
-  .preset-card.suggested{border-color:rgba(59,130,246,0.5);background:rgba(59,130,246,0.06)}
-  .preset-card.suggested::after{content:"建议起点";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
-       padding:1px 7px;border-radius:99px;background:var(--dim2);color:#0b0e14}
   .preset-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .preset-name{font-size:13.5px;font-weight:600;color:var(--fg)}
   .preset-card.active .preset-name{color:#93c5fd}
@@ -305,10 +305,11 @@
     <!-- 一键场景预设 -->
     <div class="preset-bar" id="presetBar">
       <div class="preset-bar-head">
-        <b>⚡️ 一键场景预设 <span id="presetHead">一键应用推荐配置，也可在下方自由微调</span></b>
+        <b>⚡️ 一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
       </div>
+      <div class="preset-now" id="presetNow"></div>
       <div class="preset-cards">
-        <div class="preset-card active" data-mode="balanced">
+        <div class="preset-card" data-mode="balanced">
           <div class="preset-card-top">
             <span class="preset-name">⚖️ 日常开发均衡档</span>
             <span class="preset-badge rec">推荐</span>
@@ -870,10 +871,10 @@ function atInstallDefaults(){
   return true;
 }
 
-function markPresetCards(mode, kind){
+function markPresetCards(mode){
+  // 只有一个标记了：正好等于某一档 → 那档挂「✓ 当前使用」。不等于任何档时传 null，全部清掉。
   document.querySelectorAll('.preset-card').forEach(c => {
-    c.classList.toggle('active',    kind === 'active'    && c.dataset.mode === mode);
-    c.classList.toggle('suggested', kind === 'suggested' && c.dataset.mode === mode);
+    c.classList.toggle('active', c.dataset.mode === mode);
   });
 }
 
@@ -895,19 +896,52 @@ function checkCurrentPresetMatch(){
       if (el && el.checked !== v) { match = false; break; }
     }
     if (match) {
-      markPresetCards(mode, 'active');
-      $('#presetHead').textContent = '当前使用的档位已标出，也可在下方自由微调';
+      markPresetCards(mode);
+      $('#presetHead').textContent = '已套用「' + p.name + '」';
+      renderCurrentState();
       return;
     }
   }
-  // 三态里的后两态。**推荐档不写「当前使用」** —— 安装默认与它不是同一套开关
-  // （默认剥 13 类含搜索/终端，推荐只剥 9 类），写上去就是在陈述一件不成立的事。
-  if (atInstallDefaults()) {
-    markPresetCards('balanced', 'suggested');
-    $('#presetHead').textContent = '当前是安装默认值、还没套用任何档位 —— 建议从「日常开发均衡档」开始';
-  } else {
-    markPresetCards('custom', 'active');
-    $('#presetHead').textContent = '当前是你的自定义配置，点任一档位可重新套用';
+  // 不匹配任何档位时**不给任何卡片挂标记**，只陈述事实。
+  //
+  // 曾经这里标过「推荐档 = 建议起点」的灰边，也标过「微调 = 当前使用」，两个都不对：
+  // 前者是替用户做决定（老用户会问「我一直用得好好的，你建议我改什么」），后者更糟 ——
+  // 全新安装的配置逐项等于出厂默认、用户一个字没改过，却被说成「你的自定义配置」。
+  // 页面能给的最有用的东西是**当前到底是什么**，那由下面那行事实去说。
+  markPresetCards(null);
+  $('#presetHead').textContent = atInstallDefaults()
+    ? '未套用任何档位 —— 下方开关就是安装时的默认值'
+    : '未套用任何档位 —— 下方开关就是当前生效的设置';
+  renderCurrentState();
+}
+
+// 「当前配置」那一行：把 30 多个开关的现状压成一句人能读的话。
+//
+// 加它的原因：档位卡片回答的是「你离哪个预设近」，可从没回答过「你现在到底是什么」——
+// 用户看了半天卡片，仍然不知道自己的配置长什么样。而且这句话必须**从同一份 DOM 现算**，
+// 不能另写一份：卡片是按勾选状态判断的，事实行若是从别处取数，两者迟早对不上。
+function renderCurrentState(){
+  const box = $('#presetNow');
+  if (!box) return;
+  const on = sel => [...document.querySelectorAll(sel)].filter(e => e.checked).length;
+  const all = sel => document.querySelectorAll(sel).length;
+  const money = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return !!(el && el.checked); };
+  const comp = $('#pruneBox input[data-composite="workflowBundle"]');
+  const custom = (CFG && CFG.tool_pruning && CFG.tool_pruning.custom_strip_tools) || [];
+
+  const chips = [
+    `工具开关 <b>${on('#pruneBox input[data-tp]')}/${all('#pruneBox input[data-tp]')}</b> 项在剥`,
+    comp && comp.checked ? '随附技能与工作流 <b>已剥离</b>' : '随附技能与工作流 <b>保留</b>',
+    `前缀稳定化 <b>${on('#ruleBox input[data-rule]')}/${all('#ruleBox input[data-rule]')}</b> 条在生效`,
+    money('promptCacheTtl') ? '缓存留 <b>1 小时</b>' : '缓存留 <b>官方默认</b>',
+    money('promptSuggestionEnabled') ? '输入联想 <b>关</b>' : '输入联想 <b>开</b>',
+    money('autoCompactEnabled') ? '自动压缩 <b>关</b>' : '自动压缩 <b>开</b>',
+  ];
+  box.innerHTML = `<span class="now-lead">当前配置</span>` +
+    chips.map(t => `<span class="now-chip">${t}</span>`).join('');
+  if (custom.length){
+    box.insertAdjacentHTML('beforeend',
+      `<span class="now-chip">自定义剥离清单 <b>${custom.length}</b> 项</span>`);
   }
 }
 
