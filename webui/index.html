@@ -491,13 +491,16 @@ let UPSTREAM_MODELS = [];
 const CUSTOM = '__custom__';
 
 // ── 开关定义 ───────────────────────────────────────────────
+// 这三个**刻意不写逐条说明**。机制一句话说不准：
+// - 缓存 TTL 是「留得久 vs 写得贵」的取舍，两边都取决于你的使用节奏；
+// - 自动压缩的核心是少压缩一次，而重算的代价随上下文长短浮动（长会话和短会话差很多）；
+// - 输入联想那条同上，量随上下文走，写一个具体数就会对不上。
+// 说不准就不说 —— 逐条写一个含糊的「大概」，比不写更容易被当成准数。
+// 这个开关组在干什么，由上面那段小节说明交代。
 const MONEY = [
-  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）',
-   '官方默认只留 5 分钟。延长后中断一会儿再回来仍能命中；代价是 1 小时的缓存写入单价更高 —— 连着聊净赚，隔很久才聊一次可能反而贵。'],
-  ['promptSuggestionEnabled', '关闭输入框自动联想（节省 Token）',
-   '就是输入框里那行灰色预选文字。为它，客户端会把整场对话重发一遍给上游 —— 实测单次能到几十万 token，所以开着相当费钱。'],
-  ['autoCompactEnabled', '关闭会话自动压缩（保护已有缓存）',
-   '上下文填满时压缩一次：那一次会把已有缓存丢掉，之后重新建立。换到 1M 窗口后很少触发，关掉更省。'],
+  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）'],
+  ['promptSuggestionEnabled', '关闭输入框自动联想（节省 Token）'],
+  ['autoCompactEnabled', '关闭会话自动压缩（减少压缩次数）'],
 ];
 
 const ADVANCED = [
@@ -620,7 +623,7 @@ const WHEN = {
 const SW = (label, why, attr, when) => {
   const w = WHEN[when];
   return `<div class="sw"><div class="txt"><b>${label}${w
-      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}</b><small>${why}</small></div>
+      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}</b>${why ? `<small>${why}</small>` : ''}</div>
    <input type="checkbox" ${attr}></div>`;
 };
 
