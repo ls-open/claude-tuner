@@ -112,7 +112,7 @@
   .sw:last-child{border-bottom:none}
   .sw:hover{background:color-mix(in srgb,var(--panel2) 45%,transparent)}
   .sw .txt{flex:1;min-width:0}
-  .sw .txt b{font-weight:500;font-size:13.5px;display:block}
+  .sw .txt > b{font-weight:500;font-size:13.5px;display:block}
   .sw .txt small{display:block;color:var(--dim);font-size:12px;margin-top:2px;line-height:1.6}
   .sw input[type=checkbox]{flex:none}
   .sw code{background:transparent;border:none;padding:0;color:var(--accent)}
@@ -411,9 +411,8 @@ const PRUNING_GROUPS = [
 // 而只开一半不但不省，反而每轮多约 17 KB（客户端会把那份长说明内联进工具里）。
 const COMPOSITE = [
   ['workflowBundle', '工作流编排与自带技能',
-   '去掉客户端随附的技能与工作流，并剥掉 Workflow 工具 —— 它俩必须一起动：' +
-   '只关技能的话，客户端会把那份长的「Workflow 编写参考」内联进工具说明里，每轮反而多约 17 KB。' +
-   '<b>你自己的技能与插件不受影响。</b>',
+   '打开后会做两件事：移除客户端随附的技能与工作流，并剥掉 Workflow 工具。' +
+   '你自己的技能与插件不受影响。',
    {settings: {disableBundledSkills: true}, pruning: {strip_workflow_tools: true}}],
 ];
 
