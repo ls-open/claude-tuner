@@ -104,6 +104,9 @@
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
 
   /* ── 开关行 ─────────────────────────────────────────── */
+  .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:18px 0 2px}
+  .subgrp:first-child{margin-top:0}
+  .subgrp em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
   .sw{display:flex;align-items:center;gap:16px;padding:11px 0;
       border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
   .sw:last-child{border-bottom:none}
@@ -378,19 +381,35 @@ const RULES = [
   ['probe_interception', '探针本地秒回', '连通性探测本地直接答，不上云、不扣费'],
 ];
 
-// 前七项默认开（多数场景用不到）；后三项默认关 —— 删的是真本事，该不该省你说了算。
-const PRUNING = [
-  ['strip_native_web_tools', '原生联网工具', '模型内置的联网搜索与网页抓取'],
-  ['strip_session_mgmt_tools', '桌面端遥控与会话自省', '侧栏、窗口、目录、主机、设置等界面遥控工具'],
-  ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '将会话与 GitHub PR / CI 结果关联的自动化'],
-  ['strip_terminal_tools', '右侧终端面板', '读取桌面端右侧终端面板的内容'],
-  ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
-  ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 下无法完成官方认证'],
-  ['strip_plugin_mgmt_tools', '插件市场与技能建议', '插件市场、技能推荐等工具'],
-  ['strip_workflow_tools', '工作流编排', 'Workflow —— 把任务拆给多个子代理并行跑'],
-  ['strip_cross_session_tools', '跨会话消息', 'SendMessage 与 ListAgents 成对：后者用来找能发消息的对象'],
-  ['strip_worktree_tools', 'Git 工作树隔离', 'EnterWorktree 与 ExitWorktree 成对'],
-  ['strip_plan_tools', '计划模式', 'EnterPlanMode 与 ExitPlanMode 成对'],
+// 工具精简按**功能**分组展示。17 项平铺看着乱，分组之后一眼能扫。
+// 分组的判据是「这几项是不是同一件事」—— 桌面界面遥控、会话与主机、联网与集成、
+// 智能体能力。最后那组删的是真本事，默认一律不动。
+const PRUNING_GROUPS = [
+  ['桌面界面的遥控工具', '让模型去操作客户端界面的工具，纯编码场景用不到', [
+    ['strip_sidebar_tools', '侧栏管理', '建分组、改分区、置顶、标未读'],
+    ['strip_window_tools', '窗口与分屏', '开关分屏、折叠侧栏'],
+    ['strip_settings_tools', '界面偏好', '读写客户端的偏好设置'],
+    ['strip_directory_tools', '目录切换', '切换工作目录'],
+  ]],
+  ['会话与主机', '管会话本身、以及客户端与宿主机的交互', [
+    ['strip_session_tools', '会话管理', '列表、归档、删除、改标题 / 模型 / 权限等'],
+    ['strip_host_tools', '编辑器与主机', '在编辑器打开、磁盘占用、保持唤醒、工作树清理'],
+    ['strip_terminal_tools', '右侧终端面板', '读取桌面右侧终端面板的内容'],
+  ]],
+  ['联网与集成', '连外部服务的工具。多数场景有更好的替代', [
+    ['strip_web_search_tools', '网页搜索', 'WebSearch'],
+    ['strip_web_fetch_tools', '网页抓取', 'WebFetch'],
+    ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '把会话与 GitHub PR / CI 结果关联'],
+    ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
+    ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 下无法完成官方认证'],
+    ['strip_plugin_mgmt_tools', '插件市场与技能建议', '装插件、推荐技能'],
+  ]],
+  ['智能体能力', '删的是真本事，默认一律不动', [
+    ['strip_workflow_tools', '工作流编排', 'Workflow —— 把任务拆给多个子代理并行跑'],
+    ['strip_cross_session_tools', '跨会话消息', 'SendMessage 与 ListAgents 成对'],
+    ['strip_worktree_tools', 'Git 工作树隔离', 'EnterWorktree 与 ExitWorktree 成对'],
+    ['strip_plan_tools', '计划模式', 'EnterPlanMode 与 ExitPlanMode 成对'],
+  ]],
 ];
 
 // 生效时机：用户点完开关后，最想知道的就是「现在有没有用」。
@@ -495,8 +514,11 @@ function renderSwitches(d){
     SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`, 'now')).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = PRUNING.map(([k, label, why]) =>
-    SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('');
+  $('#pruneBox').innerHTML = PRUNING_GROUPS.map(([title, note, items]) =>
+    `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
+    items.map(([k, label, why]) =>
+      SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('')
+  ).join('');
 
   const running = d.client.running;
   const tag = $('#clientTag');

@@ -41,10 +41,15 @@ ALWAYS_STRIPPED = ("WaitForMcpServers", "wait_for_mcp_servers")
 # 类别键 → (该类别覆盖的工具名，前缀匹配的命名空间)
 # 顺序即优先级：先命中的类别就是页面上显示的原因。
 CATEGORY_NAMESPACES = (
-    ("strip_session_mgmt_tools", (
-        "mcp__ccd_session", "mcp__ccd_directory", "mcp__ccd_sidebar",
-        "mcp__ccd_window", "mcp__ccd_host", "mcp__ccd_settings", "mcp__session_info",
-    )),
+    # 桌面端界面遥控：按**功能**拆成六项，不是一个开关管 52 个工具。
+    # 原来它们全在 strip_session_mgmt_tools 一个键下（实测 52 个 / 61 KB）——
+    # 用户想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，两者毫无关系。
+    ("strip_session_tools", ("mcp__ccd_session", "mcp__session_info")),
+    ("strip_sidebar_tools", ("mcp__ccd_sidebar",)),
+    ("strip_window_tools", ("mcp__ccd_window",)),
+    ("strip_host_tools", ("mcp__ccd_host",)),
+    ("strip_settings_tools", ("mcp__ccd_settings",)),
+    ("strip_directory_tools", ("mcp__ccd_directory",)),
     ("strip_plugin_mgmt_tools", ("mcp__plugins", "mcp__skills")),
     ("strip_pr_ci_tools", ("mcp__ccd_pr",)),
     ("strip_terminal_tools", ("mcp__terminal",)),
@@ -54,8 +59,9 @@ CATEGORY_NAMESPACES = (
 # 前三个默认开（多数场景用不到）；后三个默认**关** —— 它们删掉的是真本事，
 # 该不该省由用户自己判断，我们只负责把体积摆出来。
 CATEGORY_NAMES = {
-    "strip_native_web_tools": ("WebSearch", "WebFetch", "web_search", "web_fetch",
-                               "mcp__workspace__web_fetch"),
+    # 搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
+    "strip_web_search_tools": ("WebSearch", "web_search"),
+    "strip_web_fetch_tools": ("WebFetch", "web_fetch", "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
     "strip_design_sync_tools": ("DesignSync", "design_sync"),
     # 以下按**真实耦合**分组，不是按「感觉像一类」——
@@ -70,8 +76,14 @@ CATEGORY_NAMES = {
 
 # 页面与 CLI 共用的类别中文名（配置页直接显示它，避免两处各译一遍）
 CATEGORY_LABELS = {
-    "strip_native_web_tools": "原生联网工具",
-    "strip_session_mgmt_tools": "桌面端遥控与会话自省",
+    "strip_web_search_tools": "网页搜索",
+    "strip_web_fetch_tools": "网页抓取",
+    "strip_session_tools": "会话管理",
+    "strip_sidebar_tools": "侧栏管理",
+    "strip_window_tools": "窗口与分屏",
+    "strip_host_tools": "编辑器与主机",
+    "strip_settings_tools": "界面偏好",
+    "strip_directory_tools": "目录切换",
     "strip_pr_ci_tools": "PR 关联与 CI 监控",
     "strip_terminal_tools": "右侧终端面板",
     "strip_notebook_tools": "Notebook 单元格编辑",

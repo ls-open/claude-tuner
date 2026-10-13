@@ -168,8 +168,18 @@ DEFAULT_RULES = {
 # 客户端一升级就会变，写进代码必然漂移 —— 页面上按真实请求现称。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
-    "strip_native_web_tools": True,       # 剥离 WebSearch（3P 下不可用）与 WebFetch（抓取无专门处理、不稳定，交给专门的抓取工具）
-    "strip_session_mgmt_tools": True,     # 剥离桌面端 UI 遥控与会话自省工具 (mcp__ccd_session*, mcp__ccd_directory*, mcp__ccd_sidebar*, mcp__ccd_window*, mcp__ccd_host*, mcp__ccd_settings*, mcp__session_info*)。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它
+    # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索
+    "strip_web_search_tools": True,       # WebSearch（3P 下不可用）
+    "strip_web_fetch_tools": True,        # WebFetch（抓取无专门处理、不稳定，交给专门的抓取工具）
+    # 桌面端界面遥控：按**功能**拆成六项。原来全在 strip_session_mgmt_tools 一个键下，
+    # 实测管着 52 个工具 / 61 KB —— 想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，
+    # 而两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
+    "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*
+    "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
+    "strip_window_tools": True,           # mcp__ccd_window*
+    "strip_host_tools": True,             # mcp__ccd_host*（编辑器、存储、保持唤醒）
+    "strip_settings_tools": True,         # mcp__ccd_settings*
+    "strip_directory_tools": True,        # mcp__ccd_directory*
     "strip_pr_ci_tools": True,            # 剥离 GitHub PR 关联与 CI 监控自动化 (mcp__ccd_pr__*)
     "strip_terminal_tools": True,         # 剥离桌面右侧终端面板读取工具 (mcp__terminal__*)
     "strip_notebook_tools": True,         # 剥离 Jupyter Notebook 单元格编辑工具 (NotebookEdit)
