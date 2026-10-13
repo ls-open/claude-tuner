@@ -104,6 +104,9 @@
   .preset-badge.rec{background:var(--ok-dim);color:var(--ok);border-color:rgba(52,211,153,0.3)}
   .preset-badge.hot{background:var(--accent-dim);color:var(--accent-hover);border-color:rgba(59,130,246,0.3)}
   .preset-desc{font-size:11.5px;color:var(--dim);line-height:1.55}
+  .preset-detail{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:8px;padding-top:8px;
+       border-top:1px dashed var(--line);word-break:break-word}
+  .preset-detail b{color:var(--dim);font-weight:600}
 
   /* ── 新手极速引导 ───────────────────────────────────── */
   .onboard-hero{background:linear-gradient(135deg, rgba(59,130,246,0.15) 0%, rgba(18,21,28,0.95) 60%);
@@ -225,7 +228,7 @@
 <header class="top"><div class="inner">
   <div>
     <h1><span class="logo-dot"></span>claude-tuner 调控台 <span class="slogan-tag">你的 Claude，工具和上下文都由你定</span></h1>
-    <p class="sub">自由接入第三方模型 · 灵活调控工具与上下文 · 前缀稳定防缓存击穿 · macOS 专享</p>
+    <p class="sub">工具面与上下文由你定 · 逐类开关，改完即生效 · 桌面端与终端共用 · macOS 专享</p>
   </div>
   <div class="act">
     <div id="msg"></div>
@@ -266,7 +269,7 @@
     <div class="onboard-hero" id="onboardHero" style="display:none">
       <div class="onboard-top">
         <span class="onboard-badge">新手极速指南</span>
-        <span class="onboard-title">欢迎使用 claude-tuner · 你的 Claude 桌面端，3 步开箱即用</span>
+        <span class="onboard-title">欢迎使用 claude-tuner · 3 步接上你自己的模型</span>
         <button class="link" id="btnDismissOnboard" style="margin-left:auto;font-size:12px;color:var(--dim)">关闭引导 ✕</button>
       </div>
       <div class="onboard-steps">
@@ -305,28 +308,31 @@
             <span class="preset-name">⚖️ 日常开发均衡档</span>
             <span class="preset-badge rec">推荐</span>
           </div>
-          <div class="preset-desc">保留核心代码、终端面板与网络搜索（若模型支持）；按需精简界面遥控与设计稿等冗余工具；开启前缀防击穿。兼顾全能与省钱。</div>
+          <div class="preset-desc">只关「界面遥控」那一类，加上几个用不到的集成；终端面板、网页搜索与抓取、跨会话消息、工作树、计划模式全留。</div>
+          <div class="preset-detail" data-detail="balanced"></div>
         </div>
         <div class="preset-card" data-mode="pure_code">
           <div class="preset-card-top">
             <span class="preset-name">⚡️ 纯代码极限档</span>
             <span class="preset-badge hot">极致省钱</span>
           </div>
-          <div class="preset-desc">精简所有非编码工具与网络搜索，首轮上下文体积大幅缩减，Token 消耗压到极限，超低延迟且无额外搜索计费。</div>
+          <div class="preset-desc">能关的都关：界面遥控、终端面板、网页搜索与抓取、各类集成全剥，只留下读写文件、跑命令、找内容这些干活必需的能力。</div>
+          <div class="preset-detail" data-detail="pure_code"></div>
         </div>
         <div class="preset-card" data-mode="vanilla">
           <div class="preset-card-top">
             <span class="preset-name">🛠 原生全功能档</span>
             <span class="preset-badge">官方原味</span>
           </div>
-          <div class="preset-desc">完整保留 Claude 原生全部几十上百个内置工具，仅做第三方模型平滑接入与前缀防击穿稳定化。</div>
+          <div class="preset-desc">工具面一个不剥，客户端给什么就是什么；只做接上游与前缀稳定化。<b>三个客户端设置也回到官方默认</b>（见下）。</div>
+          <div class="preset-detail" data-detail="vanilla"></div>
         </div>
         <div class="preset-card" data-mode="custom">
           <div class="preset-card-top">
             <span class="preset-name">🎛 极客专家微调</span>
             <span class="preset-badge">自由</span>
           </div>
-          <div class="preset-desc">自由控制下方 30+ 项开关，精细掌控每一字节。适合深度定制。</div>
+          <div class="preset-desc">不动任何预设，下方每一项都按你自己勾的结果生效。</div>
         </div>
       </div>
     </div>
@@ -360,8 +366,17 @@
     <section id="s2">
       <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span></div>
       <div class="body">
-        <p class="lead">左侧为 Claude 使用的代号，右侧为实际发送给上游的模型名。
-          <b>右侧须与上游接受的名称逐字一致</b>（区分大小写）。</p>
+        <p class="lead">左列是 Claude 在请求里发的<b>代号</b>（<code>claude-opus-5-5</code> 这类，客户端只认这些）；
+          右列是发给上游时<b>换成的那个名字</b>。<b>右列一个值管两件事</b>，填之前先知道：</p>
+        <div class="hint" style="margin:0 0 4px">
+          <b>① 发给上游的模型名</b> —— 每轮请求真正送到上游的就是它，必须与上游接受的名称<b>逐字一致</b>（区分大小写），
+          否则上游直接打回。
+        </div>
+        <div class="hint" style="margin:0 0 12px">
+          <b>② 客户端里显示的名字</b> —— 你在 Claude 的模型选择器里看到的也是它。客户端这个字段就叫
+          <code>labelOverride</code>（覆盖显示名），所以填什么就显示什么：填 <code>deepseek-flash</code> 显示的就是它，
+          填一串内部编号也会原样显示。
+        </div>
         <div class="row" style="margin-bottom:12px">
           <button id="btnPull">拉取上游模型列表</button>
           <button id="btnAdd">+ 加一行</button>
@@ -386,7 +401,7 @@
       <div class="head"><span class="num">③</span><h2>缓存与上下文</h2>
         <span class="who">Claude 官方设置</span><span class="tag">默认值即推荐值</span></div>
       <div class="body">
-        <p class="lead"><b>【降低重复消费】</b>控制客户端的本地缓存保留时长与会话压缩逻辑。官方使用 API Key 模式默认缓存仅保留 5 分钟，开启 1 小时后能显著减少多次对话时的重复扣费。</p>
+        <p class="lead"><b>【降低重复消费】</b>控制缓存保留时长与会话压缩。API Key 模式下官方默认只留 5 分钟，延长到 1 小时能让中断一会儿再回来时仍然命中。<b>但它不是白拿的：1 小时的缓存写入单价更高</b>，换的是「跨更长的间隔还能命中」—— 连着聊净赚，隔很久才聊一次可能反而贵一点。这里默认开着，不合适就关。</p>
         <div id="moneyBox"></div>
       </div>
     </section>
@@ -477,10 +492,10 @@ const CUSTOM = '__custom__';
 
 // ── 开关定义 ───────────────────────────────────────────────
 const MONEY = [
-  ['promptCacheTtl', '延长缓存保留至 1 小时（强烈推荐）',
-   '官方默认仅 5 分钟。延长至 1 小时大幅提高连续对话命中率，成倍降低请求费用。'],
+  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）',
+   '官方默认只留 5 分钟。延长后中断一会儿再回来仍能命中；代价是 1 小时的缓存写入单价更高 —— 连着聊净赚，隔很久才聊一次可能反而贵。'],
   ['promptSuggestionEnabled', '关闭输入框自动联想（节省 Token）',
-   '输入框中的灰色预选提示。开启时客户端会在输入过程中高频发起后台请求消耗 Token。'],
+   '就是输入框里那行灰色预选文字。为它，客户端会把整场对话重发一遍给上游 —— 实测单次能到几十万 token，所以开着相当费钱。'],
   ['autoCompactEnabled', '关闭会话自动压缩（保护已有缓存）',
    '上下文填满时压缩一次：那一次会把已有缓存丢掉，之后重新建立。换到 1M 窗口后很少触发，关掉更省。'],
 ];
@@ -791,6 +806,47 @@ function applyPreset(mode){
   if (comp) comp.checked = !p.settings.autoCompactEnabled;
 
   say(`已应用「${p.name}」推荐配置，点击右上角【保存更改】即可生效！`, 'ok');
+}
+
+// ── 预设卡片上的明细：从 PRESETS 数据现算，不手写 ───────────
+// 手写的那份一定会跟数据漂移。上一版四个档位的说明就全是手写的，于是「随附技能与 Workflow
+// 也一并剥掉」这件不容易察觉的能力损失，四个卡片里一个字都没提。这里直接读同一份数据，
+// 写不到就不会出现 —— 加开关时也不必记得回来改文案。
+function presetTpLabel(key){
+  for (const [, , items] of PRUNING_GROUPS){
+    const hit = items.find(([k]) => k === key);
+    // 标签形如「移除侧栏管理工具」/「移除 PR 关联与 CI 监控」—— 去掉动词与尾部的「工具」，
+    // 剩下的才是能在卡片上并排罗列的名字（不清掉会变成「侧栏管理工具、窗口与分屏遥控、…」这种长度不齐）
+    if (hit) return hit[1].replace(/^移除\s*/, "").replace(/工具$/, "");
+  }
+  return key;
+}
+
+function renderPresetDetails(){
+  document.querySelectorAll("[data-detail]").forEach(box => {
+    const p = PRESETS[box.dataset.detail];
+    if (!p) return;
+    const parts = [];
+
+    const tpKeys = Object.keys(p.tool_pruning);
+    const off = tpKeys.filter(k => p.tool_pruning[k]).map(k => presetTpLabel(k));
+    // 合成开关单独说，不并进上面那个分数 —— 它不是一个「类」，混进分子分母会看着对不上
+    const bundle = !!(p.composite && p.composite.workflowBundle);
+
+    // 具体是哪几类挂在 tooltip 上，不铺进卡片 —— 铺进去卡片会被撑成高矮不一的一排，
+    // 而「当前使用」的那张卡点一下就变，下面那些开关会立刻显示勾到了哪几项。
+    parts.push((off.length
+      ? `<b title="${esc(off.join("、"))}">剥掉 ${off.length}/${tpKeys.length} 项工具</b>`
+      : `<b>工具一项不剥</b>`) + (bundle ? "，另加随附技能与 Workflow" : ""));
+
+    parts.push(`<b>客户端设置</b>：${[
+      p.settings.promptCacheTtl ? "缓存留 1 小时" : "缓存回官方默认",
+      p.settings.promptSuggestionEnabled ? "输入联想开" : "关输入联想",
+      p.settings.autoCompactEnabled ? "自动压缩开" : "关自动压缩",
+    ].join(" · ")}`);
+
+    box.innerHTML = parts.map(t => `<div>${t}</div>`).join("");
+  });
 }
 
 function checkCurrentPresetMatch(){
@@ -1350,6 +1406,7 @@ $('#btnSave').onclick = async () => {
   onPresetChange(false);
   renderStatus(CFG); renderModels(CFG); renderSwitches(CFG);
   renderGateway(CFG); renderVersions(CFG);
+  renderPresetDetails();
   guardClientRunningSwitches();
   watchNav();
   say('');
