@@ -641,8 +641,8 @@ async function renderStats(){
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
     `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>缓存命中率<br>已统计 ${num(d.requests)} 次请求</small></div>`,
-    `<div class="k"><b>${num(t.cache_read)}</b><small>命中缓存的输入 token<br>按便宜的那档计价</small></div>`,
-    `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>按贵的那档计价</small></div>`,
+    `<div class="k"><b>${num(t.cache_read)}</b><small>命中缓存的输入 token<br>上游按更低单价计费的那部分</small></div>`,
+    `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>上游按原价计费的那部分</small></div>`,
     `<div class="k"><b>${num(t.output)}</b><small>输出 token</small></div>`,
   ];
   // 统计区间必须显示。日志会轮转、轮转文件只留几天 —— 不写区间，读的人无法判断
