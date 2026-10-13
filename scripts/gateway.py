@@ -181,21 +181,6 @@ from tool_rules import (  # noqa: E402
 
 
 
-def _inventory_path():
-    """工具清单落盘位置 —— 和 config.json 一样住在运行目录（BASE_DIR）。
-
-    **刻意不从 CONFIG_FILE 派生**：有测试为了模拟「没有配置文件」把 CONFIG_FILE 指向
-    插件自己的 scripts 目录，派生的话运行期文件就会掉进源码树（还差一点被提交）。
-    运行期状态只认运行目录，测试要隔离就改 BASE_DIR / CLAUDE_TUNER_HOME。
-    """
-    return os.path.join(BASE_DIR, "tool_inventory.json")
-
-
-# 上一次记录的工具名序列。稳态下 record_tool_inventory 只做一次元组比较就返回，
-# 不重新序列化 100+ 个工具 schema（那才是这函数真正贵的部分）。
-_inventory_memo = (None, ())
-
-# 工具清单最多保留几档（每档 = 一个入口 × 主/子代理）
 _INVENTORY_MAX_PROFILES = 8
 
 
@@ -252,150 +237,6 @@ def report_orphan_mentions(parsed, stripped_names):
             log_event({"event": "orphan_tool_mention",
                        "tools": hits[:20],
                        "note": "这些工具已被剥离，但提示词里仍提到它们"})
-    except Exception:
-        pass
-
-
-# 入口名 → 给人看的说法。**入口本身不靠猜**：计费头里 `cc_entrypoint=` 直接写着
-# 客户端认为自己是哪个入口（实测 claude-desktop-3p），这是权威来源。
-ENTRY_LABELS = {
-    "claude-desktop-3p": "Claude 桌面端（3P）",
-    "claude-desktop": "Claude 桌面端",
-    "cli": "终端 Claude Code",
-    "claude-code": "终端 Claude Code",
-}
-
-# 计费头缺失时的兜底指纹（老版本客户端可能没有 entrypoint）：
-# 这些 mcp__ 命名空间是各入口独有的，桌面端才有 ccd_/terminal，协作模式才有 workspace。
-ENTRY_SIGNATURES = (
-    ("Claude 桌面端", ("mcp__ccd_", "mcp__terminal__")),
-    ("桌面端协作模式", ("mcp__workspace__",)),
-)
-
-
-def classify_entry(names, entrypoint=""):
-    """认出这是哪个入口，返回 (名字, 依据)。
-
-    首选计费头的 `cc_entrypoint` —— 客户端自己声明的，不用猜。工具名指纹只在它缺失时
-    兜底：按工具名判断会被「某条请求恰好没带那几个特征工具」带偏（实测一条只带 Bash 的
-    辅助请求就被误判成「其他入口」）。认不出来就如实说认不出来，客户端新增入口时页面
-    会显示一个没见过的名字，比硬塞进已知分类里强。
-    """
-    ep = (entrypoint or "").strip().lower()
-    if ep:
-        return ENTRY_LABELS.get(ep, ep), "cc_entrypoint=" + ep
-    for label, prefixes in ENTRY_SIGNATURES:
-        for n in names:
-            if n.startswith(prefixes):
-                return label, n
-    return "未识别入口", (names[0] if names else "")
-
-
-def _scan_client_identity(parsed):
-    """从计费头里取出客户端入口与版本号（它马上会被稳定化剥掉，先在这顺手记一份）。
-
-    为什么要记版本：用户报过「有个对话是在老版客户端里聊的，有些东西不会同步更新」——
-    同一个入口、不同客户端版本，注入面可能不一样。把它记进档位里，这种差异在页面上
-    看得见，而不是变成一个说不清来源的怪现象。
-    """
-    entrypoint = cc_version = ""
-    try:
-        text = _system_text(parsed)
-        m = re.search(r"cc_entrypoint=([^;\s\"']+)", text or "")
-        if m:
-            entrypoint = m.group(1)
-        m = re.search(r"cc_version=([0-9][0-9A-Za-z.\-]*)", text or "")
-        if m:
-            cc_version = m.group(1)
-    except Exception:
-        pass
-    return entrypoint, cc_version
-
-
-def record_tool_inventory(tools, model="", kind="main", entrypoint="", cc_version=""):
-    """按**入口 + 主会话/子代理**分档，记下该档见过哪些工具、各占多少字节。
-
-    为什么按这个粒度分档
-    -------------------
-    工具集随入口差得很远：实测同一台机器上，桌面端 85 个工具（含 mcp__ccd_*、
-    mcp__terminal__*），终端 Claude Code 只有 17 个。只给「最近一次」会让人照着
-    桌面端的清单去勾终端用不上的工具。
-
-    但也不能按「工具名序列完全相同」分档 —— 那样每来一条杂项请求（生成标题之类）
-    就多出一个只有一两个工具的假档，碎成一地。所以：
-
-    - 档位身份 = 入口 + 主/子代理（稳定的粗粒度）；
-    - 档内工具取**并集**（同一档见过什么就记什么），每个工具记住见过的最大体积；
-    - 认不出的入口归到「其他入口」并保留指纹，客户端新增入口时能看见。
-
-    只记**事实**（名字、体积、时刻、模型、客户端版本），不记「剥没剥」—— 剥不剥是
-    当前配置的函数，配置页读的时候按现值现算（同一份 tool_rules）。落盘里带一份会
-    过期的判断，用户改了开关到下一次请求之间，页面就会显示一个不成立的结论。
-
-    写入只在**换了档**或**本档出现了新工具**时发生，稳态下只有一次集合比较。
-    """
-    global _inventory_memo
-    if not isinstance(tools, list) or not tools:
-        return
-    names = sorted(t.get("name", "") for t in tools if isinstance(t, dict) and t.get("name"))
-    if not names:
-        return
-    entry, evidence = classify_entry(names, entrypoint)
-    slot = "%s|%s" % (entry, kind or "main")
-    path = _inventory_path()
-    memo_key = (path, slot, tuple(names))
-    if _inventory_memo == memo_key:
-        return
-    try:
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                store = json.load(fh)
-            store = store if isinstance(store, dict) else {}
-        except Exception:
-            store = {}
-        profiles = [p for p in (store.get("profiles") or []) if isinstance(p, dict)]
-        by_slot = {p.get("slot"): p for p in profiles}
-        now = time.time()
-
-        prof = by_slot.get(slot)
-        if prof is None:
-            prof = {"slot": slot, "label": entry, "evidence": evidence,
-                    "tools": {}, "first_seen": now, "last_seen": now,
-                    "requests": 0, "models": [], "cc_versions": []}
-            profiles.append(prof)
-        known = prof.get("tools")
-        if not isinstance(known, dict):
-            known = {}
-            prof["tools"] = known
-        for t in tools:
-            if not isinstance(t, dict):
-                continue
-            name = t.get("name") or ""
-            if not name:
-                continue
-            size = len(json.dumps(t, ensure_ascii=False))
-            prev = known.get(name)
-            if prev is None:
-                known[name] = {"bytes": size, "tokens": estimate_tokens(t)}
-            elif size > (prev.get("bytes") or 0):
-                # 同一台机器上同名工具的体积会随客户端版本变，记住见过的最大的那个
-                prev["bytes"] = size
-                prev["tokens"] = estimate_tokens(t)
-
-        prof["last_seen"] = now
-        prof["requests"] = (prof.get("requests") or 0) + 1
-        for field, value in (("models", model), ("cc_versions", cc_version)):
-            if not value:
-                continue
-            seen = [x for x in (prof.get(field) or []) if isinstance(x, str)]
-            if value not in seen:
-                seen.append(value)
-            prof[field] = seen[-6:]
-
-        profiles.sort(key=lambda p: p.get("last_seen") or 0, reverse=True)
-        profiles = profiles[:8]
-        atomic_write_json(path, {"ts": now, "profiles": profiles})
-        _inventory_memo = memo_key
     except Exception:
         pass
 
@@ -1094,11 +935,6 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
         else:
             pruning_cfg = load_tool_pruning_config()
         stripped_names = get_stripped_tool_names(pruning_cfg)
-        # 顺手把真实工具清单记下来给配置页用
-        _entrypoint, _cc_version = _scan_client_identity(parsed)
-        record_tool_inventory(tools, model=parsed.get("model") or "",
-                              kind=classify_kind(parsed), entrypoint=_entrypoint,
-                              cc_version=_cc_version)
         filtered_tools = [
             t for t in tools
             if isinstance(t, dict) and not should_strip_tool(t.get("name", ""), stripped_names, pruning_cfg)
