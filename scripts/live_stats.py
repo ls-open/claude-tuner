@@ -24,25 +24,49 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-# 只读日志尾部这么多字节。日志按 5MB 轮转，尾部 4MB 足够覆盖相当长的使用；
-# 再往前翻收益很小，而解析成本是线性的。
-TAIL_BYTES = 4 * 1024 * 1024
-MAX_EVENTS = 20000  # 单次汇总最多统计的事件行数上限（防御异常大的日志）
+# 历史日志也一起读：日志按 LOG_MAX_BYTES(5MB) 轮转，只读当前那份的话，
+# 页面上那个数字只是最近一份日志的，而且**没人知道它截止到什么时候**。
+# 轮转文件（.old / .old.1 …）保留 LOG_OLD_MAX_AGE_DAYS(7) 天。
+TAIL_BYTES = 6 * 1024 * 1024      # 单份最多读这么多（当前那份可能到 5MB）
+MAX_EVENTS = 20000                # 单次汇总最多统计的事件行数上限（防异常大的日志）
 
-# 这里**刻意不算钱**。
-#
-# 本项目支持任意上游，而每家的价目都不一样、还随时会调 —— 硬编码一张价目表，
-# 用户看到的金额就是编的（他接的是另一家）。编一个价码比不给更糟：数字看着精确，
-# 实际没有依据。所以只报 token 与命中率，那两个是上游自己数出来的。
-#
-# 要算钱的话，客户端本身带了官方机制：3P 配置里的 inferenceModelPricing（价目表）
-# 与 inferenceModelPricingEnabled（显示估算费用）—— 由用户填自己那家的价，客户端算。
-# 我们不去重复造一张会过时的表。
+# 按「文件 + mtime + 大小」缓存汇总结果。读十兆日志要一两百毫秒，
+# 而页面每次打开都会拉这个接口 —— 缓存让重复打开瞬时完成。
+_usage_cache = (None, None)
 
 
 def log_path(home=None):
     base = home or os.environ.get("CLAUDE_TUNER_HOME") or os.path.expanduser("~/.claude-tuner")
     return os.path.join(base, "logs", "gateway.log")
+
+
+def log_paths(home=None):
+    """按时间从旧到新列出所有日志文件（含轮转的 .old / .old.1 …）。
+
+    **必须连轮转文件一起读**：只读当前那份，统计区间就只是「最近一份日志」，
+    而这份日志什么时候开始，页面上看不出来 —— 那等于给了个没有截止日期的数字。
+    """
+    base = log_path(home)
+    paths = []
+    try:
+        import glob
+        for p in glob.glob(base + "*"):
+            if os.path.isfile(p):
+                paths.append(p)
+    except Exception:
+        pass
+    if os.path.isfile(base) and base not in paths:
+        paths.append(base)
+    # 时间序：轮转文件里序号越大越旧（.old 比 .old.1 新），当前那份最新
+    def rank(path):
+        if path == base:
+            return (1, 0)
+        suffix = path[len(base):]
+        try:
+            return (0, -int(suffix.rsplit(".", 1)[-1]))
+        except ValueError:
+            return (0, 0)
+    return sorted(paths, key=rank)
 
 
 def tail_lines(path, max_bytes=TAIL_BYTES):
@@ -81,6 +105,7 @@ def summarize(lines):
     """把日志行汇总成战绩。纯函数（喂行数组，返回结果），便于单测直接调。"""
     total = {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     requests = 0
+    first_ts = last_ts = ""
     stripped_events = 0
     stripped_tools = 0
     last = None
@@ -98,6 +123,12 @@ def summarize(lines):
         if not isinstance(event, dict):
             continue
         seen += 1
+        ts = event.get("ts") or ""
+        if ts:
+            if not first_ts or ts < first_ts:
+                first_ts = ts
+            if ts > last_ts:
+                last_ts = ts
         if event.get("event") == "canonicalized":
             stripped_events += 1
             for change in (event.get("changes") or []):
@@ -131,16 +162,38 @@ def summarize(lines):
         "stripped_events": stripped_events,
         "stripped_tools": stripped_tools,
         "last": last,
+        # 统计区间。**必须报出来** —— 日志会轮转、轮转文件只留几天，不写区间的话
+        # 读到的人无法判断这个数字覆盖了多久，等于给了一个没有截止日期的数。
+        "window": {"from": first_ts, "to": last_ts},
     }
     return result
 
 
 def read_recent_usage(home=None):
-    """读日志尾部并汇总。日志不存在（还没跑过请求）时如实返回空战绩。"""
-    path = log_path(home)
-    if not os.path.isfile(path):
+    """读全部日志（含轮转文件）并汇总。
+
+    读轮转文件而不只是当前那份，是因为日志按 5MB 轮转 —— 只读当前那份，覆盖区间
+    可能只有一两天，而页面上的数字看起来像是「一直以来的总计」。结果里带 window
+    区间与文件数，让读的人知道这个数覆盖了多久。
+    """
+    global _usage_cache
+    paths = log_paths(home)
+    if not paths:
         return dict(summarize([]), log_missing=True)
-    return summarize(tail_lines(path))
+    try:
+        key = tuple((p, os.path.getmtime(p), os.path.getsize(p)) for p in paths)
+    except OSError:
+        key = None
+    if key and _usage_cache[0] == key:
+        return _usage_cache[1]
+    lines = []
+    for p in paths:
+        lines.extend(tail_lines(p))
+    result = summarize(lines)
+    result["log_files"] = len(paths)
+    if key:
+        _usage_cache = (key, result)
+    return result
 
 
 def main(argv=None):

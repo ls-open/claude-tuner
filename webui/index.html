@@ -362,7 +362,8 @@ const ADVANCED = [
   ['showThinkingSummaries', 'off', '不请求思考摘要', '由服务端额外生成一份思考摘要。'],
   ['disableBundledSkills', 'on', '去掉客户端自带的技能与工作流',
    '移除客户端随附的技能与工作流；<b>你自己的技能与插件不受影响。</b>' +
-   '⚠️ 需与上面「多代理编排与后台任务」一起开才省得下来 —— 单独开反而每轮多约 17 KB。'],
+   '⚠️ 需与第 ⑤ 节「工具精简」里的<b>多代理编排与后台任务</b>一起开才省得下来 —— ' +
+   '单独开反而每轮多约 17 KB。'],
   ['alwaysThinkingEnabled', 'off', '不让模型自动思考', '思考 token 同样计费。关闭后会影响复杂任务的质量。'],
 ];
 
@@ -507,7 +508,8 @@ function renderSwitches(d){
     SW('终端 Claude Code 也走本网关',
        '把环境变量写入 <code>~/.claude/settings.json</code>，终端里的 <code>claude</code> 命令同样经本网关转发 —— ' +
        '与桌面端共用同一套上游、模型映射与处理规则。<br>' +
-       '两者注入的工具集并不相同（实测桌面端 85 个、终端 17 个），但剥离规则按名字匹配，对哪一边都适用。' +
+       '两者注入的工具集并不相同（各自实际有什么，可在第 ⑤ 节的工具清单里看到），' +
+       '但剥离规则按名字匹配，对哪一边都适用。' +
        '若需在终端单独使用官方账号，关闭此项即可。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
     SW('允许 bypass permissions 模式',
@@ -643,9 +645,19 @@ async function renderStats(){
     `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>按贵的那档计价</small></div>`,
     `<div class="k"><b>${num(t.output)}</b><small>输出 token</small></div>`,
   ];
+  // 统计区间必须显示。日志会轮转、轮转文件只留几天 —— 不写区间，读的人无法判断
+  // 这个数字覆盖了多久，看起来就像「一直以来的总计」。
+  const w = d.window || {};
+  const fmt = t => t ? t.slice(5, 16).replace('T', ' ') : '?';
+  const span = `<div class="hint" style="margin-top:12px">
+      <b>统计区间</b> ${fmt(w.from)} → ${fmt(w.to)}
+      · 来自网关日志${d.log_files > 1 ? ` ${d.log_files} 份（含轮转）` : ''}<br>
+      日志按 5 MB 轮转、轮转文件保留 7 天，所以这个区间<b>最多就是这么久</b> —— 更早的不在其中。
+      数字取自每次上游响应里的 <code>usage</code>，是上游自己报的，不是我们的估算。
+    </div>`;
   const extra = d.stripped_tools
     ? `<div class="hint" style="margin-top:12px">工具精简累计剥离 <b>${num(d.stripped_tools)}</b> 条工具定义（各次请求累加）。</div>` : '';
-  box.innerHTML = `<div class="stat">${cards.join('')}</div>${extra}`;
+  box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}${extra}`;
 }
 
 // ── 左侧导航跟随滚动 ──────────────────────────────────────
