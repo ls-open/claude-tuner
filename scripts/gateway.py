@@ -1046,12 +1046,40 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
     if tpath:
         thinking_index = parse_transcript_data(tpath)
 
+    # 先数一遍「历史里有几条 assistant 消息是没带 thinking 的」——不管索引建没建起来。
+    #
+    # 为什么这一步必须独立于后面的回填：以前只有回填成功才留痕，于是日志里
+    # 「一条回填记录都没有」既可能是「客户端没剥」（正常），也可能是「剥了、但我们的
+    # 索引没匹配上」（功能失效）—— 这两种情况在日志里长得一模一样，谁也没法判断
+    # 这条规则到底有没有在工作。分不清，就没法回答「它多长时间剥一次」这个问题。
+    bare_assistant = 0
+    for m in incoming_msgs:
+        if not isinstance(m, dict) or m.get("role") != "assistant":
+            continue
+        c = m.get("content")
+        if isinstance(c, str):
+            bare_assistant += 1
+            continue
+        if not isinstance(c, list):
+            continue
+        has_body = any(isinstance(b, dict) and b.get("type") in ("text", "tool_use") for b in c)
+        has_think = any(isinstance(b, dict) and b.get("type") == "thinking" for b in c)
+        if has_body and not has_think:
+            bare_assistant += 1
+
+    if bare_assistant:
+        changed.append("bare_thinking_%d" % bare_assistant)
+
     if not thinking_index:
+        if bare_assistant:
+            # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
+            changed.append("thinking_index_missing")
         return changed
 
     # 4. Thinking 确定性归一化与智能全量补齐
     #    必须与索引字典做整数组比对：跳过式粗筛（例如「已有 thinking 就 continue」）会漏判，导致缓存掉落
     restored_count = 0
+    unmatched = 0
     if thinking_index:
         for m in incoming_msgs:
             if not isinstance(m, dict) or m.get("role") != "assistant":
@@ -1085,9 +1113,18 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
                         b for b in c if not (isinstance(b, dict) and b.get("type") == "thinking")
                     ]
                     restored_count += 1
+            elif current_thinking:
+                pass
+            else:
+                # 这条历史没有 thinking、索引里也找不到它的原件 —— 补不回来。
+                # 它不是「没发生」，是「发生了但我们没接住」，必须和成功分开记，
+                # 否则永远看不出这条规则的失效。
+                unmatched += 1
 
     if restored_count:
         changed.append(f"restore_thinking_{restored_count}")
+    if unmatched:
+        changed.append(f"restore_thinking_miss_{unmatched}")
 
     return changed
 
