@@ -155,6 +155,62 @@ def version_payload():
     }
 
 
+def tool_inventory_payload():
+    """最近一次真实请求里的工具清单 + **按当前配置现算的**剥离结论。
+
+    清单只能来自真实请求 —— 客户端发什么工具是它决定的，我们猜不出来，
+    所以没跑过请求时如实报「还没采集到」，而不是编一份默认列表糊弄。
+
+    剥没剥按**现值**算，不读落盘里那份判断：用户刚改完开关就在这里看到结果，
+    而不是要等下一次请求才刷新。判断用的是 tool_rules —— 网关真拿它做决定的那份，
+    所以这里显示的「会剥」和请求里实际发生的必然是同一个答案。
+    """
+    from tool_rules import CATEGORY_LABELS, get_stripped_tool_names, strip_reason
+
+    path = os.path.join(_paths()["bridge_home"], "tool_inventory.json")
+    snap = _read(path)
+    tools = snap.get("tools") if isinstance(snap.get("tools"), list) else []
+    pruning = _read(bridge_path()).get("tool_pruning") or {}
+    pruning = {**DEFAULT_TOOL_PRUNING_CONFIG, **pruning}
+    custom = [c for c in (pruning.get("custom_strip_tools") or []) if isinstance(c, str)]
+    stripped_names = get_stripped_tool_names(pruning)
+
+    rows = []
+    for t in tools:
+        if not isinstance(t, dict) or not t.get("name"):
+            continue
+        name = t["name"]
+        reason = strip_reason(name, stripped_names, pruning)
+        rows.append({
+            "name": name,
+            "bytes": t.get("bytes") or 0,
+            "tokens": t.get("tokens") or 0,
+            "stripped": bool(reason),
+            "reason": reason,
+            "reason_label": CATEGORY_LABELS.get(reason, reason),
+            "custom": name in custom,
+        })
+    return {
+        "seen": bool(rows),
+        "ts": snap.get("ts") or 0,
+        "count": len(rows),
+        "raw_bytes": sum(r["bytes"] for r in rows),
+        "kept_bytes": sum(r["bytes"] for r in rows if not r["stripped"]),
+        "raw_tokens": sum(r["tokens"] for r in rows),
+        "kept_tokens": sum(r["tokens"] for r in rows if not r["stripped"]),
+        "custom": custom,
+        "pruning_enabled": pruning.get("enabled") is not False,
+        "tools": rows,
+    }
+
+
+def stats_payload():
+    """实时战绩：从网关日志读上游自己报回来的真实用量。"""
+    import live_stats
+    upstream = _read(bridge_path()).get("upstream_url") or ""
+    return live_stats.read_recent_usage(upstream)
+
+
 def client_running():
     """客户端在不在跑。偏好类改动只在它没跑时写得进去，所以页面要据此提示。"""
     try:
@@ -471,7 +527,8 @@ def handle_get(handler, query):
     """处理 GET；返回 True 表示这个请求归配置台管。"""
     path = handler.path.split("?")[0]
     if path not in ("/", "/index.html", "/api/config", "/api/status",
-                    "/api/upstream-models", "/api/update-check"):
+                    "/api/upstream-models", "/api/update-check",
+                    "/api/tools", "/api/stats"):
         return False
     if not _gate(handler, query, need_token=(path != "/")):
         return True
@@ -516,6 +573,14 @@ def handle_get(handler, query):
         bridge_cfg = _read(bridge_path())
         result = list_upstream_models(bridge_cfg.get("upstream_url", ""), _current_key())
         handler._send_json(200, result)
+        return True
+
+    if path == "/api/tools":
+        handler._send_json(200, {"ok": True, "data": tool_inventory_payload()})
+        return True
+
+    if path == "/api/stats":
+        handler._send_json(200, {"ok": True, "data": stats_payload()})
         return True
     return False
 
