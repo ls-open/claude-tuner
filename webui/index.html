@@ -387,9 +387,10 @@ const PRUNING = [
   ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
   ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 下无法完成官方认证'],
   ['strip_plugin_mgmt_tools', '插件市场与技能建议', '插件市场、技能推荐等工具'],
-  ['strip_orchestration_tools', '多代理编排与后台任务', 'Workflow、跨会话消息、子代理列表、任务停止、结果上报'],
-  ['strip_worktree_tools', 'Git 工作树隔离', '将会话隔离在独立 git 工作树中运行'],
-  ['strip_plan_tools', '计划模式', '先给出计划，经确认后再执行'],
+  ['strip_workflow_tools', '工作流编排', 'Workflow —— 把任务拆给多个子代理并行跑'],
+  ['strip_cross_session_tools', '跨会话消息', 'SendMessage 与 ListAgents 成对：后者用来找能发消息的对象'],
+  ['strip_worktree_tools', 'Git 工作树隔离', 'EnterWorktree 与 ExitWorktree 成对'],
+  ['strip_plan_tools', '计划模式', 'EnterPlanMode 与 ExitPlanMode 成对'],
 ];
 
 // 生效时机：用户点完开关后，最想知道的就是「现在有没有用」。
@@ -645,15 +646,14 @@ async function renderStats(){
     `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中的输入 token<br>上游按原价计费的那部分</small></div>`,
     `<div class="k"><b>${num(t.output)}</b><small>输出 token</small></div>`,
   ];
-  // 统计区间必须显示。日志会轮转、轮转文件只留几天 —— 不写区间，读的人无法判断
-  // 这个数字覆盖了多久，看起来就像「一直以来的总计」。
+  // 统计区间必须写出来 —— 日志会轮转、轮转件只留几天，不写区间的话这个数字看起来
+  // 像「一直以来的总计」。但也就只写这一行：解释放 title 里，段落留给愿意看的人。
   const w = d.window || {};
-  const fmt = t => t ? t.slice(5, 16).replace('T', ' ') : '?';
-  const span = `<div class="hint" style="margin-top:12px">
-      <b>统计区间</b> ${fmt(w.from)} → ${fmt(w.to)}
-      · 来自网关日志${d.log_files > 1 ? ` ${d.log_files} 份（含轮转）` : ''}<br>
-      日志按 5 MB 轮转、轮转文件保留 7 天，所以这个区间<b>最多就是这么久</b> —— 更早的不在其中。
-      数字取自每次上游响应里的 <code>usage</code>，是上游自己报的，不是我们的估算。
+  const fmt = t => (t ? t.slice(5, 16).replace('T', ' ') : '?');
+  const tip = '数据来自网关日志里每次上游响应的 usage（上游自己报的，不是估算）。' +
+    '日志按 5 MB 轮转、轮转文件保留 7 天，所以区间最多就是这么久，更早的不在其中。';
+  const span = `<div class="hint" style="margin-top:10px" title="${esc(tip)}">
+      统计区间 ${fmt(w.from)} → ${fmt(w.to)}${d.log_files > 1 ? `（含 ${d.log_files} 份轮转日志）` : ''}
     </div>`;
   const extra = d.stripped_tools
     ? `<div class="hint" style="margin-top:12px">工具精简累计剥离 <b>${num(d.stripped_tools)}</b> 条工具定义（各次请求累加）。</div>` : '';

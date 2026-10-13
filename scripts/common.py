@@ -178,7 +178,9 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "custom_strip_tools": [],             # 自定义额外剥离工具名列表
     # 以下三项默认**关**：删掉的是真本事（多代理编排 / 工作树隔离 / 计划模式），
     # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
-    "strip_orchestration_tools": False,   # Workflow / SendMessage / ListAgents / TaskStop / ReportFindings
+    # 按真实耦合分组：独立的独立，配对的成对（见 tool_rules.CATEGORY_NAMES 的注释）
+    "strip_workflow_tools": False,        # Workflow
+    "strip_cross_session_tools": False,   # SendMessage / ListAgents
     "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
     "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
 }

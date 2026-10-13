@@ -58,8 +58,12 @@ CATEGORY_NAMES = {
                                "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
     "strip_design_sync_tools": ("DesignSync", "design_sync"),
-    "strip_orchestration_tools": ("Workflow", "SendMessage", "ListAgents",
-                                  "TaskStop", "ReportFindings"),
+    # 以下按**真实耦合**分组，不是按「感觉像一类」——
+    # 独立的就让它独立（Workflow 不跟谁配对，而且是那个 17KB 的大件），
+    # 真配对的一起进出（ListAgents 存在的意义就是找出能 SendMessage 的对象；
+    # Enter/Exit、EnterPlanMode/ExitPlanMode 各自成对）。
+    "strip_workflow_tools": ("Workflow",),
+    "strip_cross_session_tools": ("SendMessage", "ListAgents"),
     "strip_worktree_tools": ("EnterWorktree", "ExitWorktree"),
     "strip_plan_tools": ("EnterPlanMode", "ExitPlanMode"),
 }
@@ -73,7 +77,8 @@ CATEGORY_LABELS = {
     "strip_notebook_tools": "Notebook 单元格编辑",
     "strip_design_sync_tools": "DesignSync",
     "strip_plugin_mgmt_tools": "插件市场与技能建议",
-    "strip_orchestration_tools": "多代理编排与后台任务",
+    "strip_workflow_tools": "工作流编排",
+    "strip_cross_session_tools": "跨会话消息",
     "strip_worktree_tools": "Git 工作树隔离",
     "strip_plan_tools": "计划模式",
     "custom": "你自己勾的",
