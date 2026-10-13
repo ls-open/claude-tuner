@@ -345,6 +345,13 @@ def identity_model_mapping(one_m=True):
 DEFAULT_UPSTREAM = "https://api.deepseek.com/anthropic"
 DEFAULT_MODEL = "deepseek-flash"
 
+# 客户端界面的三个面（Chat / Cowork / Code）。都是 3P 配置里的键，false = 关掉该面。
+# **不是默认写入的** —— 只写用户明确改过的那一个，其余保持客户端原样。
+SURFACE_KEYS = ("chatTabEnabled", "coworkTabEnabled", "isClaudeCodeForDesktopEnabled")
+SURFACE_LABELS = {"chatTabEnabled": "Chat 标签页",
+                  "coworkTabEnabled": "Cowork 标签页",
+                  "isClaudeCodeForDesktopEnabled": "Code 标签页"}
+
 # 跟随安装一起写死的 3P 字段。只写这些，其余键一律保留。
 _3P_FORCED = {
     "inferenceProvider": "gateway",

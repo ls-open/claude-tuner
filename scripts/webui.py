@@ -310,6 +310,9 @@ def read_config_payload(handler):
             # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
             # 页面上却该并排放在一起（用户眼里都是「开不开某项能力」）
             "scheduled_tasks": three_p.get("scheduledTasksEnabled") is True,
+            # 三个界面开关：**缺省即开**（客户端不认识 false 以外的值），
+            # 所以判据是「显式为 false 才算关掉」。
+            "surfaces": {k: three_p.get(k) is not False for k in config_ops.SURFACE_KEYS},
         },
         "options": {
             "presets": [{k: p[k] for k in ("id", "name", "url", "model", "key_hint")}
@@ -391,6 +394,25 @@ def apply_patch(handler, patch):
 
     # 客户端偏好（浏览器工具等）。它在 preferences 里，客户端运行时会覆盖回去，
     # 所以跑着的时候不写，直接告诉用户先退出客户端。
+    surfaces = patch.get("surfaces")
+    if isinstance(surfaces, dict):
+        # 先算出「改完之后三个面各是什么状态」，再一次性判断能不能接受 ——
+        # 逐个改边判断容易写出「改到一半才发现不行」的中间态。
+        want = {}
+        for k in config_ops.SURFACE_KEYS:
+            v = surfaces.get(k)
+            want[k] = (three_p.get(k) is not False) if not isinstance(v, bool) else v
+        # 客户端要求至少留一个面，全关掉它不加载这份配置。拦在这里，别等它报错。
+        if not any(want.values()):
+            notes.append("没有改动：Chat / Cowork / Code 至少要留一个开着")
+        else:
+            for k, v in want.items():
+                if (three_p.get(k) is not False) != v:
+                    three_p[k] = v
+                    three_p_changed = True
+                    effects["restart_client"] = True
+                    notes.append("%s：%s" % (config_ops.SURFACE_LABELS.get(k, k), "开" if v else "关"))
+
     sched = patch.get("scheduled_tasks")
     if isinstance(sched, bool) and (three_p.get("scheduledTasksEnabled") is True) != sched:
         three_p["scheduledTasksEnabled"] = sched

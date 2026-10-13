@@ -385,30 +385,30 @@ const RULES = [
 // 分组的判据是「这几项是不是同一件事」—— 桌面界面遥控、会话与主机、联网与集成、
 // 智能体能力。最后那组删的是真本事，默认一律不动。
 const PRUNING_GROUPS = [
-  ['桌面界面的遥控工具', '让模型去操作客户端界面的工具，纯编码场景用不到', [
-    ['strip_sidebar_tools', '侧栏管理', '建分组、改分区、置顶、标未读'],
-    ['strip_window_tools', '窗口与分屏', '开关分屏、折叠侧栏'],
-    ['strip_settings_tools', '界面偏好', '读写客户端的偏好设置'],
-    ['strip_directory_tools', '目录切换', '切换工作目录'],
+  ['桌面界面的遥控工具', '让模型去操作客户端界面。纯编码场景用不到', [
+    ['strip_sidebar_tools', '侧栏管理', '在侧栏里建分区、把会话归档进去、置顶或取消置顶'],
+    ['strip_window_tools', '窗口与分屏', '把另一个会话显示在当前会话旁边（分屏）；折叠或展开主窗口侧栏'],
+    ['strip_settings_tools', '界面偏好', '改动 Code 标签页的偏好 —— 例如「PR 合并后自动归档会话」'],
+    ['strip_directory_tools', '目录切换', '把这个会话移到电脑上的另一个项目目录'],
   ]],
-  ['会话与主机', '管会话本身、以及客户端与宿主机的交互', [
-    ['strip_session_tools', '会话管理', '列表、归档、删除、改标题 / 模型 / 权限等'],
-    ['strip_host_tools', '编辑器与主机', '在编辑器打开、磁盘占用、保持唤醒、工作树清理'],
-    ['strip_terminal_tools', '右侧终端面板', '读取桌面右侧终端面板的内容'],
+  ['会话与主机', '管其他会话、以及客户端与这台电脑的交互', [
+    ['strip_session_tools', '会话管理', '列出其他会话（含已归档）、改标题、切模型（另一会话从下一轮起改用新模型）、归档或删除'],
+    ['strip_host_tools', '编辑器与主机', '在 VS Code / Cursor / Windsurf / Zed 里打开文件；阻止电脑空闲休眠；查看磁盘占用'],
+    ['strip_terminal_tools', '右侧终端面板', '往终端面板的标签页里敲一条命令并回车'],
   ]],
-  ['联网与集成', '连外部服务的工具。多数场景有更好的替代', [
-    ['strip_web_search_tools', '网页搜索', 'WebSearch'],
-    ['strip_web_fetch_tools', '网页抓取', 'WebFetch'],
-    ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '把会话与 GitHub PR / CI 结果关联'],
-    ['strip_notebook_tools', 'Notebook 单元格编辑', '编辑 Jupyter notebook 单元格'],
+  ['联网与集成', '连外部服务的工具。多数场景有更合适的替代', [
+    ['strip_web_search_tools', '网页搜索', '搜索网络，返回带标题与链接的结果块'],
+    ['strip_web_fetch_tools', '网页抓取', '抓取一个 URL、转成 markdown，再让一个小快模型针对它回答问题'],
+    ['strip_pr_ci_tools', 'PR 关联与 CI 监控', '开关这个会话所绑定 PR 的 CI 监控；把会话与 GitHub PR 结果关联'],
+    ['strip_notebook_tools', 'Notebook 单元格编辑', '替换、插入或删除 Jupyter notebook（.ipynb）里的单个单元格'],
     ['strip_design_sync_tools', 'DesignSync', '设计稿同步；3P 下无法完成官方认证'],
     ['strip_plugin_mgmt_tools', '插件市场与技能建议', '装插件、推荐技能'],
   ]],
   ['智能体能力', '删的是真本事，默认一律不动', [
-    ['strip_workflow_tools', '工作流编排', 'Workflow —— 把任务拆给多个子代理并行跑'],
-    ['strip_cross_session_tools', '跨会话消息', 'SendMessage 与 ListAgents 成对'],
-    ['strip_worktree_tools', 'Git 工作树隔离', 'EnterWorktree 与 ExitWorktree 成对'],
-    ['strip_plan_tools', '计划模式', 'EnterPlanMode 与 ExitPlanMode 成对'],
+    ['strip_workflow_tools', '工作流编排', '执行一段工作流脚本，确定性地编排多个子代理'],
+    ['strip_cross_session_tools', '跨会话消息', '给另一个代理发消息；列出你能发消息的对象。两者成对'],
+    ['strip_worktree_tools', 'Git 工作树隔离', '把会话关进独立的工作树里干活；干完退回原目录。两者成对'],
+    ['strip_plan_tools', '计划模式', '先出计划、经你确认后再执行；写完计划后退出计划模式。两者成对'],
   ]],
 ];
 
@@ -535,10 +535,18 @@ function renderSwitches(d){
        '但剥离规则按名字匹配，对哪一边都适用。' +
        '若需在终端单独使用官方账号，关闭此项即可。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
+    `<div class="subgrp">界面与模式<em>客户端里有三个面，用不到的可以关掉</em></div>` +
+    SW('Chat 标签页', '客户端的对话界面', `id="surfChat" ${d.client.surfaces.chatTabEnabled ? 'checked' : ''}`, 'restart') +
+    SW('Cowork 标签页', '协作模式（本地代理任务、交付物）', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
+    SW('Code 标签页', '编码模式 —— 就是这个会话所在的界面', `id="surfCode" ${d.client.surfaces.isClaudeCodeForDesktopEnabled ? 'checked' : ''}`, 'restart') +
+    `<div class="hint" style="margin:-4px 0 12px">三个面至少要留一个开着，客户端才肯加载配置。</div>` +
     SW('允许 bypass permissions 模式',
        '客户端这边先允许，会话里才切得到「跳过所有确认」那个模式。' +
        '不开的话遇到需要免确认的操作会直接卡住。<b>开启后 Claude 可无提示执行任意命令，风险自负。</b>' +
-       (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
+       (running ? '<br><b>客户端正在运行，此项暂时改不了</b> —— 它写在 ' +
+         '<code>claude_desktop_config.json</code> 里，那是客户端自己的运行时状态文件，' +
+         '它会往里面回写（会话级窗口状态之类），我们这时写进去会被覆盖。' +
+         '完全退出 Claude 后回这一页改即可 —— <b>网关不随客户端退出，这个页面照常打得开</b>。' : ''),
        `id="bypassPerm" ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
     SW('允许定时任务',
        '关闭后客户端不再提供创建/修改/运行定时任务的工具，定时任务页也会隐藏。' +
@@ -550,7 +558,10 @@ function renderSwitches(d){
        `id="coworkWebSearch" ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
     SW('关掉应用内浏览器工具（预览 / 截图 / 点击）',
        '内置浏览器里的打开页面、截图、点击，仅 Web 开发场景需要。' +
-       (running ? '<br><b>客户端运行期间此项无法修改，需先完全退出 Claude。</b>' : ''),
+       (running ? '<br><b>客户端正在运行，此项暂时改不了</b> —— 它写在 ' +
+         '<code>claude_desktop_config.json</code> 里，那是客户端自己的运行时状态文件，' +
+         '它会往里面回写（会话级窗口状态之类），我们这时写进去会被覆盖。' +
+         '完全退出 Claude 后回这一页改即可 —— <b>网关不随客户端退出，这个页面照常打得开</b>。' : ''),
        `id="browserTools" ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart') +
     ``;
 }
@@ -820,6 +831,11 @@ $('#btnSave').onclick = async () => {
     unset_settings: on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl'],
     cli_linked: $('#cliLinked').checked,
     scheduled_tasks: $('#schedTasks').checked,
+    surfaces: {
+      chatTabEnabled: $('#surfChat').checked,
+      coworkTabEnabled: $('#surfCowork').checked,
+      isClaudeCodeForDesktopEnabled: $('#surfCode').checked,
+    },
     client_prefs: {
       coworkBrowserToolsEnabled: !$('#browserTools').checked,
       bypassPermissionsModeEnabled: $('#bypassPerm').checked,
