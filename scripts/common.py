@@ -354,3 +354,59 @@ def normalize_upstream(url):
     if url.endswith("/v1"):
         return url + "/messages"
     return url + "/v1/messages"
+
+
+# ==============================================================================
+# 版本与来源（release.json 是唯一真理源，install.sh 与 Python 都读它）
+# ==============================================================================
+
+_plugin_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RELEASE_FILE = os.path.join(_plugin_root, "release.json")
+CLIENT_APP_PLIST = "/Applications/Claude.app/Contents/Info.plist"
+
+_release_cache = None
+
+
+def release_info():
+    """读 release.json：从哪个仓库来（repo / mirror）、本版号、按哪个客户端版本验过。"""
+    global _release_cache
+    if _release_cache is not None:
+        return _release_cache
+    info = {"repo": "", "mirror": "", "version": "", "tested_client": ""}
+    try:
+        with open(RELEASE_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if isinstance(data, dict):
+            info.update({k: str(data.get(k) or "").strip() for k in info})
+    except Exception:
+        pass
+    _release_cache = info
+    return info
+
+
+def plugin_version():
+    """本插件的版本号。刻意不写进 plugin.json —— 那份清单是给客户端读的，
+    版本号在里面不起开关作用（见 DECISIONS #9）；这里用它只为「装的是哪一版」。"""
+    return release_info()["version"]
+
+
+def client_version():
+    """Claude 桌面端的版本号（读它的 Info.plist）。读不到返回空串，不抛异常。"""
+    try:
+        import subprocess
+        res = subprocess.run(["/usr/libexec/PlistBuddy", "-c",
+                              "Print :CFBundleShortVersionString", CLIENT_APP_PLIST],
+                             capture_output=True, text=True, timeout=5)
+        return res.stdout.strip() if res.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def version_tuple(text):
+    """把版本号切成可比较的元组：'2.31226.0' → (2, 31226, 0)。
+    非数字段按 0 处理，读不出任何数字时返回 ()。"""
+    parts = []
+    for chunk in re.split(r"[._-]", (text or "").strip()):
+        digits = re.match(r"\d+", chunk)
+        parts.append(int(digits.group()) if digits else 0)
+    return tuple(parts) if any(parts) else ()

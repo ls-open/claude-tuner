@@ -111,6 +111,7 @@
     <a href="#s5">工具精简</a>
     <a href="#s6">客户端</a>
     <a href="#s7">网关</a>
+    <a href="#s8">版本与更新</a>
   </nav>
 
   <main>
@@ -203,6 +204,18 @@
         <div class="hint">前缀稳定化与工具精简是网关做的，改完立即生效、不用重启客户端。</div>
       </div>
     </section>
+
+    <section id="s8">
+      <div class="head"><h2>⑧ 版本与更新</h2><span class="tag" id="verTag"></span></div>
+      <div class="body">
+        <div id="verBox"></div>
+        <div class="row" style="margin-top:12px">
+          <button id="btnCheckUpdate">检查更新</button>
+          <button id="btnUpdate" class="primary" style="display:none">立即更新</button>
+          <span class="hint" style="margin:0;flex:1" id="updateOut"></span>
+        </div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -232,10 +245,10 @@ const CUSTOM = '__custom__';
 // 描述都对着客户端自己的字段语义写（"Automatically compact conversation when
 // context fills" 这类），不写想当然的解释。
 const MONEY = [
-  ['promptCacheTtl', '把缓存有效期改成 1 小时（只对官方模型有用）',
-   '不设时客户端自己决定：订阅号 1 小时，用 API Key 只有 5 分钟 —— 中断超过 5 分钟，下一轮就要把整段前缀重新计费一遍。' +
-   '改成 1 小时能跨更长的空闲保温，但缓存写入本身更贵。' +
-   '第三方模型走它们自己的缓存策略，这一项对它们不起作用。'],
+  ['promptCacheTtl', '缓存保温 1 小时',
+   '客户端原文：不设 = 自动（订阅号 1 小时；用 API Key / Bedrock / Vertex 只有 5 分钟）。' +
+   '设 1 小时能让缓存跨更长的中断保温，但<b>写入按更高价计费</b>。' +
+   '第三方模型走它们自己的缓存策略，这一项对它们多半不起作用。'],
   ['promptSuggestionEnabled', '关掉输入框联想',
    '就是输入框里那行灰色提示。开着时客户端会为它反复发请求，关掉省一份 token 消耗。'],
   ['autoCompactEnabled', '关掉自动压缩',
@@ -365,6 +378,24 @@ function renderSwitches(d){
       关掉后模型也不会再看到介绍它们的提示词。</div>`;
 }
 
+function renderVersions(d){
+  const v = d.versions || {};
+  $('#verBox').innerHTML = `
+    <div class="sw"><div class="txt"><b>本插件版本</b>
+      <small>装在你机器上的这一份</small></div><code>${esc(v.plugin || '未知')}</code></div>
+    <div class="sw"><div class="txt"><b>Claude 客户端版本</b>
+      <small>本插件是按 <b>${esc(v.tested_client || '未知')}</b> 这一版验证过的</small></div>
+      <code>${esc(v.client || '未知')}</code></div>`;
+  const tag = $('#verTag');
+  const newer = !!v.client_newer_than_tested;
+  tag.textContent = newer ? '客户端比验过的版本新' : '';
+  tag.style.display = newer ? '' : 'none';
+  if (!v.source_configured) {
+    $('#updateOut').textContent = '这份安装没带来源信息（release.json 的 repo 还没填），检查更新用不了。';
+    $('#btnCheckUpdate').disabled = true;
+  }
+}
+
 function renderGateway(d){
   $('#port').textContent = d.gateway.port;
   $('#gwUpstream').textContent = d.gateway.upstream_url || '未设置';
@@ -431,6 +462,38 @@ $('#btnTest').onclick = async () => {
   $('#testOut').innerHTML = out.join('<br>');
 };
 
+$('#btnCheckUpdate').onclick = async () => {
+  $('#updateOut').textContent = '正在检查……';
+  $('#btnUpdate').style.display = 'none';
+  try {
+    const r = await api('/api/update-check');
+    if (r.error) { $('#updateOut').textContent = '⚠️ ' + r.error; return; }
+    if (r.update_available) {
+      $('#updateOut').textContent = `有新版本 ${r.remote}（当前 ${r.local}）`;
+      $('#btnUpdate').style.display = '';
+    } else {
+      $('#updateOut').textContent = `已是最新（${r.local || '未知'}）`;
+    }
+    if (r.client_newer_than_tested) {
+      $('#updateOut').textContent += '　⚠️ 你的客户端比本插件验证过的版本新，行为可能已经变了。';
+    }
+  } catch (e) { $('#updateOut').textContent = '⚠️ ' + e.message; }
+};
+
+$('#btnUpdate').onclick = async () => {
+  $('#updateOut').textContent = '正在下载……（国内网络可能要等一会儿）';
+  $('#btnUpdate').disabled = true;
+  const r = await api('/api/update', {});
+  if (!r.ok) {
+    $('#updateOut').textContent = '❌ ' + esc(r.error) +
+      ((r.detail || []).length ? '（' + (r.detail || []).map(esc).join('；') + '）' : '');
+    $('#btnUpdate').disabled = false;
+    return;
+  }
+  $('#updateOut').innerHTML = `✅ 已更新到 ${esc(r.version)}，网关正在重启……`;
+  setTimeout(() => location.reload(), 4000);
+};
+
 $('#btnRestart').onclick = async () => {
   say('正在重启网关……');
   await api('/api/restart', {});
@@ -489,7 +552,8 @@ $('#btnSave').onclick = async () => {
   sel.value = CFG.upstream.preset;
   $('#upstream').value = CFG.upstream.url || '';
   onPresetChange(false);
-  renderStatus(CFG); renderModels(CFG); renderSwitches(CFG); renderGateway(CFG);
+  renderStatus(CFG); renderModels(CFG); renderSwitches(CFG);
+  renderGateway(CFG); renderVersions(CFG);
   watchNav();
   say('');
 })();

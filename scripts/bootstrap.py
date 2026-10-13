@@ -193,9 +193,13 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
     settings_patch = {
         "env": config_ops.cli_env(gateway_url, api_key or state["three_p"].get(
             "inferenceGatewayApiKey", ""), model) if with_cli else {},
-        # 省钱的默认值。**不写 promptCacheTtl** —— 不设时客户端自己决定
-        # （订阅号 1 小时、API Key 5 分钟），而 1 小时的缓存写入按更高价计费，
-        # 上游认不认这个时长各家也不同。要改在配置页里改。
+        # 省钱相关，默认帮用户开：
+        # - promptCacheTtl：不设时客户端自己决定（订阅号 1 小时、API Key 只有 5 分钟）。
+        #   1 小时的缓存写入更贵，但能跨更长的中断保温；上游认不认这个时长各家不同。
+        # - 输入联想：开着时客户端会为输入框那行灰字反复发请求。
+        # - 自动压缩：上下文快满时自动压缩，压缩那一次会丢掉已有缓存。
+        "promptCacheTtl": "1h",
+        "subagentPromptCacheTtl": "1h",
         "promptSuggestionEnabled": False,
         "autoCompactEnabled": False,
     }

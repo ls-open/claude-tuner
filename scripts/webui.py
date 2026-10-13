@@ -137,6 +137,24 @@ def three_p_path():
     return find_active_3p_config_path()
 
 
+def version_payload():
+    """版本与更新状态。客户端版本与「按哪版验过」都如实报出来 ——
+    客户端升级后注入面会变，我们只提示，不假装知道兼容性。"""
+    from common import client_version, plugin_version, release_info, version_tuple
+    info = release_info()
+    client = client_version()
+    return {
+        "plugin": plugin_version(),
+        "client": client,
+        "tested_client": info["tested_client"],
+        "client_newer_than_tested": bool(
+            client and info["tested_client"]
+            and version_tuple(client) > version_tuple(info["tested_client"])),
+        "repo": info["repo"],
+        "source_configured": bool(info["repo"]) and not info["repo"].startswith("OWNER"),
+    }
+
+
 def client_running():
     """客户端在不在跑。偏好类改动只在它没跑时写得进去，所以页面要据此提示。"""
     try:
@@ -190,6 +208,7 @@ def read_config_payload(handler):
             "autoCompactEnabled": claude_settings.get("autoCompactEnabled"),
             "includeCoAuthoredBy": claude_settings.get("includeCoAuthoredBy"),
         },
+        "versions": version_payload(),
         "client": {
             "running": client_running(),
             "browser_tools": (_read(paths["desktop_config_3p"]).get("preferences") or {})
@@ -452,7 +471,8 @@ def _gate(handler, query, need_token=True):
 def handle_get(handler, query):
     """处理 GET；返回 True 表示这个请求归配置台管。"""
     path = handler.path.split("?")[0]
-    if path not in ("/", "/index.html", "/api/config", "/api/status", "/api/upstream-models"):
+    if path not in ("/", "/index.html", "/api/config", "/api/status",
+                    "/api/upstream-models", "/api/update-check"):
         return False
     if not _gate(handler, query, need_token=(path != "/")):
         return True
@@ -488,6 +508,11 @@ def handle_get(handler, query):
         }})
         return True
 
+    if path == "/api/update-check":
+        import updater
+        handler._send_json(200, updater.check())
+        return True
+
     if path == "/api/upstream-models":
         bridge_cfg = _read(bridge_path())
         result = list_upstream_models(bridge_cfg.get("upstream_url", ""), _current_key())
@@ -504,7 +529,7 @@ def _current_key():
 def handle_post(handler, query, body):
     """处理 POST；body 是已解析的 JSON。返回 True 表示这个请求归配置台管。"""
     path = handler.path.split("?")[0]
-    if path not in ("/api/config", "/api/test-upstream", "/api/restart"):
+    if path not in ("/api/config", "/api/test-upstream", "/api/restart", "/api/update"):
         return False
     if not _gate(handler, query):
         return True
@@ -525,6 +550,19 @@ def handle_post(handler, query, body):
             key = _current_key()
         handler._send_json(200, test_upstream(url.strip(), key.strip(),
                                               ((body or {}).get("model") or "").strip()))
+        return True
+
+    if path == "/api/update":
+        import updater
+        result = updater.apply_update()
+        handler._send_json(200, result)
+        if result.get("ok"):
+            # 先把回执发出去再重启 —— 重启会掐掉当前连接
+            try:
+                handler.wfile.flush()
+            except Exception:
+                pass
+            threading.Timer(0.5, updater.restart_gateway).start()
         return True
 
     if path == "/api/restart":
