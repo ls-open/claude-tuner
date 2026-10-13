@@ -23,6 +23,7 @@ sys.dont_write_bytecode = True
 from common import (
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
+    atomic_write_json,
     ensure_config_initialized,
     client_api_key,
     extract_session_id,
@@ -61,6 +62,7 @@ EVENT_LEVELS = {
     "invalid_json": "WARN",
     "stabilize_error": "ERROR",
     "canonicalized": "DEBUG",
+    "orphan_tool_mention": "WARN",
     "client_disconnected": "WARN",
     "upstream_ok": "INFO",
     "upstream_truncated": "ERROR",
@@ -164,69 +166,136 @@ def load_rules_config():
 
 
 
-def _tp_flag(cfg, key):
-    """读取工具精简开关，缺键时回退到 DEFAULT_TOOL_PRUNING_CONFIG 声明默认值。"""
-    return cfg.get(key, DEFAULT_TOOL_PRUNING_CONFIG[key])
+# 工具剥离规则本身住在 tool_rules.py（纯判断层）：网关与配置页共用同一份，
+# 页面显示的「按现在的配置会不会剥」与实际发生的事必然是同一个判断。
+# 这里 import 进来再导出，sentinel.py 等既有调用方无需改动。
+from tool_rules import (  # noqa: E402
+    PROMPT_PAIRS,
+    get_stripped_tool_names,
+    orphan_mentions,
+    pair_is_orphaned,
+    should_strip_tool,
+    strip_reason,
+    tp_flag as _tp_flag,
+)
 
 
-def get_stripped_tool_names(cfg):
-    """根据配置动态计算需要被物理剥离的精确工具名称黑名单集合。"""
-    if not _tp_flag(cfg, "enabled"):
-        return {"WaitForMcpServers", "wait_for_mcp_servers"}
 
-    strip_set = {"WaitForMcpServers", "wait_for_mcp_servers"}
-    if _tp_flag(cfg, "strip_native_web_tools"):
-        strip_set.update({"WebSearch", "WebFetch", "web_search", "web_fetch", "mcp__workspace__web_fetch"})
-    if _tp_flag(cfg, "strip_notebook_tools"):
-        strip_set.add("NotebookEdit")
-    if _tp_flag(cfg, "strip_design_sync_tools"):
-        strip_set.update({"DesignSync", "design_sync"})
+def _inventory_path():
+    """工具清单落盘位置 —— 和 config.json 一样住在运行目录（BASE_DIR）。
 
-    for ct in cfg.get("custom_strip_tools", []):
-        if isinstance(ct, str) and ct:
-            strip_set.add(ct)
-    return strip_set
+    **刻意不从 CONFIG_FILE 派生**：有测试为了模拟「没有配置文件」把 CONFIG_FILE 指向
+    插件自己的 scripts 目录，派生的话运行期文件就会掉进源码树（还差一点被提交）。
+    运行期状态只认运行目录，测试要隔离就改 BASE_DIR / CLAUDE_TUNER_HOME。
+    """
+    return os.path.join(BASE_DIR, "tool_inventory.json")
 
 
-def should_strip_tool(tool_name, stripped_names, cfg):
-    """判断单个工具是否应被剥离（纯粹服从配置规则，按功能命名空间精准剥离死重工具）。"""
-    if not _tp_flag(cfg, "enabled"):
-        return tool_name in stripped_names
-    if tool_name in stripped_names:
-        return True
+# 上一次记录的工具名序列。稳态下 record_tool_inventory 只做一次元组比较就返回，
+# 不重新序列化 100+ 个工具 schema（那才是这函数真正贵的部分）。
+_inventory_memo = (None, ())
 
-    # 1. 桌面端 UI 遥控与会话自省工具（保留 mcp__ccd_view：它属于内容呈现面板且被系统提示词直接引用）
-    if _tp_flag(cfg, "strip_session_mgmt_tools"):
-        if (
-            tool_name.startswith("mcp__ccd_session")
-            or tool_name.startswith("mcp__ccd_directory")
-            or tool_name.startswith("mcp__ccd_sidebar")
-            or tool_name.startswith("mcp__ccd_window")
-            or tool_name.startswith("mcp__ccd_host")
-            or tool_name.startswith("mcp__ccd_settings")
-            or tool_name.startswith("mcp__session_info")
-        ):
-            return True
 
-    # 2. 插件市场管理与技能建议死重工具（3P 模式下无意义的商店与建议工具）
-    if _tp_flag(cfg, "strip_plugin_mgmt_tools"):
-        if (
-            tool_name.startswith("mcp__plugins")
-            or tool_name.startswith("mcp__skills")
-        ):
-            return True
+# 上一次报出来的孤句集合。逐轮重复报同一件事只会把日志刷满，
+# 但**变化时一定报** —— 客户端新增交叉引用时它就会变，那正是我们要知道的那一刻。
+_orphan_memo = [None]
 
-    # 3. GitHub PR 关联与 CI 自动化监控工具
-    if _tp_flag(cfg, "strip_pr_ci_tools"):
-        if tool_name.startswith("mcp__ccd_pr"):
-            return True
 
-    # 4. 桌面右侧终端面板读取工具（注意：保留 CoWork 执行终端命令的 mcp__workspace__bash）
-    if _tp_flag(cfg, "strip_terminal_tools"):
-        if tool_name.startswith("mcp__terminal"):
-            return True
+def _system_text(parsed):
+    """只拼 system 提示词。
 
-    return False
+    **刻意不扫对话正文**，两个理由：
+    1. 工具说明住在 system 里。对话正文提到某个工具名是正常的（用户自己说的话、
+       模型之前的输出），拿它报警只会变成噪声；
+    2. 成本。messages 动辄 1 MB 且随会话线性增长，system 只有几 KB 且基本恒定 ——
+       这个函数在**每个请求**上跑，只扫 system 是 0.2 ms，扫全部是它的几十倍。
+    """
+    sysv = parsed.get("system")
+    if isinstance(sysv, str):
+        return sysv
+    if not isinstance(sysv, list):
+        return ""
+    parts = []
+    for b in sysv:
+        if isinstance(b, dict) and isinstance(b.get("text"), str):
+            parts.append(b["text"])
+        elif isinstance(b, str):
+            parts.append(b)
+    return "\n".join(parts)
+
+
+def report_orphan_mentions(parsed, stripped_names):
+    """工具剥了、提示词里还在提它 —— 记进日志，不去自动改写。
+
+    **必须在配对段落删除之后调用**。配对段落正是被我们连带删掉的，在删之前查，
+    会把「已经正确处理掉的那段」误报成孤句。
+
+    配对表（tool_rules.PROMPT_PAIRS）只登记了「整段只为解释某个工具」的段落，那些会被
+    连带删掉。但提示词里还有**句中被提一句**的情况（例如通用指引里那句「invoke it via
+    Skill」），整段删会连累无关内容、句中手术又容易切坏，都不该自动做。
+
+    于是这里退一步：**发现并报出来**。客户端哪天新增工具或交叉引用，日志先知道，
+    页面据此提示 —— 而不是等用户遇到「模型在用一个不存在的工具」再回头查。
+    """
+    try:
+        text = _system_text(parsed)
+        if not text:
+            return
+        hits = orphan_mentions(text, removed_names)
+        if hits == _orphan_memo[0]:
+            return   # 和上一轮一样就闭嘴：这个检查每个请求都跑，重复报会把日志刷满
+        _orphan_memo[0] = hits
+        if hits:
+            log_event({"event": "orphan_tool_mention",
+                       "tools": hits[:20],
+                       "note": "这些工具已被剥离，但提示词里仍提到它们"})
+    except Exception:
+        pass
+
+
+def record_tool_inventory(tools):
+    """记下「这次请求里客户端到底发了哪些工具、各占多少字节」。
+
+    只记**事实**（名字与体积），不记「剥没剥」—— 剥不剥是当前配置的函数，配置页
+    读的时候按现值现算（用同一份 tool_rules）。落盘里带一份会过期的判断，用户改了
+    开关到下一次请求之间，页面就会显示一个已经不成立的结论。
+
+    为什么需要它：预设的类别是粗的，用户到底用不用得上某一个工具只有用户自己知道。
+    把真实清单连体积一起摆出来让用户自己勾 —— 而不是由我们替他分类。
+
+    只在工具名序列变化时重算（一个会话里通常一两次），失败一律静默 ——
+    这是个附属记录，绝不能因为它出问题而影响主请求。
+    """
+    global _inventory_memo
+    if not isinstance(tools, list) or not tools:
+        return
+    names = tuple(t.get("name", "") for t in tools if isinstance(t, dict) and t.get("name"))
+    if not names:
+        return
+    path = _inventory_path()
+    if _inventory_memo == (path, names):
+        return
+    try:
+        rows = []
+        for t in tools:
+            if not isinstance(t, dict):
+                continue
+            name = t.get("name") or ""
+            if not name:
+                continue
+            rows.append({
+                "name": name,
+                # 体积是**精确值**（就是这些字节）；token 数只能估 ——
+                # 用仓库里那一份校准过的估算器，页面上会如实标成「估算」。
+                "bytes": len(json.dumps(t, ensure_ascii=False)),
+                "tokens": estimate_tokens(t),
+            })
+        rows.sort(key=lambda r: (-r["bytes"], r["name"]))
+        atomic_write_json(path, {"ts": time.time(), "count": len(rows), "tools": rows})
+        _inventory_memo = (path, names)
+    except Exception:
+        pass
+
 
 
 def cleanup_runtime():
@@ -411,50 +480,28 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None):
-    """根据实际工具精简开关，精准剥离已剔除死重工具在 System 尾部的孤立引导段落。
+def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None):
+    """剥离「工具已被剥、说明段落却还留着」的孤句。
 
-    与工具精简开关严格保持原子一致，杜绝反向脱节：
-    1. strip_pr_ci_tools=True ➔ 剥离 ccd_pr 工具说明段落
-    2. strip_session_mgmt_tools=True ➔ 剥离 ccd_settings 与 ccd_host sync_with_base_branch 说明段落
-    3. strip_session_mgmt_tools=True ➔ 剥离 split-view（ccd_window open_session_in）说明段落
-    若对应工具开关为 False（保留了该工具），则说明段落自动原样保留，保证模型拿到的能力与提示词 100% 同步。
+    配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if），
+    判断用 strip_reason 的同一份逻辑 —— 所以**无论是类别开关剥的还是用户自己勾的**，
+    段落都会跟着走。此前只认两个类别开关，用户自定义剥掉 ccd_pr 就会留下孤句。
 
-    **只认整段**：锚定首句与尾句，整段摘除。夹在句子中段引用工具的一律不动 —— 句中手术容易
-    切坏内容，客户端一改措辞又会静默失效（取舍见 docs/DECISIONS.md #27）。
+    **只认整段**：配对表里登记的都是「整段存在的意义就是解释这个工具」的段落，
+    锚定首句与尾句整段摘除。段中顺带提一句工具名的不在这里处理（整段删会连累无关
+    指引，句中手术又容易切坏），交给 prepare_request 里的 orphan_mentions 去发现并报警。
     """
     if not isinstance(text, str):
         return text, False
     cfg = tp_cfg if tp_cfg is not None else load_tool_pruning_config()
     if not _tp_flag(cfg, "enabled"):
         return text, False
+    names = stripped_names if stripped_names is not None else get_stripped_tool_names(cfg)
 
     orig = text
-    # 1. ccd_pr 工具说明段落：随 strip_pr_ci_tools 联动
-    if _tp_flag(cfg, "strip_pr_ci_tools"):
-        text = re.sub(
-            r"(?m)^After opening a PR, use the ccd_pr tools:[\s\S]*?never enable auto-merge unless the user asked\.\s*\n*",
-            "",
-            text
-        )
-    # 2. ccd_settings 与 ccd_host sync_with_base_branch 说明段落：随 strip_session_mgmt_tools 联动
-    if _tp_flag(cfg, "strip_session_mgmt_tools"):
-        text = re.sub(
-            r"(?m)^To read or change the user's Code tab preferences in this app[\s\S]*?security settings stay theirs\.\s*\n*",
-            "",
-            text
-        )
-        text = re.sub(
-            r"(?m)^When this session runs in a worktree the app made for it[\s\S]*?merge the base branch yourself there\.\s*\n*",
-            "",
-            text
-        )
-        # ccd_window 属同一命名空间，故同一个开关管它这段（split-view）
-        text = re.sub(
-            r"(?m)^To show sessions side by side \(split view\)[\s\S]*?`mcp__ccd_window__open_session_in`\.\s*\n*",
-            "",
-            text
-        )
+    for pair in PROMPT_PAIRS:
+        if pair_is_orphaned(pair, names, cfg):
+            text = re.sub(pair["pattern"], "", text)
     return text, (text != orig)
 
 
@@ -584,8 +631,10 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
 
     # 4.5. 精准剥离已剔除死重工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
+    _ghost_names = get_stripped_tool_names(tp)
     sys_n, _ = map_request_texts(
-        parsed, lambda t, legacy: strip_ghost_tool_instructions(t, tp_cfg=tp), messages=False)
+        parsed, lambda t, legacy: strip_ghost_tool_instructions(
+            t, tp_cfg=tp, stripped_names=_ghost_names), messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
 
     # 统一剔除清洗后变为空的残余消息与空 text 块 (例如被抽空的 reminder 块)
@@ -614,6 +663,11 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     if r.get("split_mixed_user_messages", True):
         if split_mixed_user_messages(parsed):
             changed.append("split_mixed_user_msg")
+
+    # 6. 收尾：查一遍「已经被剥掉、提示词里却还在提」的工具名。
+    #    放在最后（配对段落已删完），所以报出来的都是我们**没能**处理干净的 —— 即
+    #    客户端新增的交叉引用。这是探测器不是改写器，只记日志，见 report_orphan_mentions。
+    report_orphan_mentions(parsed, _ghost_names)
 
     return changed
 
@@ -938,6 +992,8 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
         else:
             pruning_cfg = load_tool_pruning_config()
         stripped_names = get_stripped_tool_names(pruning_cfg)
+        # 顺手把真实工具清单记下来给配置页用（复用上面已加载的配置，不额外读盘）
+        record_tool_inventory(tools)
         filtered_tools = [
             t for t in tools
             if isinstance(t, dict) and not should_strip_tool(t.get("name", ""), stripped_names, pruning_cfg)
@@ -950,8 +1006,10 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
 
     # 2. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
     #    Claude Code 使用 Anthropic 协议：并发工具返回位于单条消息内，严格按 id 排序保证对称稳定
+    #    这是一条独立规则（可关）：它不删内容、只重排，但重排本身会让这一轮的字节与写进缓存的
+    #    那份不一致 —— 关掉它缓存会掉，只是有些上游对块顺序敏感，留一个逃生口。
     incoming_msgs = parsed.get("messages")
-    if isinstance(incoming_msgs, list):
+    if r.get("tool_block_ordering", True) and isinstance(incoming_msgs, list):
         for m in incoming_msgs:
             if not isinstance(m, dict):
                 continue

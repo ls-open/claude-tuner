@@ -160,6 +160,7 @@ DEFAULT_RULES = {
     "strip_git_status": True,            # 剥离 gitStatus 仓库初始快照
     "split_mixed_user_messages": True,   # 拆分混合 user 消息 (text + tool_result，防 400)
     "restore_thinking": True,            # 智能补齐历史 Thinking 思考链
+    "tool_block_ordering": True,         # 并发工具调用的 tool_use / tool_result 块按 id 稳定排序
 }
 
 

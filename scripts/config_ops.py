@@ -138,8 +138,16 @@ def apply_rules_patch(cfg, patch):
 
 
 def apply_pruning_patch(cfg, patch):
-    """把补丁合进 cfg["tool_pruning"]；未知键丢弃，列表型键做整体替换。"""
+    """把补丁合进 cfg["tool_pruning"]；未知键丢弃，列表型键做整体替换。
+
+    custom_strip_tools 额外过一遍 sanitize_custom_list：它会被当成工具名黑名单，
+    且会落盘，前端送什么进来都得先收敛（去重、限量、限长）。
+    """
     from common import DEFAULT_TOOL_PRUNING_CONFIG
+    from tool_rules import sanitize_custom_list
+    patch = dict(patch or {})
+    if "custom_strip_tools" in patch:
+        patch["custom_strip_tools"] = sanitize_custom_list(patch["custom_strip_tools"])
     new = copy.deepcopy(cfg) if isinstance(cfg, dict) else {}
     merged, changed = _merge_subkeys(new.get("tool_pruning"), DEFAULT_TOOL_PRUNING_CONFIG, patch)
     new["tool_pruning"] = merged
