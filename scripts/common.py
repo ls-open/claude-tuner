@@ -164,11 +164,11 @@ DEFAULT_RULES = {
 }
 
 
-# 默认工具精简配置（模块化可插拔）。逐项节约明细与总量见 docs/CONTRACT.md 契约 D-3 ——
-# 此处刻意不复述数字：派生数值写进代码必然漂移。
+# 默认工具精简配置（模块化可插拔）。此处刻意不复述体积数字：
+# 客户端一升级就会变，写进代码必然漂移 —— 页面上按真实请求现称。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
-    "strip_native_web_tools": True,       # 剥离 WebSearch (3P 不可用) 与 WebFetch (抓取无专门处理、不可靠，交给 tavily)
+    "strip_native_web_tools": True,       # 剥离 WebSearch（3P 下不可用）与 WebFetch（抓取无专门处理、不稳定，交给专门的抓取工具）
     "strip_session_mgmt_tools": True,     # 剥离桌面端 UI 遥控与会话自省工具 (mcp__ccd_session*, mcp__ccd_directory*, mcp__ccd_sidebar*, mcp__ccd_window*, mcp__ccd_host*, mcp__ccd_settings*, mcp__session_info*)。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它
     "strip_pr_ci_tools": True,            # 剥离 GitHub PR 关联与 CI 监控自动化 (mcp__ccd_pr__*)
     "strip_terminal_tools": True,         # 剥离桌面右侧终端面板读取工具 (mcp__terminal__*)
@@ -188,7 +188,7 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
 RETIRED_CONFIG_KEYS = (
     "passthrough",                # 曾用于整体跳过稳定化，已被细粒度的 rules.* 取代
     "cache_stabilize",            # 同上
-    "intercept_suggestion_mode",  # 网关侧输入预测拦截已移除（见 DECISIONS.md）
+    "intercept_suggestion_mode",  # 网关侧输入预测拦截已移除（客户端自带的开关更好使）
 )
 
 # 已废弃的 tool_pruning 子键（同上，但它们在 tool_pruning 节点下，不是顶级键）
@@ -216,8 +216,8 @@ DEFAULT_CONFIG = {
     "rules": DEFAULT_RULES,
     "tool_pruning": DEFAULT_TOOL_PRUNING_CONFIG,
 }
-# 注：此处不声明 "tavily_api_keys"（勿加回）。Tavily 的 Key 归属地是技能自身
-# （~/.claude/skills/tavily/.env 或环境变量），skills/tavily 已与网关配置解耦。
+# 注：此处刻意不声明任何第三方抓取服务的 Key —— 那类凭据归它自己的工具管，
+# 跟网关配置无关。网关只管「客户端 → 上游模型」这一条链路。
 
 
 def ensure_config_initialized(config_path=None):
@@ -280,7 +280,7 @@ def ensure_config_initialized(config_path=None):
     return path
 
 
-# 上游客户端标识（全仓单一真理源，详见 docs/CONTRACT.md 契约 B）：
+# 上游客户端标识（本插件唯一一处定义，gateway / manager 共用）：
 # - 对所有上游恒定显式发送自有 User-Agent（避免漏出 Python-urllib 默认指纹触发 Cloudflare 1010 拦截）；
 # - 仅对 OpenCode 上游附带 x-opencode-session 以协助路由与提示词缓存。
 # - 版本号代表上游可见的客户端身份（与清单文件无关），改动可能触发路由/缓存分桶重置，仅在需变更身份时手动提升。

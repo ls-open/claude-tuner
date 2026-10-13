@@ -2,7 +2,7 @@
 """版本哨兵：在一份真实抓包上自检「客户端注入面是否已被清洗规则吸收」。
 
 `audit` 回答一个与版本无关的问题：这份入口报文过完现有规则后，还剩什么会被客户端
-版本或环境改变？留下来的每一样都是前缀缓存杀手（见 docs/CONTRACT.md 第零节）。
+版本或环境改变？留下来的每一样都是前缀缓存杀手。
 
     · ① 工具面   —— 剥离 N / 保留 M；不在剥离名单内的 `mcp__*` 逐个列出待判定
                     （本命令不预设是死重还是生产力工具，判定权在你）
@@ -232,7 +232,7 @@ def _audit_tools(raw, clean):
         print("     → 判定：确认是死重（如商店管理、技能建议、会话自省）则补进剥离规则 ——")
         print("       gateway.should_strip_tool() 的命名空间分支，或 config.json 的 custom_strip_tools；")
         print("       确认是生产力工具（如 CoWork 交付物、工作区执行）则不动，并把判定理由登记进")
-        print("       docs/CONTRACT.md 契约 D-3，免得下次跟版时被当成新面孔重新判一遍。")
+        print("       免得下次跟版时被当成新面孔重新判一遍。")
     else:
         print("  ✅ 无 MCP 工具在名单外")
     print("  ℹ️ 保留下来的原生工具若随版本增删，同样会击穿一次缓存，注意核对清单是否变动")
@@ -313,7 +313,7 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     只看**最终要发出去的**那份（clean），即上游实际收到的提示词。
 
     只提示、**不计入 findings**：这是「工具剥、说明留」的已知取舍，不是故障 —— 正文只在
-    **整段边界清楚**时才顺手剥掉，句子中段耦合的一律不动（见 DECISIONS.md 的「剥什么、怎么剥」）。
+    **整段边界清楚**时才顺手剥掉，句子中段耦合的一律不动。
     """
     cfg = tp_cfg if tp_cfg is not None else gateway.load_tool_pruning_config()
     stripped_names = gateway.get_stripped_tool_names(cfg)
@@ -376,7 +376,7 @@ def cmd_audit(model, session=None):
     else:
         print("  ⚠️ 发现 %d 处待判定的注入面 —— 按上面的判定说明逐个确认（补进剥离名单，"
               "或确认保留并登记理由）。" % findings)
-        print("     补完后重跑本命令确认转为 ✅，并把新规则登记进 docs/CONTRACT.md 契约 D。")
+        print("     补完后重跑本命令确认转为 ✅。")
     print()
     print("  提示：确认无误后可关闭抓包以恢复零 I/O 开销：")
     print("        ~/.claude-tuner/config.json → \"capture_raw_inbound\": false")
@@ -427,7 +427,7 @@ def _die_no_capture(model, session=None):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="客户端注入面覆盖自检（详见 docs/CONTRACT.md 第零节）",
+        description="客户端注入面覆盖自检",
         formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
 

@@ -777,7 +777,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
 def _strip_leading_reminder(text, keyword):
     """剥离锚定在文本开头（允许前置空白）的 `# <keyword>` `<system-reminder>` 块。
 
-    必须锚定开头（客户端注入仅出现在消息首部；正文中间出现的同名标签属于引用，不可跨越吞噬，详见 docs/DECISIONS.md）。
+    必须锚定开头（客户端注入只出现在消息首部；正文中间出现的同名标签属于引用，不可跨越吞噬）。
     """
     head = r"^\s*<system-reminder>\s*"
     tail = r"[\s\S]*?</system-reminder>\s*"
@@ -1084,7 +1084,7 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
     changed = []
     r = rules or load_rules_config()
 
-    # 1. 模块化动态工具精简 (剥离桌面端强制注入的死重工具；逐项明细见 docs/CONTRACT.md 契约 D-3)
+    # 1. 模块化动态工具精简（剥掉桌面端强制注入、多数场景用不到的那几类）
     #    完全保留客户端原生注册的工具物理顺序与 Schema 参数顺序，不做任何人为重排
     tools = parsed.get("tools")
     if isinstance(tools, list):
@@ -1639,7 +1639,7 @@ class Handler(BaseHTTPRequestHandler):
           1. 基础头       —— 上游通用协议头（白名单重建，客户端指纹类头一律不转发）；
           2. 客户端标识头 —— 恒发自有 User-Agent；OpenCode 系上游另带其会话标识头。
 
-        上游协议与 anthropic-version 的取舍见 DECISIONS.md「不向上游发 anthropic-version」。
+        刻意不给上游发 anthropic-version：各家上游对它的接受度不一致，发了反而可能被拒。
         """
         payload = json.dumps(parsed, ensure_ascii=False).encode("utf-8")
         if session_id is None:
