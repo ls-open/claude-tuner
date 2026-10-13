@@ -266,10 +266,12 @@ def managed_settings_present(existing):
 DESKTOP_PREF_KEYS = (
     "coworkBrowserToolsEnabled",   # 应用内浏览器/预览/截图工具
     "coworkPreferredBrowser",      # built_in / chrome
-    # 允许 bypass permissions 模式。**必须在客户端这边先允许**，会话里才切得到那个模式 ——
-    # 不开的话遇到需要免确认的操作会直接卡住（本机实测踩过：权限分类器不可用时，
-    # 连一条 rm 都执行不了）。官方描述里标为 security 类。
-    "bypassPermissionsModeEnabled",
+    # **刻意没有 bypassPermissionsModeEnabled（免确认执行模式）**：客户端已经改成
+    # `bypassPermissionsOptInByAccount[账号uuid]` 这种按账号存的 map，那个平铺键只在 map
+    # 不存在时才被读（客户端源码：`map 存在就用 map，否则才看平铺键`）。写过一版读它、
+    # 也写它 —— 结果是**页面上永远显示未开启、勾了也不生效**，因为 map 在时它整个被盖住。
+    # 它不是我们忽略了这个键，是这个键已经不管事了；按账号的那种形态我们不该替客户端改。
+    # 页面上给一句指引，让用户去客户端自己的设置里切。
     # CoWork 会话的联网搜索。**这是官方的源头开关**：置 false 时客户端在组装请求之前
     # 就把 WebSearch 从工具列表里摘掉（客户端源码：disallowedTools.push("WebSearch")），
     # 比我们在网关里事后剥更干净 —— 连那段提示词都由客户端自己处理，不会留孤句。

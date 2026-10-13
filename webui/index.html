@@ -750,9 +750,6 @@ function renderSwitches(d){
     SW('Cowork 标签页', '本地代理协作模式界面', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
     SW('Code 标签页', '代码开发模式界面', `id="surfCode" ${d.client.surfaces.isClaudeCodeForDesktopEnabled ? 'checked' : ''}`, 'restart') +
     `<div class="hint" style="margin:-4px 0 12px">注意：上述三个标签页至少需保留一个开启，客户端才能正常启动。</div>` +
-    SW('允许切换免确认执行模式（Bypass Permissions）',
-       '开启后可在客户端免确认直接执行终端命令（请务必确认环境安全）。',
-       `id="bypassPerm" data-needs-closed ${d.client.bypass_permissions === true ? 'checked' : ''}`, 'restart') +
     SW('关闭客户端定时任务（Scheduled Tasks）',
        '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
@@ -1352,7 +1349,6 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 
   // 内部偏好
   const prefDefs = [
-    ['bypassPerm', 'bypass_permissions', '允许免确认执行模式 (Bypass Permissions)', false],
     ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true],
     ['coworkWebSearch', 'cowork_web_search', '关闭 CoWork 协作界面联网搜索', true],
     ['browserTools', 'browser_tools', '关闭应用内无头浏览器工具', true]
@@ -1406,7 +1402,6 @@ $('#btnSave').onclick = async () => {
     },
     client_prefs: {
       coworkBrowserToolsEnabled: !$('#browserTools').checked,
-      bypassPermissionsModeEnabled: $('#bypassPerm').checked,
       coworkWebSearchEnabled: !$('#coworkWebSearch').checked,
     },
   });

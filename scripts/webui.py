@@ -228,8 +228,6 @@ def read_config_payload(handler):
             "running": client_running(),
             "browser_tools": (_read(paths["desktop_config_3p"]).get("preferences") or {})
                              .get("coworkBrowserToolsEnabled"),
-            "bypass_permissions": (_read(paths["desktop_config_3p"]).get("preferences") or {})
-                                  .get("bypassPermissionsModeEnabled"),
             "cowork_web_search": (_read(paths["desktop_config_3p"]).get("preferences") or {})
                                  .get("coworkWebSearchEnabled"),
             # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
