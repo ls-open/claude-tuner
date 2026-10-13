@@ -256,6 +256,21 @@ const MONEY = [
    '关掉就不自动压缩（注意别把上下文写满）。'],
 ];
 
+// 更激进的省法：会改变客户端行为，默认一律不动，页面上单独一组。
+// kind：'off' = 勾上表示把该键写成 false；'on' = 勾上表示写成 true。
+const ADVANCED = [
+  ['idleCompaction', 'off', '空闲时不要压缩会话',
+   '会话闲置一会儿后客户端会自动压缩长对话 —— 压缩会重写历史、丢掉这部分缓存。'],
+  ['precomputeCompactionEnabled', 'off', '不要后台预生成压缩摘要',
+   '提前在后台把压缩摘要算好，会多花一次调用的钱。只在开着自动压缩时才有意义。'],
+  ['showThinkingSummaries', 'off', '不要请求思考摘要',
+   '让服务端额外生成一份思考摘要给你看；不看就关掉，省一份内容。'],
+  ['disableBundledSkills', 'on', '去掉客户端自带的技能与工作流',
+   '自带的那一批技能与工作流每轮都占上下文。⚠️ 这是真的把它们移除，不是隐藏，随时可以改回来。'],
+  ['alwaysThinkingEnabled', 'off', '不要让模型自动思考',
+   '支持思考的模型默认会自动思考，思考 token 也计费。⚠️ 关掉会明显影响复杂任务的答案质量。'],
+];
+
 // 每条规则：关掉之后哪一类内容会重新变得每轮都变
 const RULES = [
   ['strip_date', '动态日期', '客户端每轮注入当天日期，跨天就变'],
@@ -351,6 +366,15 @@ function renderSwitches(d){
   check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
   check('promptSuggestionEnabled', d.settings.promptSuggestionEnabled === false);
   check('autoCompactEnabled', d.settings.autoCompactEnabled === false);
+
+  $('#moneyBox').insertAdjacentHTML('beforeend',
+    `<div class="hint" style="margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)">
+       <b>更激进的省法</b> —— 这几项会改变客户端行为，默认一律不动。改之前先看清楚说明。</div>` +
+    ADVANCED.map(([k, kind, label, why]) => {
+      const val = d.settings[k];
+      const checked = kind === 'off' ? val === false : val === true;
+      return SW(label, why, `data-adv="${k}" data-kind="${kind}" ${checked ? 'checked' : ''}`);
+    }).join(''));
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
   $('#ruleBox').innerHTML = RULES.map(([k, label, why]) =>
@@ -514,6 +538,11 @@ $('#btnSave').onclick = async () => {
   };
   // 缓存 TTL：只在打开时写 1h，关掉就把自己写的键删掉，回到客户端自动决定
   if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
+  ADVANCED.forEach(([k, kind]) => {
+    const el = $(`#moneyBox input[data-adv="${k}"]`);
+    if (!el) return;
+    settings[k] = kind === 'off' ? !el.checked : el.checked;
+  });
   const tool_pruning = {}, rules = {};
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);

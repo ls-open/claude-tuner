@@ -203,10 +203,9 @@ def read_config_payload(handler):
         "settings": {
             "linked": "ANTHROPIC_BASE_URL" in env,
             "env": safe_env,
-            "promptCacheTtl": claude_settings.get("promptCacheTtl", ""),
-            "promptSuggestionEnabled": claude_settings.get("promptSuggestionEnabled"),
-            "autoCompactEnabled": claude_settings.get("autoCompactEnabled"),
-            "includeCoAuthoredBy": claude_settings.get("includeCoAuthoredBy"),
+            # 白名单里登记过的键一律回传现值（页面按现值决定每个开关的初始状态）——
+            # 少回传一个，那个开关就会以「未设置」的假状态显示，用户一保存就写错值。
+            **{k: claude_settings.get(k) for k in config_ops.SETTINGS_TOP_KEYS},
         },
         "versions": version_payload(),
         "client": {

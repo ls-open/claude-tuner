@@ -171,6 +171,12 @@ SETTINGS_TOP_KEYS = (
     "autoMemoryEnabled",
     "includeCoAuthoredBy",
     "attribution",
+    # 更激进的省法：会改变客户端行为，默认不动，页面里单独一组
+    "idleCompaction",              # 会话空闲时自动压缩长对话
+    "precomputeCompactionEnabled", # 后台预生成压缩摘要（只在自动压缩开着时有意义）
+    "showThinkingSummaries",       # 请服务端额外生成一份思考摘要
+    "disableBundledSkills",        # 整个移除客户端自带的技能与工作流
+    "alwaysThinkingEnabled",       # 支持思考的模型是否自动思考
 )
 
 
