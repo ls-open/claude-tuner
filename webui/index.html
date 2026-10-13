@@ -878,8 +878,12 @@ async function renderStats(){
   const span = `<div class="hint" style="margin-top:10px">
       数据统计区间：${fmt(w.from)} → ${fmt(w.to)}${d.log_files > 1 ? `（含 ${d.log_files} 份轮转日志）` : ''} · 数字来自上游网关真实 usage
     </div>`;
+  // `stripped_tools` 是**区间内累计剥离的次数**，不是「有多少条工具定义」——
+  // 同一个工具每轮都在重计一遍。直接说成「N 条工具定义」会给出一个明显不成立的说法
+  // （工具总共才几十个，这里却会显示十八万）。所以按每次请求平均说，累计数放括号里。
+  const perReq = d.requests ? Math.round(d.stripped_tools / d.requests) : 0;
   const extra = d.stripped_tools
-    ? `<div class="hint" style="margin-top:10px">工具精简模块已累计按需优化 <b>${num(d.stripped_tools)}</b> 条冗余工具定义。</div>` : '';
+    ? `<div class="hint" style="margin-top:10px">工具精简：每次请求平均剥离约 <b>${num(perReq)}</b> 个工具定义（区间内累计 ${num(d.stripped_tools)} 次，每轮重计）。</div>` : '';
   box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}${extra}`;
 }
 
