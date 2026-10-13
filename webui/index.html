@@ -536,6 +536,10 @@ const COMPOSITE = [
 ];
 
 // ── 场景预设定义 ───────────────────────────────────────────
+// `settings` 里写的是**设置本身的值**，不是复选框状态 —— 复选框全是「关闭某某」的反向开关，
+// 所以 applyPreset 里那两处取反是必需的。写反了不会报错，只会安静地把开关翻到反面
+// （balanced 的 autoCompactEnabled 就曾经写成 true：点「推荐」再保存，反而把自动压缩打开，
+// 与安装默认和 README 的 FAQ 相反）。加开关时对着 applyPreset 逐条核一遍。
 const PRESETS = {
   balanced: {
     name: '日常开发均衡档',
@@ -553,7 +557,7 @@ const PRESETS = {
       strip_plan_tools: false,
     },
     composite: { workflowBundle: true },
-    settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: true }
+    settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   pure_code: {
     name: '纯代码极限档',
