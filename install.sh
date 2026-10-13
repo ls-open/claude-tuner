@@ -191,7 +191,6 @@ if [ -z "$API_KEY" ] && [ "$DRY_RUN" = 0 ] && [ -r /dev/tty ]; then
   printf '本插件默认接 DeepSeek 官方，模型会自动配好，你只需要一个 API Key。\n'
   printf '\n'
   printf '  没有的话：打开 https://platform.deepseek.com 注册，在「API Keys」里建一个\n'
-  printf '  （新账号通常有赠送额度，够试很久）\n'
   printf '\n'
   printf '粘贴在这里（形如 sk-xxxxxx，输入时不显示），直接回车可跳过、装完在网页里填也行：\n'
   read -r -s API_KEY </dev/tty || API_KEY=""
