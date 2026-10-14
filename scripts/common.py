@@ -197,6 +197,12 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_cross_session_tools": False,   # SendMessage / ListAgents
     "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
     "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
+    # 这两个是「多代理编排与后台任务」那个大开关拆开时掉出来的 —— 一路没人接住，
+    # 于是长期没有开关（哨兵看不出来，因为它当时只挑 mcp__ 前缀报）。同样是真本事，
+    # 默认保留：TaskStop 用来终止跑飞的后台任务，ReportFindings 是 code-review 那套
+    # 技能把结论交回界面的通道。
+    "strip_task_stop_tools": False,       # TaskStop
+    "strip_report_findings_tools": False, # ReportFindings
 }
 
 
@@ -223,13 +229,8 @@ RENAMED_TOOL_PRUNING_KEYS = {
     "strip_session_mgmt_tools": ("strip_session_tools", "strip_sidebar_tools",
                                  "strip_window_tools", "strip_host_tools",
                                  "strip_settings_tools", "strip_directory_tools"),
-    "strip_orchestration_tools": ("strip_workflow_tools", "strip_cross_session_tools"),
-}
-
-# 上面最后一条拆出来的两个新键没覆盖到的工具 —— 它们原本也算在那个旧键里，
-# 现在不属于任何类别。旧键开着的话，把它们落到自定义清单，保住原本的行为。
-RENAMED_LEFTOVER_TOOLS = {
-    "strip_orchestration_tools": ("TaskStop", "ReportFindings"),
+    "strip_orchestration_tools": ("strip_workflow_tools", "strip_cross_session_tools",
+                                  "strip_task_stop_tools", "strip_report_findings_tools"),
 }
 
 
@@ -294,14 +295,6 @@ def ensure_config_initialized(config_path=None):
                 for n in news:
                     if n not in tp:        # 新键已经在了？以新键为准，不覆盖用户的明确设置
                         tp[n] = old_value
-                leftovers = RENAMED_LEFTOVER_TOOLS.get(old)
-                if leftovers and old_value:
-                    custom = tp.get("custom_strip_tools")
-                    custom = list(custom) if isinstance(custom, list) else []
-                    for t in leftovers:
-                        if t not in custom:
-                            custom.append(t)
-                    tp["custom_strip_tools"] = custom
                 updated = True
 
         # 安全补充 tool_pruning 缺失的子配置项

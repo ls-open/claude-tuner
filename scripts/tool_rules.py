@@ -73,6 +73,11 @@ CATEGORY_NAMES = {
     "strip_cross_session_tools": ("SendMessage", "ListAgents"),
     "strip_worktree_tools": ("EnterWorktree", "ExitWorktree"),
     "strip_plan_tools": ("EnterPlanMode", "ExitPlanMode"),
+    # 这两个是「多代理编排与后台任务」拆开时掉出来的，各自独立、谁也不跟谁配对，
+    # 所以各给一个开关，不并回任何一组。它们是**能力**（停后台任务 / 交回审查结论），
+    # 默认关 —— 与其余几项同理，删不删由用户自己掂量。
+    "strip_task_stop_tools": ("TaskStop",),
+    "strip_report_findings_tools": ("ReportFindings",),
 }
 
 # 页面与 CLI 共用的类别中文名（配置页直接显示它，避免两处各译一遍）
@@ -95,6 +100,8 @@ CATEGORY_LABELS = {
     "strip_cross_session_tools": "跨会话消息",
     "strip_worktree_tools": "Git 工作树隔离",
     "strip_plan_tools": "计划模式",
+    "strip_task_stop_tools": "终止后台任务",
+    "strip_report_findings_tools": "审查结论上报",
     "custom": "你自己勾的",
     "builtin": "恒定剥离",
     "enabled": "总开关关着时的名单",
