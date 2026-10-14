@@ -167,8 +167,6 @@
   .side-foot-row{display:flex;align-items:center;justify-content:space-between}
   .side-foot-status{display:inline-flex;align-items:center;gap:6px;color:var(--ok);font-weight:500;font-size:11.5px}
   .side-foot-dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 6px var(--ok)}
-  .side-foot-kbd{font-family:var(--mono);font-size:10px;padding:1px 5px;background:var(--panel);
-       border:1px solid var(--line2);border-radius:4px;color:var(--dim2)}
 
   /* ── 状态条 ─────────────────────────────────────────── */
   .status{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
@@ -399,7 +397,7 @@
       claude-tuner 调控台
       <span class="slogan-tag">你的 Claude，工具和上下文都由你定</span>
     </h1>
-    <p class="sub">工具面与上下文由你定 · 逐类开关，改完即生效 · 桌面端与终端共用 · macOS 专享</p>
+    <p class="sub">逐类开关，改完即生效 · 桌面端与终端共用 · macOS 专享</p>
   </div>
   <div class="act">
     <div id="msg"></div>
@@ -416,20 +414,19 @@
     <a href="#s2"><span class="nav-ico">🔀</span>模型映射</a>
 
     <div class="grp">核心调优</div>
-    <a href="#s3"><span class="nav-ico">💾</span>缓存与上下文</a>
-    <a href="#s4"><span class="nav-ico">🛡️</span>请求与提示词稳定化</a>
+    <a href="#s3"><span class="nav-ico">💾</span>上下文缓存</a>
+    <a href="#s4"><span class="nav-ico">🛡️</span>请求稳定化</a>
     <a href="#s5"><span class="nav-ico">✂️</span>工具精简</a>
     <a href="#s6"><span class="nav-ico">🎛️</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
     <a href="#s9"><span class="nav-ico">📈</span>实时战绩</a>
-    <a href="#s7"><span class="nav-ico">⚙️</span>网关服务</a>
-    <a href="#s8"><span class="nav-ico">📦</span>版本信息</a>
+    <a href="#s7"><span class="nav-ico">⚙️</span>网关状态</a>
+    <a href="#s8"><span class="nav-ico">📦</span>版本与更新</a>
 
     <div class="side-foot">
       <div class="side-foot-row">
         <span class="side-foot-status"><span class="side-foot-dot"></span><span id="sidePortTxt">网关就绪</span></span>
-        <span class="side-foot-kbd">⌘ S 保存</span>
       </div>
     </div>
   </nav>
@@ -507,8 +504,8 @@
           </div>
           <div class="preset-desc">完全自定义下方所有开关，按个性化勾选生效。</div>
           <div class="preset-detail">
-            <b>自由定制模式</b>
-            <div>随下方开关改动实时调整</div>
+            <b>工具与客户端设置</b>
+            <div>全部由下方开关自己定</div>
           </div>
         </div>
       </div>
@@ -562,8 +559,8 @@
     </section>
 
     <section id="s3">
-      <div class="head"><span class="num">③</span><h2>缓存与上下文</h2>
-        <span class="who">Claude 官方设置</span><span class="tag">默认值即推荐值</span></div>
+      <div class="head"><span class="num">③</span><h2>上下文缓存</h2>
+        <span class="who">Claude 官方设置</span></div>
       <div class="body">
         <p class="lead">控制客户端缓存保留时长与历史压缩。延长至 1 小时可显著提高连续对话命中率；按需关闭自动压缩可避免前缀频繁重建失效。</p>
         <div id="moneyBox"></div>
@@ -571,10 +568,10 @@
     </section>
 
     <section id="s4">
-      <div class="head"><span class="num">④</span><h2>请求与提示词稳定化</h2>
+      <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">逐条可关</span></div>
       <div class="body">
-        <p class="lead">发往模型前的关键干预通道。包含<b>请求协议干预</b>（探针秒回、格式规范、思维链保全）、<b>提示词缓存防抖</b>（抹平动态时间戳与 Git 变动）以及<b>纯指令修剪</b>（剥离防御免责与说教，降低本地脚本误拒答）。</p>
+        <p class="lead">发往模型前的干预通道，逐条可关。下面按性质分三组，组标题旁的说明写的是那一组的共同点。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
@@ -583,7 +580,7 @@
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">原子联动</span></div>
       <div class="body">
-        <p class="lead">客户端默认注入的大量外围工具会随每轮请求重复发送。在此按需移除用不到的工具，<b>配套系统提示词段落将同步自动清理</b>，节省上下文并释放模型注意力。配对靠段首特征认段，客户端改了措辞就会漏配 —— 那种情况由哨兵报出来，不会悄悄留着。</p>
+        <p class="lead">客户端默认注入的外围工具会随每轮请求重复发送，在此按需移除用不到的那些。<b>剥工具会连带删掉它的说明段落</b> —— 漏配的由哨兵报出来，不会悄悄留着。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -600,7 +597,7 @@
     <section id="s9">
       <div class="head"><span class="num">⑦</span><h2>实时战绩</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
       <div class="body">
-        <p class="lead">基于网关真实响应统计。缓存命中率越高，实际费用越省、首字响应越快。</p>
+        <p class="lead">缓存命中率越高，实际费用越省、首字响应越快。</p>
         <div id="statBox"></div>
       </div>
     </section>
@@ -612,7 +609,7 @@
           <div class="hint" style="margin:0;flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span>本地代理端点：</span>
             <span class="copy-pill" id="btnCopyGw" title="点击一键复制本地代理地址">
-              <span class="copy-icon">⎘</span> <span id="copyGwTxt">http://127.0.0.1:<span id="port">8789</span></span>
+              <span class="copy-icon">⎘</span> http://127.0.0.1:<span id="port">8789</span>
             </span>
             <span style="color:var(--dim2)">· 当前转发上游：<code id="gwUpstream"></code></span>
           </div>
@@ -667,12 +664,13 @@ function showToast(text, kind = 'ok', duration = 2400) {
   }, duration);
 }
 
+// 两个通道分工，**不要同时写两处**：`say` 是顶栏那行常驻状态（就在保存按钮旁边，
+// 顶栏是 sticky 的，一直看得见）；`showToast` 是给**一次性动作**的回执，用完即走。
+// 早先 say 同时弹 toast，结果是同一条消息同屏出现两遍，而「N 项修改待保存」每动一个
+// 开关就弹一次。
 const say = (text, kind) => {
   const m = $('#msg');
   if (m) { m.textContent = text; m.className = kind || ''; }
-  if (text && (kind === 'ok' || kind === 'err' || kind === 'warn')) {
-    showToast(text, kind);
-  }
 };
 const tell = (text) => { $('#dlgText').innerHTML = text; $('#dlg').showModal(); };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c =>
@@ -882,7 +880,7 @@ const modelValue = tr => {
 function renderStatus(d){
   const out = [];
   const push = (cls, t) => out.push(`<span class="pill ${cls}">${t}</span>`);
-  push('ok', `网关运行中 · 端口 ${d.gateway.port}`);
+  push('ok', '网关运行中');
   push(d.upstream.api_key_set ? 'ok' : 'warn', d.upstream.api_key_set ? 'API Key 已配置' : 'API Key 未配置');
   push(d.three_p.activated ? 'ok' : 'warn', d.three_p.activated ? '3P 模式已接管' : '3P 模式未接管');
   push('', `已配模型映射 ${d.models.length} 条`);
@@ -1284,12 +1282,6 @@ if (copyBtn) {
     const url = 'http://127.0.0.1:' + (port || '8789');
     navigator.clipboard.writeText(url).then(() => {
       showToast('代理端点已复制到剪贴板 ✓', 'ok');
-      const t = $('#copyGwTxt');
-      if (t) {
-        const orig = t.innerHTML;
-        t.textContent = '已复制 ✓';
-        setTimeout(() => { t.innerHTML = orig; }, 1600);
-      }
     }).catch(() => {
       showToast('复制失败，请手动选中复制', 'err');
     });
