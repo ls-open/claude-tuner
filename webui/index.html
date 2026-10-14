@@ -707,10 +707,10 @@ const RULE_GROUPS = [
     ['strip_model_declarations', '移除官方模型自称声明', '客户端自动注入的“你由 Claude 模型驱动”这类句子'],
     ['strip_total_tokens_tag', '移除剩余额度计数行', '这个数字每轮都在变，留着必击穿前缀缓存'],
   ]],
-  ['纯指令修剪', '剥离客户端硬编码的免责防御与道德说教指令，降低本地运维脚本误拒答', [
-    ['strip_security_guidelines', '移除安全攻防限制指令', '剥离网络攻防与破坏性技术免责说教，消除本地运维脚本误拒答'],
-    ['strip_pronoun_guidelines', '移除人称代词道德指引', '剥离强制使用 they/them 等性别中立说教，专注于纯粹代码工程'],
-    ['strip_caution_guidelines', '移除高危操作二次确认指引', '剥离向外发包与写文件前的过度防御说教，减少模型反复犹豫'],
+  ['纯指令修剪', '剥离客户端写死的免责防御与道德说教段落（只认整段、按空行边界）', [
+    ['strip_security_guidelines', '移除安全攻防限制指令', ''],
+    ['strip_pronoun_guidelines', '移除人称代词道德指引', 'they/them 那类强制中立表述'],
+    ['strip_caution_guidelines', '移除高危操作二次确认指引', '减少正常编码时的反复确认'],
   ]],
 ];
 
