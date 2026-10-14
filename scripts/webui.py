@@ -233,6 +233,12 @@ def read_config_payload(handler):
             # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
             # 页面上却该并排放在一起（用户眼里都是「开不开某项能力」）
             "scheduled_tasks": three_p.get("scheduledTasksEnabled") is True,
+            # 随附技能与动态工作流：**两个键合看成一个开关**。disableBundledSkills 去掉的是
+            # 那份随附技能清单（含 workflow-authoring），enableWorkflows 去掉的是 Workflow
+            # 工具本身 —— 工具说明指着那条技能，只关一个就是半截引用，故同进同退。
+            # 两者都写在 ~/.claude/settings.json（走 SETTINGS_TOP_KEYS 白名单）。
+            "bundled_skills": (claude_settings.get("disableBundledSkills") is True
+                               and claude_settings.get("enableWorkflows") is False),
             # 三个界面开关：**缺省即开**（客户端不认识 false 以外的值），
             # 所以判据是「显式为 false 才算关掉」。
             "surfaces": {k: three_p.get(k) is not False for k in config_ops.SURFACE_KEYS},

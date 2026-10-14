@@ -199,10 +199,9 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_design_sync_tools": True,      # 剥离 DesignSync (3P模式下无法官方认证)
     "strip_plugin_mgmt_tools": True,      # 剥离插件市场管理与技能建议死重 (mcp__plugins__*, mcp__skills__*)
     "custom_strip_tools": [],             # 自定义额外剥离工具名列表
-    # 以下三项默认**关**：删掉的是真本事（多代理编排 / 工作树隔离 / 计划模式），
+    # 以下几项默认**关**：删掉的是真本事（跨会话协作 / 工作树隔离 / 计划模式），
     # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
     # 按真实耦合分组：独立的独立，配对的成对（见 tool_rules.CATEGORY_NAMES 的注释）
-    "strip_workflow_tools": False,        # Workflow
     "strip_cross_session_tools": False,   # SendMessage / ListAgents
     "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
     "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
@@ -226,6 +225,7 @@ RETIRED_CONFIG_KEYS = (
 RETIRED_TOOL_PRUNING_KEYS = (
     "strip_cli_cron_tools",        # Cron 定时任务改由 3P 的 Allow scheduled tasks 在源头关闭
     "strip_scheduled_tasks_tools", # 同上（两套机制一起被客户端开关移除）
+    "strip_workflow_tools",        # 动态工作流改由客户端的 enableWorkflows 在源头关闭
 )
 
 # 改过名的 tool_pruning 子键：旧名 → 新名（一个旧键可能拆成几个新键）。
@@ -238,7 +238,9 @@ RENAMED_TOOL_PRUNING_KEYS = {
     "strip_session_mgmt_tools": ("strip_session_tools", "strip_sidebar_tools",
                                  "strip_window_tools", "strip_host_tools",
                                  "strip_settings_tools", "strip_directory_tools"),
-    "strip_orchestration_tools": ("strip_workflow_tools", "strip_cross_session_tools",
+    # Workflow 原本在这串里，已改由客户端的 enableWorkflows 管（不再有网关开关），
+    # 所以迁移只带剩下的三个；旧配置里的 strip_workflow_tools 由 RETIRED_TOOL_PRUNING_KEYS 清掉。
+    "strip_orchestration_tools": ("strip_cross_session_tools",
                                   "strip_task_stop_tools", "strip_report_findings_tools"),
 }
 

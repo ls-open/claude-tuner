@@ -760,12 +760,11 @@ const PRUNING_GROUPS = [
   ]],
 ];
 
-const COMPOSITE = [
-  ['workflowBundle', '移除随附工作流与预置技能',
-   'Workflow 工具的说明里要求模型加载配套的 `workflow-authoring` 技能，两者只关一个会留下半截引用，' +
-   '所以必须同进同退。用户自建技能不受影响。',
-   {settings: {disableBundledSkills: true}, pruning: {strip_workflow_tools: true}}],
-];
+// 「随附技能与动态工作流」原来是个复合开关（客户端设置 + 网关剥 Workflow 工具）。
+// 现在两半都是**客户端自己的设置**：`disableBundledSkills` 去掉那份随附技能清单
+// （含 workflow-authoring），`enableWorkflows` 去掉 Workflow 工具本身 —— 工具说明
+// 指着那条技能，只关一个就是半截引用，所以仍是一个开关同时写两个键。
+// 它住在客户端偏好区，跟「关闭客户端定时任务」同一处、同一套写法（见 renderSwitches）。
 
 // ── 场景预设定义 ───────────────────────────────────────────
 // `settings` 里写的是**设置本身的值**，不是复选框状态 —— 复选框全是「关闭某某」的反向开关，
@@ -792,7 +791,7 @@ const PRESETS = {
       strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
       strip_plan_tools: false,
     },
-    composite: { workflowBundle: false },
+    bundle: false,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   pure_code: {
@@ -814,7 +813,7 @@ const PRESETS = {
       strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
       strip_plan_tools: false,
     },
-    composite: { workflowBundle: true },
+    bundle: true,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   vanilla: {
@@ -836,7 +835,7 @@ const PRESETS = {
       strip_plugin_mgmt_tools: false, strip_cross_session_tools: false, strip_worktree_tools: false,
       strip_plan_tools: false,
     },
-    composite: { workflowBundle: false },
+    bundle: false,
     settings: { promptCacheTtl: false, promptSuggestionEnabled: true, autoCompactEnabled: true }
   }
 };
@@ -959,12 +958,7 @@ function renderSwitches(d){
     `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
     items.map(([k, label, why]) =>
       SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('')
-  ).join('') +
-  COMPOSITE.map(([id, label, why, spec]) => {
-    const on = Object.entries(spec.settings || {}).every(([k, v]) => (d.settings[k] ?? false) === v)
-            && Object.entries(spec.pruning || {}).every(([k, v]) => (tp[k] ?? defs[k]) === v);
-    return SW(label, why, `data-composite="${id}" ${on ? 'checked' : ''}`, 'now');
-  }).join('');
+  ).join('');
 
   const running = d.client.running;
   const tag = $('#clientTag');
@@ -982,6 +976,10 @@ function renderSwitches(d){
     SW('Cowork 标签页', '本地代理协作模式界面', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
     SW('Code 标签页', '代码开发模式界面', `id="surfCode" ${d.client.surfaces.isClaudeCodeForDesktopEnabled ? 'checked' : ''}`, 'restart') +
     `<div class="hint" style="margin:-4px 0 12px">注意：上述三个标签页至少需保留一个开启，客户端才能正常启动。</div>` +
+    `<div class="subgrp">客户端自带能力</div>` +
+    SW('关闭随附技能与动态工作流',
+       '移除随附技能与 Workflow 工具（两者互相指向，须同进同退）；用户自建技能不受影响。',
+       `id="bundledSkills" ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
     SW('关闭客户端定时任务（Scheduled Tasks）',
        '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
@@ -1020,11 +1018,9 @@ function applyPreset(mode){
     if (el) el.checked = v;
   });
 
-  // 3. 复合开关
-  Object.entries(p.composite).forEach(([k, v]) => {
-    const el = $(`#pruneBox input[data-composite="${k}"]`);
-    if (el) el.checked = v;
-  });
+  // 3. 随附技能与动态工作流（一个开关、两个客户端设置键）
+  const bundle = $('#bundledSkills');
+  if (bundle) bundle.checked = p.bundle;
 
   // 4. Money
   const ttl = $(`#moneyBox input[data-key="promptCacheTtl"]`);
@@ -1068,6 +1064,7 @@ function renderPresetDetails(){
       p.settings.promptCacheTtl ? "缓存留 1 小时" : "缓存回官方默认",
       p.settings.promptSuggestionEnabled ? "输入联想开" : "关输入联想",
       p.settings.autoCompactEnabled ? "自动压缩开" : "关自动压缩",
+      p.bundle ? "随附技能与工作流剥离" : "随附技能与工作流保留",
     ].join(" · ")}`);
 
     box.innerHTML = parts.map(t => `<div>${t}</div>`).join("");
@@ -1085,13 +1082,13 @@ function atInstallDefaults(){
     if (el && el.checked !== !!v) return false;
   }
   for (const [k, v] of Object.entries(tdefs)) {
-    // 不是每个默认键都有对应的勾选框（如 strip_workflow_tools 归合成开关管）
+    // 不是每个默认键都有对应的勾选框（如 strip_session_* 由各自的组管）
     const el = $(`#pruneBox input[data-tp="${k}"]`);
     if (el && el.checked !== !!v) return false;
   }
-  // 合成开关：安装时不写 disableBundledSkills，所以它应当是关的
-  const comp = $('#pruneBox input[data-composite="workflowBundle"]');
-  if (comp && comp.checked) return false;
+  // 随附技能与工作流：安装时不写那两个键，所以开关应当是关的（保留）
+  const bundle = $('#bundledSkills');
+  if (bundle && bundle.checked) return false;
   // 三个省钱开关：安装时缓存 1h、关联想、关自动压缩 —— 三个框都该是勾上的
   for (const k of ['promptCacheTtl', 'promptSuggestionEnabled', 'autoCompactEnabled']) {
     const el = $(`#moneyBox input[data-key="${k}"]`);
@@ -1120,9 +1117,9 @@ function checkCurrentPresetMatch(){
       if (el && el.checked !== v) { match = false; break; }
     }
     if (!match) continue;
-    for (const [k, v] of Object.entries(p.composite)) {
-      const el = $(`#pruneBox input[data-composite="${k}"]`);
-      if (el && el.checked !== v) { match = false; break; }
+    {
+      const el = $('#bundledSkills');
+      if (el && el.checked !== p.bundle) { match = false; continue; }
     }
     if (match) {
       markPresetCards(mode);
@@ -1155,12 +1152,12 @@ function renderCurrentState(){
   const on = sel => [...document.querySelectorAll(sel)].filter(e => e.checked).length;
   const all = sel => document.querySelectorAll(sel).length;
   const money = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return !!(el && el.checked); };
-  const comp = $('#pruneBox input[data-composite="workflowBundle"]');
+  const bundle = $('#bundledSkills');
   const custom = (CFG && CFG.tool_pruning && CFG.tool_pruning.custom_strip_tools) || [];
 
   const chips = [
     `工具开关 <b>${on('#pruneBox input[data-tp]')}/${all('#pruneBox input[data-tp]')}</b> 项在剥`,
-    comp && comp.checked ? '随附技能与工作流 <b>已剥离</b>' : '随附技能与工作流 <b>保留</b>',
+    bundle && bundle.checked ? '随附技能与工作流 <b>已剥离</b>' : '随附技能与工作流 <b>保留</b>',
     `前缀稳定化 <b>${on('#ruleBox input[data-rule]')}/${all('#ruleBox input[data-rule]')}</b> 条在生效`,
     money('promptCacheTtl') ? '缓存留 <b>1 小时</b>' : '缓存留 <b>官方默认</b>',
     money('promptSuggestionEnabled') ? '输入联想 <b>关</b>' : '输入联想 <b>开</b>',
@@ -1399,13 +1396,14 @@ function collectCurrentFormState(){
     includeCoAuthoredBy: !$('#coauthor').checked,
   };
   if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
-  const tool_pruning = {}, rules = {}, compositePruning = {};
-  COMPOSITE.forEach(([id, , , spec]) => {
-    const el = $(`#pruneBox input[data-composite="${id}"]`);
-    if (!el) return;
-    Object.entries(spec.settings || {}).forEach(([k, v]) => settings[k] = el.checked ? v : !v);
-    Object.entries(spec.pruning || {}).forEach(([k, v]) => { compositePruning[k] = el.checked ? v : !v; });
-  });
+  // 随附技能与动态工作流：一个开关、两个键，勾上就是「都关」。
+  // 取消勾选时**两个键都撤掉**（走 unset_settings），而不是写回 true——
+  // 尤其 enableWorkflows 写 true 会把客户端按套餐/灰度决定的默认值强行覆盖掉。
+  if ($('#bundledSkills')?.checked) {
+    settings.disableBundledSkills = true;
+    settings.enableWorkflows = false;
+  }
+  const tool_pruning = {}, rules = {};
   ADVANCED.forEach(([k, kind]) => {
     const el = $(`#moneyBox input[data-adv="${k}"]`);
     if (!el) return;
@@ -1413,7 +1411,6 @@ function collectCurrentFormState(){
   });
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
-  Object.assign(tool_pruning, compositePruning);
   tool_pruning.custom_strip_tools = (CFG?.tool_pruning?.custom_strip_tools || []);
   return {models, settings, tool_pruning, rules, on};
 }
@@ -1475,22 +1472,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
     }
   });
 
-  // 5. 复合开关（工作流与技能）
-  COMPOSITE.forEach(([id, label, , spec]) => {
-    const oldOn = Object.entries(spec.settings || {}).every(([k, v]) => (CFG.settings?.[k] ?? false) === v)
-               && Object.entries(spec.pruning || {}).every(([k, v]) => (CFG.tool_pruning?.[k] ?? CFG.options?.pruning_defaults?.[k]) === v);
-    const el = $(`#pruneBox input[data-composite="${id}"]`);
-    const newOn = el ? el.checked : false;
-    if (oldOn !== newOn) {
-      diffs.push({
-        title: label,
-        from: oldOn ? '开' : '关',
-        to: newOn ? '开' : '关',
-        when: '保存后即生效',
-        badge: 'gateway'
-      });
-    }
-  });
+  // 5. 随附技能与动态工作流（客户端设置，随下面那组一起比）
 
   // 6. 工具精简分类开关
   PRUNING_GROUPS.forEach(([, , items]) => {
@@ -1595,6 +1577,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 
   // 内部偏好
   const prefDefs = [
+    ['bundledSkills', 'bundled_skills', '关闭随附技能与动态工作流', false],
     ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true],
     ['coworkWebSearch', 'cowork_web_search', '关闭 CoWork 协作界面联网搜索', true],
     ['browserTools', 'browser_tools', '关闭应用内无头浏览器工具', true]
@@ -1641,7 +1624,11 @@ $('#btnSave').onclick = async () => {
     upstream_url: $('#upstream').value.trim(),
     api_key: $('#apikey').value.trim(),
     models, settings, tool_pruning, rules,
-    unset_settings: on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl'],
+    unset_settings: [
+      ...(on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl']),
+      // 没勾「关闭随附技能与工作流」就把这两个键撤掉，别给客户端留一个写死的值
+      ...($('#bundledSkills')?.checked ? [] : ['disableBundledSkills', 'enableWorkflows']),
+    ],
     cli_linked: $('#cliLinked').checked,
     scheduled_tasks: !$('#schedTasks').checked,
     surfaces: {
