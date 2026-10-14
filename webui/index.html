@@ -1386,11 +1386,12 @@ function collectCurrentFormState(){
     includeCoAuthoredBy: !$('#coauthor').checked,
   };
   if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
-  // 随附技能与动态工作流：一个开关、两个键，勾上就是「都关」。
-  // 取消勾选时**两个键都撤掉**（走 unset_settings），而不是写回 true——
-  // 尤其 enableWorkflows 写 true 会把客户端按套餐/灰度决定的默认值强行覆盖掉。
+  // 随附技能与动态工作流：一个开关、两个键，而且**两个键住的地方不一样** ——
+  // disableBundledSkills 是 3P 配置的键（走 bundled_skills 那个字段），
+  // enableWorkflows 是 Claude Code 那层的设置（走下面这个白名单）。
+  // 取消勾选时 enableWorkflows 要**撤掉**而不是写回 true —— 写 true 会把客户端
+  // 按套餐/灰度决定的默认值强行覆盖掉。disableBundledSkills 那边同理，见保存处。
   if ($('#bundledSkills')?.checked) {
-    settings.disableBundledSkills = true;
     settings.enableWorkflows = false;
   }
   const tool_pruning = {}, rules = {};
@@ -1616,9 +1617,11 @@ $('#btnSave').onclick = async () => {
     models, settings, tool_pruning, rules,
     unset_settings: [
       ...(on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl']),
-      // 没勾「关闭随附技能与工作流」就把这两个键撤掉，别给客户端留一个写死的值
-      ...($('#bundledSkills')?.checked ? [] : ['disableBundledSkills', 'enableWorkflows']),
+      // 没勾「关闭随附技能与工作流」就把这个键撤掉，别给客户端留一个写死的值
+      ...($('#bundledSkills')?.checked ? [] : ['enableWorkflows']),
     ],
+    // 另一半在 3P 配置里（客户端设置页也写那儿）—— 见 config_ops.build_3p_bundle
+    bundled_skills: !!$('#bundledSkills')?.checked,
     cli_linked: $('#cliLinked').checked,
     scheduled_tasks: !$('#schedTasks').checked,
     surfaces: {

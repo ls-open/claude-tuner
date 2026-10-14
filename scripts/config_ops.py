@@ -183,10 +183,11 @@ SETTINGS_TOP_KEYS = (
     "idleCompaction",              # 会话空闲时自动压缩长对话
     "precomputeCompactionEnabled", # 后台预生成压缩摘要（只在自动压缩开着时有意义）
     "showThinkingSummaries",       # 请服务端额外生成一份思考摘要
-    "disableBundledSkills",        # 整个移除客户端自带的随附技能
     "enableWorkflows",             # 动态工作流（Workflow 工具）总开关
     "alwaysThinkingEnabled",       # 支持思考的模型是否自动思考
 )
+# 注：`disableBundledSkills` **不在这里** —— 它是 3P 配置的键（客户端设置页也写那儿），
+# 归 `build_3p_bundle` 的 `bundled_skills` 管。曾经把它放这儿，于是那一半从未生效过。
 
 
 def cli_env(base_url, api_key, model, one_m=True):
@@ -375,12 +376,15 @@ def new_config_id():
 
 
 def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m=None,
-                    scheduled_tasks=None):
+                    scheduled_tasks=None, bundled_skills=None):
     """在现有 3P 配置上合并出新的配置，返回 (新配置, 变动的键)。
 
     **绝不删未知键** —— 客户端自己会往这份文件里写别的字段，删掉会触发它的校验告警。
     Base URL 写本地网关（不是真实上游）：manager 的 sync() 只在读到非本地地址时
     才去学习 upstream_url 并改写，我们两条都自己写好，那个两段式接管就不发生。
+
+    `bundled_skills=True` 表示「剥离随附技能」（写 `disableBundledSkills: true`）。
+    它**只在显式传值时写**，不设默认 —— 不写 = 客户端默认的「保留」。
     """
     new = copy.deepcopy(existing) if isinstance(existing, dict) else {}
     changed = []
@@ -401,6 +405,8 @@ def build_3p_bundle(existing, api_key=None, gateway_url=None, models=None, one_m
             continue
         if k not in new:          # 用户已经设置过的，不覆盖
             put(k, v)
+    if bundled_skills is not None:
+        put("disableBundledSkills", bool(bundled_skills))
     if gateway_url:
         put("inferenceGatewayBaseUrl", gateway_url)
     if models:

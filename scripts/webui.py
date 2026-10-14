@@ -236,8 +236,10 @@ def read_config_payload(handler):
             # 随附技能与动态工作流：**两个键合看成一个开关**。disableBundledSkills 去掉的是
             # 那份随附技能清单（含 workflow-authoring），enableWorkflows 去掉的是 Workflow
             # 工具本身 —— 工具说明指着那条技能，只关一个就是半截引用，故同进同退。
-            # 两者都写在 ~/.claude/settings.json（走 SETTINGS_TOP_KEYS 白名单）。
-            "bundled_skills": (claude_settings.get("disableBundledSkills") is True
+            # **两个键住的地方不同**：disableBundledSkills 是 3P 配置的键（客户端的设置页
+            # 也写在那儿），enableWorkflows 是 Claude Code 那层的设置。以前两个都读
+            # ~/.claude/settings.json，于是客户端自己关掉的那个在页面上永远显示「没关」。
+            "bundled_skills": (three_p.get("disableBundledSkills") is True
                                and claude_settings.get("enableWorkflows") is False),
             # 三个界面开关：**缺省即开**（客户端不认识 false 以外的值），
             # 所以判据是「显式为 false 才算关掉」。
@@ -305,9 +307,9 @@ def apply_patch(handler, patch):
             three_p_changed = True
             notes.append("模型映射已更新")
             effects["restart_client"] = True
-    if three_p_changed and three_p_path():
-        atomic_write_json(three_p_path(), three_p)
-
+    # 3P 配置的落盘**放在最后** —— 下面 surfaces / scheduled_tasks / bundled_skills
+    # 三块都还要往 three_p 里写。这里原来就写，于是那三块改的全是内存里的副本，
+    # 一个字节都没落盘（面板上勾了、看着生效了，重启客户端又回去了）。
     # 网关侧规则
     if isinstance(patch.get("rules"), dict):
         bridge, changed = config_ops.apply_rules_patch(bridge, patch["rules"])
@@ -349,6 +351,14 @@ def apply_patch(handler, patch):
         notes.append("定时任务：%s" % ("允许" if sched else "不允许"))
         effects["restart_client"] = True
 
+    # 随附技能（那半在 3P 配置里；另一半 enableWorkflows 走上面的 settings 白名单）
+    bundle = patch.get("bundled_skills")
+    if isinstance(bundle, bool) and (three_p.get("disableBundledSkills") is True) != bundle:
+        three_p["disableBundledSkills"] = bundle
+        three_p_changed = True
+        notes.append("随附技能：%s" % ("剥离" if bundle else "保留"))
+        effects["restart_client"] = True
+
     prefs = patch.get("client_prefs")
     if isinstance(prefs, dict) and prefs:
         if client_running():
@@ -384,6 +394,9 @@ def apply_patch(handler, patch):
             atomic_write_json(paths["claude_settings"], merged)
             notes += ["客户端设置 %s" % k for k in changed]
             effects["restart_session"] = True
+
+    if three_p_changed and three_p_path():
+        atomic_write_json(three_p_path(), three_p)
 
     problems = config_ops.validate_3p_config(three_p) if three_p else ["尚无 3P 配置"]
     return {"ok": True, "data": {"notes": notes, "effects": effects, "problems": problems}}
