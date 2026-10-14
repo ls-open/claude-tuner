@@ -130,6 +130,10 @@ claude -p "只回复两个字：成功"
 
 ## 安装
 
+> **先做一件事：打开一次 Claude，进到界面，然后退出。**
+> 刚从官网下载、还没启动过的客户端，它的配置目录还不存在。客户端第一次启动会自己建一遍，
+> 先让它建完，我们再往上改 —— 顺序反了分不清谁盖谁。（安装脚本检测到这种情况也会提醒你。）
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.sh | bash
 ```
