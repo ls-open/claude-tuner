@@ -1171,7 +1171,7 @@ function renderVersions(d){
       <code>${esc(v.client || '未知')}</code></div>`;
   const tag = $('#verTag');
   const newer = !!v.client_newer_than_tested;
-  tag.textContent = newer ? '客户端版本较新，建议测试' : '契约一致验证通过';
+  tag.textContent = newer ? '客户端版本较新，建议测试' : '已验证兼容';
   tag.style.display = '';
   if (!v.source_configured) {
     $('#updateOut').textContent = '未配置在线仓库源信息，无法直接检查更新。';

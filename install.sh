@@ -78,6 +78,15 @@ ok "python3 $("$PY" -V 2>&1 | cut -d' ' -f2)"
 
 if [ -d "/Applications/Claude.app" ]; then
   ok "找到 Claude 桌面端"
+  # 刚下载、从没启动过时：应用支持目录还不存在。我们**能**把这棵树建出来（实测过），
+  # 但客户端首次启动也会自己建一遍 —— 谁先谁后、它建的时候是合并还是覆盖，我们没实测过。
+  # 与其赌，不如让用户先开一次：反正下载来的 app 有 quarantine，本来也得手动开一次。
+  if [ ! -d "$HOME/Library/Application Support/Claude" ] \
+     && [ ! -d "$HOME/Library/Application Support/Claude-3p" ]; then
+    warn "看起来 Claude 还没启动过（应用支持目录还不存在）。"
+    warn "建议先打开一次 Claude、进到界面再退出，然后重跑本脚本 ——"
+    warn "客户端首次启动会自己建一遍配置，让它先建完，我们再往上改，顺序反了就说不清谁盖谁。"
+  fi
 else
   warn "没找到 /Applications/Claude.app —— 装完只有命令行 Claude Code 能用，桌面端那部分等你装上再说"
 fi
