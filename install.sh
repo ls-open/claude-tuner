@@ -230,6 +230,7 @@ step "⑤ 拉起本地网关"
 # 那也会被当成「已就绪」。核对监听者的身份，跟 tools/sync.py 的判据一致。
 # 还要等 —— manager 拉起进程就返回了，那会儿它还没绑定端口。
 GATEWAY_OK=0
+GATEWAY_CAUSE=""
 DEADLINE=$((SECONDS + 12))
 while [ "$SECONDS" -lt "$DEADLINE" ]; do
   PORT="$("$PY" -c "import json;print(json.load(open('$BRIDGE_HOME/config.json')).get('gateway_port',8789))" 2>/dev/null || echo 8789)"
@@ -249,15 +250,18 @@ if [ "$GATEWAY_OK" = 0 ]; then
   if [ -n "$LISTEN_CMD" ]; then
     case "$LISTEN_CMD" in
       *gateway.py*)
+        GATEWAY_CAUSE="foreign_gateway"
         warn "端口 $PORT 上是**另一份** gateway.py，本次安装不会生效："
         warn "    $LISTEN_CMD"
         warn "先停掉它：kill ${LISTEN_PID:-?}" ;;
       *)
+        GATEWAY_CAUSE="port_taken"
         warn "端口 $PORT 被别的程序占着，网关绑不上它："
         warn "    $LISTEN_CMD"
         warn "停掉它，或改个端口：编辑 $BRIDGE_HOME/config.json 的 gateway_port 后重跑本脚本" ;;
     esac
   else
+    GATEWAY_CAUSE="not_up"
     warn "网关没起来（等了 12 秒）。在客户端里发一条消息会自动拉起，也可以手动跑："
     warn "    $PY $DEST/scripts/manager.py restart"
     warn "起不来时看 $BRIDGE_HOME/logs/gateway.log"
@@ -294,7 +298,15 @@ fi
 log ""
 log "──────────────────────────────────────────────"
 if [ "$GATEWAY_OK" = 0 ]; then
-  warn "网关没就位（见上）：客户端连上去会报连不上，先把它解决掉再重启客户端。"
+  # 三种原因的后果**不一样**，别用一句话盖过去：
+  # 端口上跑着另一份 gateway.py 时，客户端连得上是连得上 —— 只是用的是旧那份代码。
+  # 把它说成「会报连不上」会让人去排查一个不存在的故障（重装时最容易撞上）。
+  case "$GATEWAY_CAUSE" in
+    foreign_gateway)
+      warn "网关连得上是连得上，但端口上跑的是**旧那份**代码 —— 重启一次网关才会用上这次装的。" ;;
+    *)
+      warn "网关没就位（见上）：客户端连上去会报连不上，先把它解决掉再重启客户端。" ;;
+  esac
   log ""
 fi
 log "最后一步：**完全退出 Claude 再重新打开**"
