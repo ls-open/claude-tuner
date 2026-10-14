@@ -487,9 +487,9 @@
         <div class="preset-card" data-mode="pure_code">
           <div class="preset-card-top">
             <span class="preset-name">⚡️ 纯代码极限档</span>
-            <span class="preset-badge hot">极致省钱</span>
+            <span class="preset-badge hot">剥得最多</span>
           </div>
-          <div class="preset-desc">精简外围工具与预置技能，专注代码编写与终端执行。首字极速响应，极致省 Token。</div>
+          <div class="preset-desc">精简外围工具与预置技能，专注代码编写与终端执行。四个档位里剥得最多的一档。</div>
           <div class="preset-detail" data-detail="pure_code"></div>
         </div>
         <div class="preset-card" data-mode="vanilla">
@@ -583,7 +583,7 @@
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">原子联动</span></div>
       <div class="body">
-        <p class="lead">客户端默认注入的大量外围工具会随每轮请求重复发送。在此按需移除用不到的工具，<b>配套系统提示词段落将同步自动清理</b>，节省上下文并释放模型注意力，绝无幽灵说明或孤立工具残留。</p>
+        <p class="lead">客户端默认注入的大量外围工具会随每轮请求重复发送。在此按需移除用不到的工具，<b>配套系统提示词段落将同步自动清理</b>，节省上下文并释放模型注意力。配对靠段首特征认段，客户端改了措辞就会漏配 —— 那种情况由哨兵报出来，不会悄悄留着。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -703,18 +703,19 @@ const ADVANCED = [
 ];
 
 const RULE_GROUPS = [
-  ['请求通道与协议干预（非提示词）', '网关在传输与消息结构层面的优化（不上云、防报错、保思维链），不改动提示词正文', [
+  ['请求通道与协议干预', '网关在传输与消息结构层面的优化，不改动提示词正文：探针本地上云前秒回、剥掉计费头、补回丢失的思维链、规范化混合消息', [
     ['probe_interception', '连通性探针本地秒回', '客户端预检心跳由本地网关直接秒回，不上云、不消耗 Token'],
     ['strip_billing_header', '过滤客户端计费版本头', '消除客户端附带版本号的计费标识扰动'],
     ['restore_thinking', '自动回填思维链（Thinking）', '客户端历史消息中丢失思考块时，网关自动补齐保全缓存'],
     ['split_mixed_user_messages', '规范化图文工具混合消息', '规范化混杂的文本与工具返回，防止部分上游模型报错'],
   ]],
-  ['系统提示词防抖（核心保缓存）', '消除环境变动对请求前缀字节的扰动，最大化命中上游低价 Prompt 缓存', [
+  ['系统提示词防抖', '消除环境变动对请求前缀字节的扰动，最大化命中上游低价 Prompt 缓存 —— 这一组是省钱的正面主力', [
     ['strip_date', '抹平动态时间戳', '消除跨天或时间变化对前缀缓存的破坏'],
     ['strip_git_status', '固定 Git 状态快照', '消除代码变动对前缀缓存的扰动'],
     ['strip_model_declarations', '移除官方模型自称声明', '清除客户端自动注入的“你由 Claude 模型驱动”等声明'],
+    ['strip_total_tokens_tag', '移除剩余额度计数行', '客户端每轮注入的 <total_tokens> 计数（数字每轮都变），留在前缀里必击穿缓存'],
   ]],
-  ['纯指令修剪（去说教、防误拒答）', '纯文本指令剔除，消除客户端硬编码的免责防御与道德说教，降低本地脚本误拒答', [
+  ['纯指令修剪', '整段删掉客户端硬编码的免责防御与道德说教，消掉本地脚本上的误拒答。只认整段、按空行边界，不做句中手术', [
     ['strip_security_guidelines', '移除安全与攻防限制指令', '剥离破坏性技术与渗透测试授权说教，消除本地运维脚本误拒答'],
     ['strip_pronoun_guidelines', '移除人称代词道德指引', '剥离强制使用 they/them 等性别中立约束说教，让模型专注于纯粹代码工程'],
     ['strip_caution_guidelines', '移除高危操作二次确认指引', '剥离向外发包与覆盖前反复警告的防御性说教，减少模型在正常编码操作时的过度犹豫'],
@@ -724,14 +725,14 @@ const RULE_GROUPS = [
 const RULES = RULE_GROUPS.flatMap(g => g[2]);
 
 const PRUNING_GROUPS = [
-  ['桌面界面遥控类（纯界面工具）', '控制桌面端窗口、侧栏、分屏与呈现等本地 UI 辅助工具', [
+  ['桌面界面遥控类', '控制桌面端窗口、侧栏、分屏与呈现的本地 UI 工具 —— 剥掉不影响模型写代码，只影响它替你点界面', [
     ['strip_sidebar_tools', '移除侧栏管理工具', '在侧栏建立分区、归档、置顶/取消置顶等界面操作工具'],
-    ['strip_window_tools', '移除窗口与分屏遥控', '分屏并列展示会话工具'],
-    ['strip_view_tools', '移除代码修改推送与预览面板', '允许关闭 AI 自动向右侧弹出 diff、文件或终端面板进行预览'],
+    ['strip_window_tools', '移除窗口与分屏遥控', '分屏并列展示会话、读窗口布局、折叠侧栏、关闭分屏'],
+    ['strip_view_tools', '移除代码修改推送与预览面板', '把 diff / 文件 / 终端 / PR 面板推给你看（show_pane）。注意客户端提示词**要求**模型用它，关掉等于让它被要求做一件做不到的事 —— 契约里因此判为默认保留'],
     ['strip_settings_tools', '移除界面偏好控制', '读取或修改 Code 标签页界面偏好的工具'],
     ['strip_directory_tools', '移除会话目录切换', '将会话切换至本机其他项目目录的工具'],
   ]],
-  ['会话与系统交互类（工具联动）', '操作历史会话、宿主与系统环境的辅助工具', [
+  ['会话类', '历史会话的查询、切换与遥控 —— 按性质分成七项，各自独立', [
     ['strip_session_tools', '移除会话管理工具', '会话的界面遥控：标记章节、读控件上下文、改标题与输出样式等'],
     ['strip_session_permission_tools', '移除会话权限模式切换', '改本会话权限模式（会动到你的安全设置，单独一项）'],
     ['strip_session_model_tools', '移除会话模型与档位切换', '为本会话换模型、调思考档位与 fast 模式（与花费直接相关）'],
@@ -739,18 +740,20 @@ const PRUNING_GROUPS = [
     ['strip_session_delete_tools', '移除删除与归档会话', '删除 / 清空 / 归档 / 取消归档会话'],
     ['strip_session_remote_tools', '移除会话间消息与远程控制', '向其他会话发消息、把本会话置于远程控制'],
     ['strip_session_task_tools', '移除后台任务起停', '在本会话里起 / 停后台任务（spawn / dismiss / stop）'],
-    ['strip_host_tools', '移除编辑器与系统联动', '唤起外部编辑器打开文件、防休眠等操作'],
-    ['strip_terminal_tools', '移除右侧终端控制工具', '向客户端内置终端标签页写入并执行命令'],
   ]],
-  ['联网与扩展集成类（工具+提示词原子联动）', '外部联网检索与三方扩展工具', [
-    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '搜索公开网页内容'],
-    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取并提炼指定网页正文内容'],
-    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub PR 与查看 CI 运行状态'],
+  ['宿主与终端类', '操作本机编辑器、终端、工作树与存储的辅助工具', [
+    ['strip_host_tools', '移除编辑器与系统联动', '唤起外部编辑器打开文件、显示文件位置、防休眠、清理工作树、查看存储占用'],
+    ['strip_terminal_tools', '移除右侧终端控制工具', '在你侧边的终端标签页里执行命令、读屏、停任务、开关标签页 —— 用的是你的登录 shell 与凭据，不是只读面板'],
+  ]],
+  ['联网与扩展集成类', '外部联网检索与三方扩展工具 —— 这几项剥工具时会连带删掉它的说明段落（工具没了、说明还在会留下孤句）', [
+    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '搜索公开网页内容（3P 接入下这个工具本来就不可用，剥的是它占的定义）'],
+    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取并提炼指定网页正文内容（3P 下抓取无专门处理、常拿不下来；要稳就另配抓取工具）'],
+    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub PR 与查看 CI 运行状态（连带删掉它那段操作指引）'],
     ['strip_notebook_tools', '移除 Notebook 编辑工具', '编辑 Jupyter Notebook (.ipynb) 单元格的专用工具'],
     ['strip_design_sync_tools', '移除 DesignSync 设计稿同步', '同步 Figma/UI 设计稿的扩展工具'],
-    ['strip_plugin_mgmt_tools', '移除插件推荐工具', '向用户推荐或安装扩展插件的辅助工具'],
+    ['strip_plugin_mgmt_tools', '移除插件市场与技能建议', '在扩展市场里装插件、以及向你推荐技能的辅助工具'],
   ]],
-  ['智能体协作能力类（核心能力，建议保留）', '多 Agent 协同、任务隔离与计划模式（删掉即失去对应能力，建议保留）', [
+  ['智能体协作能力类', '多 Agent 协同、任务隔离与计划模式 —— 删掉即失去对应能力，这几项默认都不剥', [
     ['strip_cross_session_tools', '移除跨会话消息工具', '向其他子代理发送跨会话消息的协作工具'],
     ['strip_worktree_tools', '移除 Git 工作树隔离工具', '将任务限制在独立 Git 工作树中运行的隔离工具'],
     ['strip_plan_tools', '移除计划确认模式（Plan）', '生成执行计划并等待用户确认后再执行的工具'],
@@ -776,7 +779,7 @@ const PRESETS = {
     rules: {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true,
+      probe_interception: true, strip_total_tokens_tag: true,
       strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
@@ -798,7 +801,7 @@ const PRESETS = {
     rules: {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true,
+      probe_interception: true, strip_total_tokens_tag: true,
       strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true,
     },
     tool_pruning: {
@@ -820,7 +823,7 @@ const PRESETS = {
     rules: {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true,
+      probe_interception: true, strip_total_tokens_tag: true,
       strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
@@ -1219,7 +1222,7 @@ async function renderStats(){
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
     `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>已统计 ${num(d.requests)} 次真实请求</small></div>`,
-    `<div class="k ok"><b>${num(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按极限低价计费（省钱主力）</small></div>`,
+    `<div class="k ok"><b>${num(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存价计费（省钱主力）</small></div>`,
     `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
     `<div class="k"><b>${num(t.output)}</b><small>生成的输出 Token</small></div>`,
   ];
