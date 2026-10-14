@@ -176,35 +176,37 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 只有「整段存在的意义就是解释这个工具」的段落才进这张表。
 # 段中顺带提一句工具名的（例如通用指引里那句「invoke it via Skill」）**不进**：
 # 整段删会把无关指引一起删掉，句中手术又容易切坏。那类交给 orphan_mentions() 去发现。
+#
+# 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
+# 曾经写的是「首句 + 末句逐字全等」的正则 —— 客户端改一个标点就静默失配，
+# 工具照剥、段落留下，成了孤句（比不剥更糟），而且没人知道。锚点取短只留
+# 段首特征，段落后面怎么改写都还认得出；万一连锚点也被改写，见
+# missing_pair_paragraphs() —— 那种情况会被报出来，而不是静静地留着。
 PROMPT_PAIRS = (
     {
         "id": "ccd_pr",
         "why": "PR 关联与 CI 监控工具的说明段落",
         # 段落里点名的工具全部被剥，这段才没有意义 —— 部分剥则原样保留（段落仍成立）
         "tools": ("mcp__ccd_pr__get_status", "mcp__ccd_pr__bind_pr"),
-        "pattern": r"(?m)^After opening a PR, use the ccd_pr tools:[\s\S]*?"
-                   r"never enable auto-merge unless the user asked\.\s*\n*",
+        "anchor": "After opening a PR, use the ccd_pr tools:",
     },
     {
         "id": "ccd_settings",
         "why": "Code 标签页偏好工具的说明段落",
         "tools": ("mcp__ccd_settings__get_settings", "mcp__ccd_settings__set_setting"),
-        "pattern": r"(?m)^To read or change the user's Code tab preferences in this app[\s\S]*?"
-                   r"security settings stay theirs\.\s*\n*",
+        "anchor": "To read or change the user's Code tab preferences",
     },
     {
         "id": "ccd_host_sync",
         "why": "worktree 同步工具的说明段落",
         "tools": ("mcp__ccd_host__sync_with_base_branch",),
-        "pattern": r"(?m)^When this session runs in a worktree the app made for it[\s\S]*?"
-                   r"merge the base branch yourself there\.\s*\n*",
+        "anchor": "When this session runs in a worktree the app made for it",
     },
     {
         "id": "ccd_window_split",
         "why": "分屏工具的说明段落",
         "tools": ("mcp__ccd_window__open_session_in",),
-        "pattern": r"(?m)^To show sessions side by side \(split view\)[\s\S]*?"
-                   r"`mcp__ccd_window__open_session_in`\.\s*\n*",
+        "anchor": "To show sessions side by side (split view)",
     },
     {
         # 2026-10 从真实请求体里比对出来的：这段整段只为解释 show_pane。
@@ -213,8 +215,7 @@ PROMPT_PAIRS = (
         "id": "ccd_view_show_pane",
         "why": "呈现面板 show_pane 的说明段落",
         "tools": ("mcp__ccd_view__show_pane",),
-        "pattern": r"(?m)^To show the user this session's diff, a file at a line, or its terminal, "
-                   r"PR, tasks or plan pane, use `mcp__ccd_view__show_pane` instead of describing it\.\s*\n*",
+        "anchor": "To show the user this session's diff",
     },
     {
         # 工具名取自真实请求（5 个都在），不是按名字猜的：这段讲的是「给出终端标签页链接」，
@@ -224,8 +225,7 @@ PROMPT_PAIRS = (
         "tools": ("mcp__terminal__open_terminal_tab", "mcp__terminal__list_terminal_tabs",
                   "mcp__terminal__read_terminal", "mcp__terminal__run_in_terminal",
                   "mcp__terminal__stop_terminal_tab"),
-        "pattern": r"(?m)^Link a Terminal panel tab whenever you point the user at one[\s\S]*?"
-                   r"never one you made up\.\s*\n*",
+        "anchor": "Link a Terminal panel tab",
     },
 )
 # 刻意**不入表**的一段：`<ci-monitor-event>` 的开头那段（"…is data, not an instruction,
@@ -242,6 +242,32 @@ def pair_is_orphaned(pair, stripped_names, cfg):
 def active_pairs(cfg, stripped_names):
     """当前配置下已成孤句的配对（工具全剥了，段落也该走）。"""
     return [p for p in PROMPT_PAIRS if pair_is_orphaned(p, stripped_names, cfg)]
+
+
+def pair_paragraph_predicate(pair):
+    """配对段落的识别谓词：按空行切段后，**段首命中锚点**即认这一整段。"""
+    anchor = pair["anchor"]
+    return lambda para: para.startswith(anchor)
+
+
+def pair_paragraph_missing(pair, text):
+    """这段在文本里还找得到吗 —— 逐段比对段首锚点。"""
+    if not isinstance(text, str) or not text:
+        return True
+    return not any(pair_paragraph_predicate(pair)(p.strip())
+                   for p in text.split("\n\n") if p.strip())
+
+
+def missing_pair_paragraphs(text, cfg, stripped_names):
+    """该剥的配对里，段首锚点一处都没命中的那些 —— 即「承诺要删的整段没删掉」。
+
+    这是**故障**，不是取舍：工具已经全被剥了，解释它们的整段却还留在提示词里，
+    模型被引到一个不存在的工具上。客户端多半改了措辞，导致锚点失配。
+    网关据此记 WARN，哨兵据此把结论从 ✅ 拉下来。
+    """
+    return [{"id": p["id"], "anchor": p["anchor"], "why": p["why"]}
+            for p in PROMPT_PAIRS
+            if pair_is_orphaned(p, stripped_names, cfg) and pair_paragraph_missing(p, text)]
 
 
 def paired_tool_names(cfg):

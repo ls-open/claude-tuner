@@ -8,7 +8,8 @@
                     （本命令不预设是死重还是生产力工具，判定权在你）
     · ② system 面 —— 清洗后仍残留的易变痕迹（日期 / 路径 / 版本号 / 模型宣称 / 计费头 / token 计数…）
     · ③ messages 面 —— user / system 消息纯文本块里的客户端注入标记（注入实际落在这一面）
-    · ④ 提示词 / 工具搭配 —— 被剥掉的工具是否仍被正文引用（只提示、不计入结论）
+    · ④ 提示词 / 工具搭配 —— 该删的整段有没有删到（计入结论）；被剥掉的工具是否仍被
+      正文引用（只提示、不计入结论）
 
 判定只需**单份抓包**，不依赖任何人工时机。
 
@@ -33,6 +34,7 @@ sys.path.insert(0, SCRIPT_DIR)
 sys.dont_write_bytecode = True  # 不在插件运行目录留 __pycache__（代码以仓库为准）
 
 import gateway  # noqa: E402  （复用与线上完全同一套清洗规则，杜绝哨兵与生产行为不一致）
+import tool_rules  # noqa: E402  （配对表与它的判据都在这儿，与网关读的是同一份）
 
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 CAPTURE_DIR = os.path.join(BASE_DIR, "captures")
@@ -320,13 +322,15 @@ def _has_identifier(text, token):
 
 
 def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
-    """提示词 / 工具搭配：被剥掉的工具，正文里是否还在引用它（"说明在、工具没了"）。
+    """提示词 / 工具搭配：两个方向都要看。
+
+    · **该删的整段没删掉**（`missing_pair_paragraphs`）：工具全被剥了，解释它们的整段
+      却还在 —— 客户端多半改了措辞导致锚点失配。**这是故障，计入结论**。
+    · **工具剥了、正文里还提一句**：段落边界不清楚的已知取舍，**只提示、不计入结论**。
 
     只扫**顶层 system 面**，不扫 messages —— messages 是对话正文，讨论到某个工具名是常态。
-    只看**最终要发出去的**那份（clean），即上游实际收到的提示词。
-
-    只提示、**不计入 findings**：这是「工具剥、说明留」的已知取舍，不是故障 —— 正文只在
-    **整段边界清楚**时才顺手剥掉，句子中段耦合的一律不动。
+    孤句那一侧只看**最终要发出去的**那份（clean）；失配那一侧要看客户端发来的原文（raw），
+    因为清洗之后该段可能已经被删掉了。
     """
     cfg = tp_cfg if tp_cfg is not None else gateway.load_tool_pruning_config()
     stripped_names = gateway.get_stripped_tool_names(cfg)
@@ -340,19 +344,27 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         found = [t for t in ({name, name.split("__")[-1]}) if len(t) >= 6 and _has_identifier(text, t)]
         if found:
             hits.append((name, sorted(found)))
+    missing = tool_rules.missing_pair_paragraphs(
+        "\n".join(extract_system_texts(raw)), cfg, stripped_names)
     print()
     print("─" * 78)
     print("④ 提示词 / 工具搭配")
     print("─" * 78)
-    if not hits:
-        print("  ✅ 被剥掉的 %d 个工具，正文里一个都没被引用" % len(gone))
-        return hits
-    print("  ℹ️ 以下工具已被剥掉，但正文仍在引用：")
-    for name, tokens in hits:
-        print("       · %s   （正文里写作 %s）" % (name, "、".join("`%s`" % t for t in tokens)))
-    print("    整段边界清楚的可以顺手剥掉整段；夹在句子中段的按约定不动，保留原样。")
-    print("    不计入下方结论 —— 这是已知取舍，不是故障。")
-    return hits
+    if missing:
+        print("  ⚠️ 这些配对的工具已全被剥离，但它们的说明段落一处都没找到 —— 客户端可能改了措辞：")
+        for m in missing:
+            print("       · %-20s 锚点 %r" % (m["id"], m["anchor"]))
+        print("     → 工具没了、说明还在，模型会被引到一个不存在的工具上。改 tool_rules.PROMPT_PAIRS")
+        print("       里这条的 anchor 即可（只取段首一小截，段落后面怎么改都还认得出）。")
+    if not hits and not missing:
+        print("  ✅ 被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone))
+    if hits:
+        print("  ℹ️ 以下工具已被剥掉，但正文仍在引用：")
+        for name, tokens in hits:
+            print("       · %s   （正文里写作 %s）" % (name, "、".join("`%s`" % t for t in tokens)))
+        print("    整段边界清楚的可以顺手剥掉整段；夹在句子中段的按约定不动，保留原样。")
+        print("    不计入下方结论 —— 这是已知取舍，不是故障。")
+    return hits, len(missing)
 
 
 def cmd_audit(model, session=None):
@@ -378,7 +390,8 @@ def cmd_audit(model, session=None):
         len(extract_system_texts(raw)), sum(len(x) for x in extract_system_texts(raw))))
 
     findings = _audit_tools(raw, clean) + _audit_system(clean) + _audit_message_injections(clean)
-    _audit_prompt_tool_pairing(raw, clean)
+    _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean)
+    findings += pair_findings
 
     print()
     print("─" * 78)
@@ -387,9 +400,9 @@ def cmd_audit(model, session=None):
     if findings == 0:
         print("  ✅ 当前注入面已被现有规则完全吸收，本次升级无需动作。")
     else:
-        print("  ⚠️ 发现 %d 处待判定的注入面 —— 按上面的判定说明逐个确认（补进剥离名单，"
-              "或确认保留并登记理由）。" % findings)
-        print("     补完后重跑本命令确认转为 ✅。")
+        print("  ⚠️ 发现 %d 处待处理的注入面 —— 按上面各条的说明处理：工具没开关的补进类别表"
+              "（默认开=剥、默认关=留），配对段落失配的改 PROMPT_PAIRS 的锚点。" % findings)
+        print("     处理完重跑本命令确认转为 ✅。")
     print()
     print("  提示：确认无误后可关闭抓包以恢复零 I/O 开销：")
     print("        ~/.claude-tuner/config.json → \"capture_raw_inbound\": false")

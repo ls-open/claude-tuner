@@ -63,6 +63,7 @@ EVENT_LEVELS = {
     "stabilize_error": "ERROR",
     "canonicalized": "DEBUG",
     "orphan_tool_mention": "WARN",
+    "pair_text_not_found": "WARN",
     "client_disconnected": "WARN",
     "upstream_ok": "INFO",
     "upstream_truncated": "ERROR",
@@ -175,6 +176,7 @@ from tool_rules import (  # noqa: E402
     get_stripped_tool_names,
     orphan_mentions,
     pair_is_orphaned,
+    pair_paragraph_predicate,
     should_strip_tool,
     strip_reason,
     tp_flag as _tp_flag,
@@ -188,6 +190,7 @@ _INVENTORY_MAX_PROFILES = 8
 # 上一次报出来的孤句集合。逐轮重复报同一件事只会把日志刷满，
 # 但**变化时一定报** —— 客户端新增交叉引用时它就会变，那正是我们要知道的那一刻。
 _orphan_memo = [None]
+_pair_miss_memo = [None]
 
 
 def _system_text(parsed):
@@ -240,6 +243,25 @@ def report_orphan_mentions(parsed, stripped_names):
                        "note": "这些工具已被剥离，但提示词里仍提到它们"})
     except Exception:
         pass
+
+
+def report_missing_pair_paragraphs(missed):
+    """该删的配对段落一处都没找到 —— 记进日志。
+
+    与 report_orphan_mentions 是两件事，别混：那边是「工具剥了、正文里还提一句」，
+    段落边界不清楚，属**已知取舍**；这边是「我们承诺过整段删掉，结果一处都没命中」，
+    属**故障** —— 工具已经没了，那段却还留着，模型被引到一个不存在的工具上。
+
+    最可能的成因：客户端改了那段的措辞，锚点失配。改一行 PROMPT_PAIRS 的 anchor 即可。
+    """
+    if not missed:
+        return
+    if missed == _pair_miss_memo[0]:
+        return   # 每个请求都跑，和上一轮一样就闭嘴，免得把日志刷满
+    _pair_miss_memo[0] = list(missed)
+    log_event({"event": "pair_text_not_found",
+               "pairs": missed[:20],
+               "note": "这些配对的工具已被全部剥离，但它们的说明段落没找到 —— 客户端可能改了措辞"})
 
 
 def cleanup_runtime():
@@ -424,7 +446,7 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None):
+def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, missed=None):
     """剥离「工具已被剥、说明段落却还留着」的孤句。
 
     配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if），
@@ -432,8 +454,11 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None):
     段落都会跟着走。此前只认两个类别开关，用户自定义剥掉 ccd_pr 就会留下孤句。
 
     **只认整段**：配对表里登记的都是「整段存在的意义就是解释这个工具」的段落，
-    锚定首句与尾句整段摘除。段中顺带提一句工具名的不在这里处理（整段删会连累无关
-    指引，句中手术又容易切坏），交给 prepare_request 里的 orphan_mentions 去发现并报警。
+    按空行切段、段首命中锚点即摘除整段。段中顺带提一句工具名的不在这里处理（整段删
+    会连累无关指引，句中手术又容易切坏），交给 orphan_mentions 去发现并报警。
+
+    `missed` 传入 list 时，把「该剥却一处都没命中」的配对 id 记进去 —— 那是客户端
+    改了措辞的信号，调用方据此报警（见 report_missing_pair_paragraphs）。
     """
     if not isinstance(text, str):
         return text, False
@@ -444,18 +469,25 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None):
 
     orig = text
     for pair in PROMPT_PAIRS:
-        if pair_is_orphaned(pair, names, cfg):
-            text = re.sub(pair["pattern"], "", text)
+        if not pair_is_orphaned(pair, names, cfg):
+            continue
+        text, hit = _strip_paragraphs_by_predicate(
+            text, pair_paragraph_predicate(pair), trim=False)
+        if not hit and missed is not None:
+            missed.append(pair["id"])
     return text, (text != orig)
 
 
-def _strip_paragraphs_by_predicate(text, predicate):
+def _strip_paragraphs_by_predicate(text, predicate, trim=True):
     """按自然段落(\\n\\n)精准拆解与识别，若命中谓词则安全剔除整段并压实空白。
 
     核心防御哲学：
     1. 绝不使用跨越全局的贪婪正则，杜绝吞噬临近段落；
     2. 必须同时命中段首特征与段内核心关键字；
     3. 特征不全则宁可不剥，绝不误伤任何正常文本。
+
+    trim=False 保留原文首尾空白。配对段落删除走这条：那段常出现在 system 正中间，
+    整体 strip 会顺手动到头尾，没必要 —— 只摘掉该摘的那一段。
     """
     if not isinstance(text, str) or not text:
         return text, False
@@ -470,8 +502,8 @@ def _strip_paragraphs_by_predicate(text, predicate):
             new_paras.append(p)
     if not changed:
         return text, False
-    result = "\n\n".join(new_paras).strip()
-    return result, True
+    result = "\n\n".join(new_paras)
+    return (result.strip() if trim else result), True
 
 
 def strip_security_guidelines_text(text):
@@ -653,10 +685,13 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
     _ghost_names = get_stripped_tool_names(tp)
+    _pair_missed = []
     sys_n, _ = map_request_texts(
         parsed, lambda t, legacy: strip_ghost_tool_instructions(
-            t, tp_cfg=tp, stripped_names=_ghost_names), messages=False)
+            t, tp_cfg=tp, stripped_names=_ghost_names, missed=_pair_missed), messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
+    # 该删的整段一处都没找到 —— 客户端改了措辞的信号，别让它静默过去
+    report_missing_pair_paragraphs(_pair_missed)
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     if r.get("strip_security_guidelines", False):
