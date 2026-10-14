@@ -571,7 +571,7 @@
       <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">逐条可关</span></div>
       <div class="body">
-        <p class="lead">发往模型前的干预通道，逐条可关。下面按性质分三组，组标题旁的说明写的是那一组的共同点。</p>
+        <p class="lead">发往模型前的请求优化与提示词防抖通道，逐条可控，最大化命中 Prompt 缓存并消除误拒答。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
@@ -580,7 +580,7 @@
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">原子联动</span></div>
       <div class="body">
-        <p class="lead">客户端默认注入的外围工具会随每轮请求重复发送，在此按需移除用不到的那些。<b>剥工具会连带删掉它的说明段落</b> —— 漏配的由哨兵报出来，不会悄悄留着。</p>
+        <p class="lead">按需精简客户端注入的外围工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -701,62 +701,62 @@ const ADVANCED = [
 ];
 
 const RULE_GROUPS = [
-  ['请求通道与协议干预', '网关在传输与消息结构层面的优化，不改动提示词正文：探针本地上云前秒回、剥掉计费头、补回丢失的思维链、规范化混合消息', [
+  ['请求通道与协议干预', '传输与消息结构优化，探针秒回、补齐思维链、规范混合消息（不改动正文）', [
     ['probe_interception', '连通性探针本地秒回', '客户端预检心跳由本地网关直接秒回，不上云、不消耗 Token'],
-    ['strip_billing_header', '过滤客户端计费版本头', '消除客户端附带版本号的计费标识扰动'],
-    ['restore_thinking', '自动回填思维链（Thinking）', '客户端历史消息中丢失思考块时，网关自动补齐保全缓存'],
-    ['split_mixed_user_messages', '规范化图文工具混合消息', '规范化混杂的文本与工具返回，防止部分上游模型报错'],
+    ['strip_billing_header', '过滤客户端计费版本头', '消除客户端请求头附带版本号的计费标识扰动'],
+    ['restore_thinking', '自动回填思维链（Thinking）', '历史消息中丢失思考块时自动补齐，防止前缀缓存失效'],
+    ['split_mixed_user_messages', '规范化图文工具混合消息', '拆分混杂的文本与工具返回消息，防止上游模型报错 HTTP 400'],
   ]],
-  ['系统提示词防抖', '消除环境变动对请求前缀字节的扰动，最大化命中上游低价 Prompt 缓存 —— 这一组是省钱的正面主力', [
+  ['系统提示词防抖', '消除时间、Git 与额度等动态变动对前缀字节的扰动，最大化命中低价缓存', [
     ['strip_date', '抹平动态时间戳', '消除跨天或时间变化对前缀缓存的破坏'],
-    ['strip_git_status', '固定 Git 状态快照', '消除代码变动对前缀缓存的扰动'],
-    ['strip_model_declarations', '移除官方模型自称声明', '清除客户端自动注入的“你由 Claude 模型驱动”等声明'],
-    ['strip_total_tokens_tag', '移除剩余额度计数行', '客户端每轮注入的 <total_tokens> 计数（数字每轮都变），留在前缀里必击穿缓存'],
+    ['strip_git_status', '固定 Git 状态快照', '消除本地代码改动对前缀缓存的扰动'],
+    ['strip_model_declarations', '移除官方模型自称声明', '清除客户端注入的“你由 Claude 模型驱动”等官方声明'],
+    ['strip_total_tokens_tag', '移除虚假配额标签', '剥离客户端硬编码的 <total_tokens> 标签，防范变动击穿缓存'],
   ]],
-  ['纯指令修剪', '整段删掉客户端硬编码的免责防御与道德说教，消掉本地脚本上的误拒答。只认整段、按空行边界，不做句中手术', [
-    ['strip_security_guidelines', '移除安全与攻防限制指令', '剥离破坏性技术与渗透测试授权说教，消除本地运维脚本误拒答'],
-    ['strip_pronoun_guidelines', '移除人称代词道德指引', '剥离强制使用 they/them 等性别中立约束说教，让模型专注于纯粹代码工程'],
-    ['strip_caution_guidelines', '移除高危操作二次确认指引', '剥离向外发包与覆盖前反复警告的防御性说教，减少模型在正常编码操作时的过度犹豫'],
+  ['纯指令修剪', '剥离客户端硬编码的免责防御与道德说教指令，降低本地运维脚本误拒答', [
+    ['strip_security_guidelines', '移除安全攻防限制指令', '剥离网络攻防与破坏性技术免责说教，消除本地运维脚本误拒答'],
+    ['strip_pronoun_guidelines', '移除人称代词道德指引', '剥离强制使用 they/them 等性别中立说教，专注于纯粹代码工程'],
+    ['strip_caution_guidelines', '移除高危操作二次确认指引', '剥离向外发包与写文件前的过度防御说教，减少模型反复犹豫'],
   ]],
 ];
 
 const RULES = RULE_GROUPS.flatMap(g => g[2]);
 
 const PRUNING_GROUPS = [
-  ['桌面界面遥控类', '控制桌面端窗口、侧栏、分屏与呈现的本地 UI 工具 —— 剥掉不影响模型写代码，只影响它替你点界面', [
+  ['桌面界面遥控类', '控制桌面端窗口、侧栏与分屏等本地 UI 辅助工具（剥除不影响编码能力）', [
     ['strip_sidebar_tools', '移除侧栏管理工具', '在侧栏建立分区、归档、置顶/取消置顶等界面操作工具'],
-    ['strip_window_tools', '移除窗口与分屏遥控', '分屏并列展示会话、读窗口布局、折叠侧栏、关闭分屏'],
-    ['strip_view_tools', '移除代码修改推送与预览面板', '把 diff / 文件 / 终端 / PR 面板推给你看（show_pane）。注意客户端提示词**要求**模型用它，关掉等于让它被要求做一件做不到的事 —— 契约里因此判为默认保留'],
+    ['strip_window_tools', '移除窗口与分屏遥控', '分屏展示会话、读取窗口布局、折叠侧栏与关闭分屏'],
+    ['strip_view_tools', '移除修改推送与预览面板', '允许 AI 自动向右侧推送 diff、文件或终端面板供直接预览（show_pane）'],
     ['strip_settings_tools', '移除界面偏好控制', '读取或修改 Code 标签页界面偏好的工具'],
     ['strip_directory_tools', '移除会话目录切换', '将会话切换至本机其他项目目录的工具'],
   ]],
-  ['会话类', '历史会话的查询、切换与遥控 —— 按性质分成七项，各自独立', [
-    ['strip_session_tools', '移除会话管理工具', '会话的界面遥控：标记章节、读控件上下文、改标题与输出样式等'],
-    ['strip_session_permission_tools', '移除会话权限模式切换', '改本会话权限模式（会动到你的安全设置，单独一项）'],
-    ['strip_session_model_tools', '移除会话模型与档位切换', '为本会话换模型、调思考档位与 fast 模式（与花费直接相关）'],
-    ['strip_session_export_tools', '移除会话导出与检索', '导出会话记录、检索历史会话、列出全部会话'],
-    ['strip_session_delete_tools', '移除删除与归档会话', '删除 / 清空 / 归档 / 取消归档会话'],
-    ['strip_session_remote_tools', '移除会话间消息与远程控制', '向其他会话发消息、把本会话置于远程控制'],
-    ['strip_session_task_tools', '移除后台任务起停', '在本会话里起 / 停后台任务（spawn / dismiss / stop）'],
+  ['会话管理类', '历史会话的查询、切换、导出与归档等独立管理工具', [
+    ['strip_session_tools', '移除会话界面遥控', '标记章节、读取控件上下文、修改标题与输出样式等'],
+    ['strip_session_permission_tools', '移除会话权限模式切换', '允许 AI 自主切换当前会话的安全权限模式'],
+    ['strip_session_model_tools', '移除模型与档位切换', '允许 AI 调整当前会话的模型代号、思考档位与 fast 模式'],
+    ['strip_session_export_tools', '移除会话导出与检索', '导出会话历史记录或全文检索往期会话'],
+    ['strip_session_delete_tools', '移除删除与归档会话', '删除、清空或归档历史会话'],
+    ['strip_session_remote_tools', '移除跨会话远程控制', '向外部会话发送指令或接入远程协作控制'],
+    ['strip_session_task_tools', '移除后台任务起停', '在当前会话中生成或取消后台执行任务'],
   ]],
-  ['宿主与终端类', '操作本机编辑器、终端、工作树与存储的辅助工具', [
-    ['strip_host_tools', '移除编辑器与系统联动', '唤起外部编辑器打开文件、显示文件位置、防休眠、清理工作树、查看存储占用'],
-    ['strip_terminal_tools', '移除右侧终端控制工具', '在你侧边的终端标签页里执行命令、读屏、停任务、开关标签页 —— 用的是你的登录 shell 与凭据，不是只读面板'],
+  ['宿主与终端类', '操作本机编辑器、终端标签页与磁盘存储的辅助工具', [
+    ['strip_host_tools', '移除外部编辑器与系统联动', '唤起外部 IDE 打开文件、定位文件、系统防休眠与清理工作树'],
+    ['strip_terminal_tools', '移除侧边终端控制工具', '在桌面侧边终端中直接执行命令、读屏及切换标签页（使用本机登录 Shell）'],
   ]],
-  ['联网与扩展集成类', '外部联网检索与三方扩展工具 —— 这几项剥工具时会连带删掉它的说明段落（工具没了、说明还在会留下孤句）', [
-    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '搜索公开网页内容（3P 接入下这个工具本来就不可用，剥的是它占的定义）'],
-    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取并提炼指定网页正文内容（3P 下抓取无专门处理、常拿不下来；要稳就另配抓取工具）'],
-    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub PR 与查看 CI 运行状态（连带删掉它那段操作指引）'],
+  ['联网与扩展集成类', '外部联网搜索、网页抓取与三方扩展集成工具（剥除时配套提示词同步清理）', [
+    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '公开网页搜索工具（第三方模型通常不支持原生搜索，建议剥离以省 Token）'],
+    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '抓取并提炼指定网页正文工具（若不需要 AI 直接阅读网页可关闭）'],
+    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', '关联 GitHub Pull Request 与查看 CI 运行状态'],
     ['strip_notebook_tools', '移除 Notebook 编辑工具', '编辑 Jupyter Notebook (.ipynb) 单元格的专用工具'],
     ['strip_design_sync_tools', '移除 DesignSync 设计稿同步', '同步 Figma/UI 设计稿的扩展工具'],
-    ['strip_plugin_mgmt_tools', '移除插件市场与技能建议', '在扩展市场里装插件、以及向你推荐技能的辅助工具'],
+    ['strip_plugin_mgmt_tools', '移除插件市场与技能建议', '在扩展市场安装插件及推荐技能的辅助工具'],
   ]],
-  ['智能体协作能力类', '多 Agent 协同、任务隔离与计划模式 —— 删掉即失去对应能力，这几项默认都不剥', [
+  ['智能体协作能力类', '多 Agent 协同、任务隔离与计划确认模式（默认保留）', [
     ['strip_cross_session_tools', '移除跨会话消息工具', '向其他子代理发送跨会话消息的协作工具'],
     ['strip_worktree_tools', '移除 Git 工作树隔离工具', '将任务限制在独立 Git 工作树中运行的隔离工具'],
     ['strip_plan_tools', '移除计划确认模式（Plan）', '生成执行计划并等待用户确认后再执行的工具'],
-    ['strip_task_stop_tools', '移除终止后台任务', '按 task_id 结束跑飞的后台任务或子代理'],
-    ['strip_report_findings_tools', '移除审查结论上报', 'code-review 一类技能把结论交回界面的通道'],
+    ['strip_task_stop_tools', '移除终止后台任务能力', '通过 task_id 强制结束正在后台运行的子任务或智能体'],
+    ['strip_report_findings_tools', '移除审查结论上报面板', '向桌面端特定面板汇总提交代码审查（Code Review）结论'],
   ]],
 ];
 
