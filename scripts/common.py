@@ -164,6 +164,7 @@ DEFAULT_RULES = {
     "strip_security_guidelines": False,  # 剥离安全攻防与拒绝服务限制指令 (省 ~110 Tokens，防本地运维脚本误拒答)
     "strip_pronoun_guidelines": False,   # 剥离性别代词道德指引指令 (省 ~85 Tokens，专注于纯粹代码工程)
     "strip_caution_guidelines": False,   # 剥离高危操作与外发确认防御指引 (省 ~120 Tokens，减少模型过度犹豫)
+    "strip_total_tokens_tag": True,      # 剥离 <total_tokens> 计数行（数字每轮都在变，会击穿前缀缓存）
 }
 
 

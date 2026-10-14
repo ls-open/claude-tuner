@@ -558,6 +558,29 @@ def strip_caution_guidelines_text(text):
     return _strip_paragraphs_by_predicate(text, _is_caution_para)
 
 
+def strip_total_tokens_tag_text(text):
+    """剥离虚假硬编码的 <total_tokens> 配额标签。
+
+    特征：匹配 <total_tokens>...tokens left</total_tokens> 虚假配额标签。
+    防范静态虚假数字变动击穿 Prompt Cache。
+    """
+    if not isinstance(text, str) or "<total_tokens>" not in text:
+        return text, False
+    orig = text
+    # 1. 若 <total_tokens> 自成一个独立段落（前后空行），直接段落剔除，保持剩余段落间双换行
+    def _is_tokens_para(p):
+        clean = p.strip()
+        return bool(re.match(r"(?i)^<total_tokens>.*?tokens left</total_tokens>$", clean))
+
+    text, _ = _strip_paragraphs_by_predicate(text, _is_tokens_para)
+
+    # 2. 兜底整行剔除或行内嵌入形式
+    if "<total_tokens>" in text:
+        text = re.sub(r"(?mi)^\s*<total_tokens>.*?tokens left</total_tokens>\s*$\n?", "", text)
+        text = re.sub(r"(?i)<total_tokens>.*?tokens left</total_tokens>\s*", "", text)
+    return text, (text != orig)
+
+
 def prefix_hashes(parsed):
     """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。"""
     def digest(value):
@@ -656,10 +679,9 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             text = _strip_leading_reminder(text, "currentDate")
             # 彻底按整行抹除动态日期 (无论带不带 - 列表符，无论是否独立成行)
             text = re.sub(r"(?m)^\s*(?:-\s*)?Today's date is \d{4}-\d{2}-\d{2}\.\s*$\n?", "", text)
-            # 剥离散落的动态变动项 (Today's date is..., Token 计数, currentDate)
+            # 剥离散落的动态变动项 (Today's date is..., currentDate)
             text = re.sub(r"Today's date is \d{4}-\d{2}-\d{2}\.\s*", "", text)
             text = re.sub(r"currentDate:\s*[^\n]+\s*", "", text)
-            text = re.sub(r"<total_tokens>.*?tokens left</total_tokens>\s*", "", text)
             return text, (1 if text != orig else 0)
 
         sys_n, msg_n = map_request_texts(parsed, _clean_reminder_text)
@@ -711,6 +733,16 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             parsed, lambda t, legacy: strip_caution_guidelines_text(t), messages=False)
         if sys_n:
             changed.extend(["strip_caution_guidelines"] * sys_n)
+
+    if r.get("strip_total_tokens_tag", True):
+        # 仅在注入面生效（顶层 system 或 messages 中 role: system 的注入消息），严禁误伤正文真实讨论
+        def _strip_tokens_fn(text, legacy):
+            if not legacy:
+                return text, False
+            return strip_total_tokens_tag_text(text)
+        sys_n, msg_n = map_request_texts(parsed, _strip_tokens_fn, messages=True)
+        if sys_n + msg_n:
+            changed.extend(["strip_total_tokens_tag"] * (sys_n + msg_n))
 
     # 统一剔除清洗后变为空的残余消息与空 text 块 (例如被抽空的 reminder 块)
     msgs = parsed.get("messages")
