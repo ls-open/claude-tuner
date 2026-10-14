@@ -19,9 +19,11 @@
 用法：
     python3 claude-tuner/scripts/sentinel.py audit [--model <模型>] [--session <会话>]
     python3 claude-tuner/scripts/sentinel.py list
+    python3 claude-tuner/scripts/sentinel.py compare <旧抓包> <新抓包>   # 客户端这次动了什么
 """
 import argparse
 import copy
+import difflib
 import glob
 import json
 import os
@@ -40,6 +42,7 @@ BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tun
 CAPTURE_DIR = os.path.join(BASE_DIR, "captures")
 GLOBAL_NAME = "latest_raw_inbound.json"
 PER_MODEL_PREFIX = "latest_raw_inbound_"
+MAX_COMPARE_DIFF_LINES = 200   # compare 的逐行差异上限：够看清改了哪几句，又不至于刷屏
 
 # 清洗后不该再出现的易变痕迹：命中即说明存在未被规则吸收的注入面
 VOLATILE_PATTERNS = {
@@ -205,31 +208,35 @@ def _snippet(text, start, end, width=90):
 
 # ─────────────────────────── 报告 ───────────────────────────
 
-def unknown_mcp_tools(names, cfg):
-    """保留下来的 mcp__ 工具里，我们**连开关都没给过**的那些。
+def unknown_tools(names, cfg):
+    """既没有类别开关、也不在底线名单里的工具 —— 我们还没对它表过态的那些。
 
     「已知」的判据是 `tool_rules` 的类别表里有没有它 —— 不看开关的值：给它定开关
     本身就是判定结论（开着是死重、关着是判为保留）。所以判为保留的命名空间不会
     每次跟版都被当成新面孔重报一遍，也不需要另维护一份「允许清单」。
+
+    **含原生工具**：以前只看 `mcp__` 前缀，于是掉出开关范围的原生工具完全没人管
+    —— `TaskStop` / `ReportFindings` 就是这么漏掉的（「多代理编排」那个大开关拆开时，
+    它们谁也没接住）。
     """
     stripped = gateway.get_stripped_tool_names(cfg)
     return [n for n in names
-            if n.startswith("mcp__")
-            and not gateway.should_strip_tool(n, stripped, cfg)
-            and not gateway.category_for(n)]
+            if not gateway.should_strip_tool(n, stripped, cfg)
+            and not gateway.category_for(n)
+            and n not in tool_rules.PROTECTED_TOOLS]
 
 
 def _audit_tools(raw, clean):
-    """工具面：剥离多少、保留哪些；只把类别表外的 mcp__* 列为待判定。
+    """工具面：剥离多少、保留哪些；只把类别表外的工具列为待判定。
 
     待判定的判据是「我们有没有为它定过开关」，不是「它有没有被剥」——
-    判为保留也是判定，见 `unknown_mcp_tools`。
+    判为保留也是判定，见 `unknown_tools`。
     """
     cfg = gateway.load_tool_pruning_config()
     stripped = gateway.get_stripped_tool_names(cfg)
     names = extract_tool_names(raw)
     kept = [n for n in names if not gateway.should_strip_tool(n, stripped, cfg)]
-    pending = unknown_mcp_tools(names, cfg)
+    pending = unknown_tools(names, cfg)
 
     print()
     print("─" * 78)
@@ -238,19 +245,24 @@ def _audit_tools(raw, clean):
     print("  %d 个工具 → 剥离 %d，保留 %d" % (len(names), len(names) - len(kept), len(kept)))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
     if pending:
-        by_ns = {}
+        mcp_ns, native = {}, []
         for n in pending:
-            by_ns.setdefault(n.split("__")[1] if "__" in n else n, []).append(n)
-        print("  ⚠️ %d 个 MCP 工具我们没有对应开关，客户端增删即击穿一次缓存，待逐个判定：" % len(pending))
-        for ns in sorted(by_ns):
-            print("       · mcp__%s__*（%d 个）" % (ns, len(by_ns[ns])))
+            if n.startswith("mcp__") and "__" in n[6:]:
+                mcp_ns.setdefault(n.split("__")[1], []).append(n)
+            else:
+                native.append(n)
+        print("  ⚠️ %d 个工具我们没有对应开关，客户端增删即击穿一次缓存，待逐个判定：" % len(pending))
+        for ns in sorted(mcp_ns):
+            print("       · mcp__%s__*（%d 个）" % (ns, len(mcp_ns[ns])))
+        for n in sorted(native):
+            print("       · %s（原生工具）" % n)
         print("     → 判定：是死重（商店管理、技能建议、会话自省…）就把命名空间补进")
         print("       tool_rules.CATEGORY_NAMESPACES（或 CATEGORY_NAMES），默认开；")
         print("       是生产力工具（CoWork 交付物、工作区执行…）也同样补进去、默认关。")
         print("       两种都算判过了：表里有了就不再报，也不必每次跟版重判一遍。")
     else:
-        print("  ✅ 类别表已覆盖本次出现的全部 MCP 工具")
-    print("  ℹ️ 保留下来的原生工具若随版本增删，同样会击穿一次缓存，注意核对清单是否变动")
+        print("  ✅ 类别表已覆盖本次出现的全部工具")
+    print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
     return len(pending)
 
 
@@ -439,6 +451,98 @@ def cmd_list():
             print("    --session %s" % os.path.basename(f)[:-len(".json")])
 
 
+def _resolve_key(key):
+    """按 `list` 给出的键找抓包：会话键 → 模型键 → 直接当路径。找不到返回 None。"""
+    if os.path.isfile(key):
+        return key
+    p = os.path.join(_session_dir(), key + ".json")
+    if os.path.isfile(p):
+        return p
+    p = os.path.join(CAPTURE_DIR, PER_MODEL_PREFIX + key + ".json")
+    return p if os.path.isfile(p) else None
+
+
+def _tool_map(payload):
+    return {t["name"]: t for t in (payload.get("tools") or [])
+            if isinstance(t, dict) and t.get("name")}
+
+
+def _diff_captures(old, new):
+    """两份报文的差异：工具增删 / 定义改动 / system 逐块文本。
+
+    与 audit 的分工：audit 答「这次注入面有没有被我们的规则吸收」，compare 答
+    「客户端这次到底动了什么」—— 前者看的是规则覆盖，后者看的是客户端的改动本身。
+    """
+    ta, tb = _tool_map(old), _tool_map(new)
+    dump = lambda d: json.dumps(d, sort_keys=True, ensure_ascii=False)
+    return {
+        "tools": {
+            "added": sorted(set(tb) - set(ta)),
+            "removed": sorted(set(ta) - set(tb)),
+            "changed": sorted(n for n in set(ta) & set(tb) if dump(ta[n]) != dump(tb[n])),
+        },
+        "system_old": extract_system_texts(old),
+        "system_new": extract_system_texts(new),
+    }
+
+
+def cmd_compare(key_a, key_b):
+    """两份抓包对一遍：客户端这次升级动了什么。
+
+    跟版时最想先知道的就是这个。以前靠手写脚本比（2026-10 那次 2.1.293 → 2.1.295
+    就是这么比的），现在一条命令。
+    """
+    pa, pb = _resolve_key(key_a), _resolve_key(key_b)
+    if not pa or not pb:
+        print("❌ 找不到抓包：%s" % ("、".join(k for k, p in ((key_a, pa), (key_b, pb)) if not p)))
+        print("   用 `sentinel.py list` 查可用取值（会话键 / 模型键 / 也可直接给文件路径）")
+        sys.exit(1)
+    old, new = _load(pa), _load(pb)
+    d = _diff_captures(old, new)
+    print("=" * 78)
+    print("版本哨兵 · 两份抓包对比")
+    print("=" * 78)
+    for tag, path, p in (("旧", pa, old), ("新", pb, new)):
+        print("  %s：cc_version=%-14s 工具 %2d 个 · system %d 字节   %s" % (
+            tag, extract_client_version(p), len(_tool_map(p)),
+            sum(len(x) for x in extract_system_texts(p)), os.path.basename(path)))
+
+    print()
+    print("① 工具面")
+    for label, key in (("新增", "added"), ("移除", "removed"), ("定义有变", "changed")):
+        items = d["tools"][key]
+        print("  %s：%s" % (label, "、".join(items) if items else "无"))
+
+    print()
+    print("② system 提示词面")
+    so, sn = d["system_old"], d["system_new"]
+    print("  块数：%d → %d" % (len(so), len(sn)))
+    for i in range(max(len(so), len(sn))):
+        a = so[i] if i < len(so) else None
+        b = sn[i] if i < len(sn) else None
+        if a is None or b is None:
+            print("  block %d：%s" % (i, "新增" if a is None else "消失"))
+        elif a == b:
+            print("  block %d：%d 字节 · 完全一致" % (i, len(a)))
+        else:
+            print("  block %d：%d → %d 字节 · 有差异" % (i, len(a), len(b)))
+    diff = []
+    for i in range(max(len(so), len(sn))):
+        a = (so[i] if i < len(so) else "").splitlines()
+        b = (sn[i] if i < len(sn) else "").splitlines()
+        diff += list(difflib.unified_diff(a, b, "旧 block %d" % i, "新 block %d" % i,
+                                          lineterm="", n=0))
+    if not diff:
+        print("  逐行比完：system 一字未动")
+        return
+    print()
+    print("  逐行差异（%d 行）：" % len(diff))
+    for line in diff[:MAX_COMPARE_DIFF_LINES]:
+        print("    " + line[:200])
+    if len(diff) > MAX_COMPARE_DIFF_LINES:
+        print("    …（还有 %d 行，已截断）" % (len(diff) - MAX_COMPARE_DIFF_LINES))
+
+
 def _die_no_capture(model, session=None):
     what = ("model=%s" % model) if model else (("session=%s" % session) if session else "")
     print("❌ 找不到原始报文抓包" + ("（%s）" % what if what else ""))
@@ -463,11 +567,17 @@ def main():
 
     sub.add_parser("list", help="列出可用抓包")
 
+    pc = sub.add_parser("compare", help="两份抓包对比：客户端这次升级动了什么")
+    pc.add_argument("old", help="旧抓包（会话键 / 模型键 / 文件路径，见 list）")
+    pc.add_argument("new", help="新抓包（同上）")
+
     args = ap.parse_args()
     if args.cmd == "audit":
         cmd_audit(args.model, args.session)
     elif args.cmd == "list":
         cmd_list()
+    elif args.cmd == "compare":
+        cmd_compare(args.old, args.new)
     else:
         ap.print_help()
 
