@@ -116,6 +116,22 @@ def get_stripped_tool_names(cfg):
     return strip_set
 
 
+def category_for(tool_name):
+    """这个工具名落在哪个类别开关下？返回配置键，没有返回空串。
+
+    与 `strip_reason` 的分工：这里**不看开关的值**，只回答「我们给它定过开关没有」。
+    定过开关本身就是判定结论 —— 开着是死重、关着是判为保留，两种都算已经判过。
+    哨兵靠这个区分「已知但选择保留」与「客户端新冒出来的陌生命名空间」。
+    """
+    for key, prefixes in CATEGORY_NAMESPACES:
+        if any(tool_name.startswith(p) for p in prefixes):
+            return key
+    for key, names in CATEGORY_NAMES.items():
+        if tool_name in names:
+            return key
+    return ""
+
+
 def strip_reason(tool_name, stripped_names, cfg):
     """这个工具为什么会被剥掉？返回原因（类别配置键 / 'custom' / 'builtin'），不剥返回空串。
 
@@ -128,12 +144,9 @@ def strip_reason(tool_name, stripped_names, cfg):
         return "enabled" if tool_name in stripped_names else ""
 
     # 先看类别命名空间：它们的归属是确定的，能给出准确原因
-    for key, prefixes in CATEGORY_NAMESPACES:
-        if tp_flag(cfg, key) and any(tool_name.startswith(p) for p in prefixes):
-            return key
-    for key, names in CATEGORY_NAMES.items():
-        if tp_flag(cfg, key) and tool_name in names:
-            return key
+    key = category_for(tool_name)
+    if key and tp_flag(cfg, key):
+        return key
 
     # 再看到名单里的（自定义清单 / 恒定名单）。自定义优先报出来，那是用户自己做的决定。
     if tool_name in stripped_names:

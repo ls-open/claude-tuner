@@ -171,6 +171,7 @@ def load_rules_config():
 # 这里 import 进来再导出，sentinel.py 等既有调用方无需改动。
 from tool_rules import (  # noqa: E402
     PROMPT_PAIRS,
+    category_for,
     get_stripped_tool_names,
     orphan_mentions,
     pair_is_orphaned,

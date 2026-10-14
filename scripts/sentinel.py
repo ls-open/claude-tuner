@@ -203,18 +203,31 @@ def _snippet(text, start, end, width=90):
 
 # ─────────────────────────── 报告 ───────────────────────────
 
-def _audit_tools(raw, clean):
-    """工具面：剥离多少、保留哪些；未列入剥离名单的 mcp__* 逐个待判定。
+def unknown_mcp_tools(names, cfg):
+    """保留下来的 mcp__ 工具里，我们**连开关都没给过**的那些。
 
-    剥离名单（gateway.should_strip_tool）是唯一真理源，本命令不维护第二份允许名单：
-    名单外的 mcp__ 工具究竟是死重还是生产力工具，只有你能判定，故只列出待判定项，
-    不预设结论。
+    「已知」的判据是 `tool_rules` 的类别表里有没有它 —— 不看开关的值：给它定开关
+    本身就是判定结论（开着是死重、关着是判为保留）。所以判为保留的命名空间不会
+    每次跟版都被当成新面孔重报一遍，也不需要另维护一份「允许清单」。
+    """
+    stripped = gateway.get_stripped_tool_names(cfg)
+    return [n for n in names
+            if n.startswith("mcp__")
+            and not gateway.should_strip_tool(n, stripped, cfg)
+            and not gateway.category_for(n)]
+
+
+def _audit_tools(raw, clean):
+    """工具面：剥离多少、保留哪些；只把类别表外的 mcp__* 列为待判定。
+
+    待判定的判据是「我们有没有为它定过开关」，不是「它有没有被剥」——
+    判为保留也是判定，见 `unknown_mcp_tools`。
     """
     cfg = gateway.load_tool_pruning_config()
     stripped = gateway.get_stripped_tool_names(cfg)
     names = extract_tool_names(raw)
     kept = [n for n in names if not gateway.should_strip_tool(n, stripped, cfg)]
-    pending = [n for n in kept if n.startswith("mcp__")]
+    pending = unknown_mcp_tools(names, cfg)
 
     print()
     print("─" * 78)
@@ -226,15 +239,15 @@ def _audit_tools(raw, clean):
         by_ns = {}
         for n in pending:
             by_ns.setdefault(n.split("__")[1] if "__" in n else n, []).append(n)
-        print("  ⚠️ %d 个 MCP 工具不在剥离名单内，客户端增删即击穿一次缓存，待逐个判定：" % len(pending))
+        print("  ⚠️ %d 个 MCP 工具我们没有对应开关，客户端增删即击穿一次缓存，待逐个判定：" % len(pending))
         for ns in sorted(by_ns):
             print("       · mcp__%s__*（%d 个）" % (ns, len(by_ns[ns])))
-        print("     → 判定：确认是死重（如商店管理、技能建议、会话自省）则补进剥离规则 ——")
-        print("       gateway.should_strip_tool() 的命名空间分支，或 config.json 的 custom_strip_tools；")
-        print("       确认是生产力工具（如 CoWork 交付物、工作区执行）则不动，并把判定理由登记进")
-        print("       免得下次跟版时被当成新面孔重新判一遍。")
+        print("     → 判定：是死重（商店管理、技能建议、会话自省…）就把命名空间补进")
+        print("       tool_rules.CATEGORY_NAMESPACES（或 CATEGORY_NAMES），默认开；")
+        print("       是生产力工具（CoWork 交付物、工作区执行…）也同样补进去、默认关。")
+        print("       两种都算判过了：表里有了就不再报，也不必每次跟版重判一遍。")
     else:
-        print("  ✅ 无 MCP 工具在名单外")
+        print("  ✅ 类别表已覆盖本次出现的全部 MCP 工具")
     print("  ℹ️ 保留下来的原生工具若随版本增删，同样会击穿一次缓存，注意核对清单是否变动")
     return len(pending)
 
