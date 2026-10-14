@@ -41,6 +41,36 @@ ALWAYS_STRIPPED = ("WaitForMcpServers", "wait_for_mcp_servers")
 # 类别键 → (该类别覆盖的工具名，前缀匹配的命名空间)
 # 顺序即优先级：先命中的类别就是页面上显示的原因。
 CATEGORY_NAMESPACES = (
+    # 会话管理里**性质不同**的那几类先挑出来。顺序即优先级（前缀匹配先命中先算），
+    # 所以这几个必须排在下面的 strip_session_tools 前面 —— 否则 `mcp__ccd_session`
+    # 会先把它们全吃掉。
+    #
+    # 为什么要挑：剩下那些是纯界面遥控（标章节、改标题、看用量），留着剥掉都无所谓；
+    # 这几类却是改权限、改模型档位、把会话内容导出去、删会话、往别的会话发消息、
+    # 起停后台任务 —— 该不该留跟「界面遥控」不是同一个判断，不该被绑在一起。
+    ("strip_session_permission_tools",
+     ("mcp__ccd_session_mgmt__set_session_permission_mode",)),
+    ("strip_session_model_tools",
+     ("mcp__ccd_session_mgmt__set_session_model",
+      "mcp__ccd_session_mgmt__set_session_effort",
+      "mcp__ccd_session_mgmt__set_session_fast_mode")),
+    ("strip_session_export_tools",
+     ("mcp__ccd_session_mgmt__export_transcript",
+      "mcp__ccd_session_mgmt__search_session_transcripts",
+      "mcp__ccd_session_mgmt__list_sessions")),
+    # 归档与取消归档是一对反向操作，同进同退（同 Enter/Exit 的道理）
+    ("strip_session_delete_tools",
+     ("mcp__ccd_session_mgmt__delete_session",
+      "mcp__ccd_session_mgmt__clear_session",
+      "mcp__ccd_session_mgmt__archive_session",
+      "mcp__ccd_session_mgmt__unarchive_session")),
+    ("strip_session_remote_tools",
+     ("mcp__ccd_session_mgmt__send_message",
+      "mcp__ccd_session_mgmt__set_remote_control")),
+    ("strip_session_task_tools",
+     ("mcp__ccd_session__spawn_task",
+      "mcp__ccd_session__dismiss_task",
+      "mcp__ccd_session_mgmt__stop_session")),
     # 桌面端界面遥控：按**功能**拆成六项，不是一个开关管 52 个工具。
     # 原来它们全在 strip_session_mgmt_tools 一个键下（实测 52 个 / 61 KB）——
     # 用户想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，两者毫无关系。
@@ -85,6 +115,12 @@ CATEGORY_LABELS = {
     "strip_web_search_tools": "网页搜索",
     "strip_web_fetch_tools": "网页抓取",
     "strip_session_tools": "会话管理",
+    "strip_session_permission_tools": "会话权限模式",
+    "strip_session_model_tools": "会话模型与思考档位",
+    "strip_session_export_tools": "会话导出与检索",
+    "strip_session_delete_tools": "删除与归档会话",
+    "strip_session_remote_tools": "会话间消息与远程控制",
+    "strip_session_task_tools": "后台任务生命周期",
     "strip_sidebar_tools": "侧栏管理",
     "strip_window_tools": "窗口与分屏",
     "strip_view_tools": "代码修改推送与预览面板",

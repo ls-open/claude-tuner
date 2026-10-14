@@ -177,7 +177,15 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     # 桌面端界面遥控：按**功能**拆成六项。原来全在 strip_session_mgmt_tools 一个键下，
     # 实测管着 52 个工具 / 61 KB —— 想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，
     # 而两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*
+    # 会话管理里性质不同的六类单独成项（都默认开，与原来一个键全剥时行为一致）：
+    # 它们不是界面遥控，而是改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
+    "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
+    "strip_session_permission_tools": True,   # 改会话权限模式
+    "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
+    "strip_session_export_tools": True,       # 导出会话、检索历史、列会话
+    "strip_session_delete_tools": True,       # 删除 / 清空 / 归档 / 取消归档会话
+    "strip_session_remote_tools": True,       # 向其他会话发消息、开远程控制
+    "strip_session_task_tools": True,         # 起 / 停会话内的后台任务
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
     "strip_view_tools": False,            # mcp__ccd_view*（代码修改推送与预览面板，默认保留）
