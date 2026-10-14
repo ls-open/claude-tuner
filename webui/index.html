@@ -722,6 +722,7 @@ const PRUNING_GROUPS = [
   ['桌面界面遥控类（纯界面工具）', '控制桌面端窗口、侧栏、分屏与呈现等本地 UI 辅助工具', [
     ['strip_sidebar_tools', '移除侧栏管理工具', '在侧栏建立分区、归档、置顶/取消置顶等界面操作工具'],
     ['strip_window_tools', '移除窗口与分屏遥控', '分屏并列展示会话工具'],
+    ['strip_view_tools', '移除代码修改推送与预览面板', '允许关闭 AI 自动向右侧弹出 diff、文件或终端面板进行预览'],
     ['strip_settings_tools', '移除界面偏好控制', '读取或修改 Code 标签页界面偏好的工具'],
     ['strip_directory_tools', '移除会话目录切换', '将会话切换至本机其他项目目录的工具'],
   ]],
@@ -765,7 +766,7 @@ const PRESETS = {
       probe_interception: true,
     },
     tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_settings_tools: true,
+      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: false, strip_settings_tools: true,
       strip_directory_tools: true, strip_session_tools: true, strip_host_tools: false,
       strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
       strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
@@ -783,7 +784,7 @@ const PRESETS = {
       probe_interception: true,
     },
     tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_settings_tools: true,
+      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: true, strip_settings_tools: true,
       strip_directory_tools: true, strip_session_tools: true, strip_host_tools: true,
       strip_terminal_tools: true, strip_web_search_tools: true, strip_web_fetch_tools: true,
       strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
@@ -801,7 +802,7 @@ const PRESETS = {
       probe_interception: true,
     },
     tool_pruning: {
-      strip_sidebar_tools: false, strip_window_tools: false, strip_settings_tools: false,
+      strip_sidebar_tools: false, strip_window_tools: false, strip_view_tools: false, strip_settings_tools: false,
       strip_directory_tools: false, strip_session_tools: false, strip_host_tools: false,
       strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
       strip_pr_ci_tools: false, strip_notebook_tools: false, strip_design_sync_tools: false,
