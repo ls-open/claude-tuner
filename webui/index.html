@@ -762,7 +762,8 @@ const PRUNING_GROUPS = [
 
 const COMPOSITE = [
   ['workflowBundle', '移除随附工作流与预置技能',
-   '同步移除客户端预置工作流工具与随附技能提示词。用户自建技能不受影响。',
+   'Workflow 工具的说明里要求模型加载配套的 `workflow-authoring` 技能，两者只关一个会留下半截引用，' +
+   '所以必须同进同退。用户自建技能不受影响。',
    {settings: {disableBundledSkills: true}, pruning: {strip_workflow_tools: true}}],
 ];
 
