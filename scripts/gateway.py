@@ -448,6 +448,83 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None):
     return text, (text != orig)
 
 
+def _strip_paragraphs_by_predicate(text, predicate):
+    """按自然段落(\\n\\n)精准拆解与识别，若命中谓词则安全剔除整段并压实空白。
+
+    核心防御哲学：
+    1. 绝不使用跨越全局的贪婪正则，杜绝吞噬临近段落；
+    2. 必须同时命中段首特征与段内核心关键字；
+    3. 特征不全则宁可不剥，绝不误伤任何正常文本。
+    """
+    if not isinstance(text, str) or not text:
+        return text, False
+    paras = text.split("\n\n")
+    new_paras = []
+    changed = False
+    for p in paras:
+        clean_p = p.strip()
+        if clean_p and predicate(clean_p):
+            changed = True
+        else:
+            new_paras.append(p)
+    if not changed:
+        return text, False
+    result = "\n\n".join(new_paras).strip()
+    return result, True
+
+
+def strip_security_guidelines_text(text):
+    """剥离安全攻防与拒绝服务限制指令段落。
+
+    特征：以 IMPORTANT: 开头，提及 security testing，且包含拒绝破坏性技术或双重用途工具授权。
+    """
+    def _is_security_para(p):
+        if not p.startswith("IMPORTANT:"):
+            return False
+        p_lower = p.lower()
+        if "security testing" not in p_lower:
+            return False
+        return ("destructive techniques" in p_lower or 
+                "dos attacks" in p_lower or 
+                "dual-use security tools" in p_lower or
+                "supply chain compromise" in p_lower)
+    return _strip_paragraphs_by_predicate(text, _is_security_para)
+
+
+def strip_pronoun_guidelines_text(text):
+    """剥离人称代词道德约束与性别中立指令段落。
+
+    特征：以 When you use a pronoun for someone 开头，提及 they/them，且说明不从名字推测性别。
+    """
+    def _is_pronoun_para(p):
+        if not p.startswith("When you use a pronoun for someone"):
+            return False
+        p_lower = p.lower()
+        if "they/them" not in p_lower:
+            return False
+        return ("misgender" in p_lower or 
+                "infer pronouns" in p_lower or
+                "doesn't tell you someone's pronouns" in p_lower)
+    return _strip_paragraphs_by_predicate(text, _is_pronoun_para)
+
+
+def strip_caution_guidelines_text(text):
+    """剥离向外发送与不可逆操作防呆指引段落。
+
+    特征：以 For actions that are hard to reverse or outward-facing 开头，要求先确认或注意外部服务外发。
+    """
+    def _is_caution_para(p):
+        if not p.startswith("For actions that are hard to reverse or outward-facing"):
+            return False
+        p_lower = p.lower()
+        if "confirm first" not in p_lower:
+            return False
+        return ("external service" in p_lower or 
+                "hard to reverse" in p_lower or
+                "durably authorized" in p_lower)
+    return _strip_paragraphs_by_predicate(text, _is_caution_para)
+
+
 def prefix_hashes(parsed):
     """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。"""
     def digest(value):
@@ -579,6 +656,25 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         parsed, lambda t, legacy: strip_ghost_tool_instructions(
             t, tp_cfg=tp, stripped_names=_ghost_names), messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
+
+    # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
+    if r.get("strip_security_guidelines", False):
+        sys_n, _ = map_request_texts(
+            parsed, lambda t, legacy: strip_security_guidelines_text(t), messages=False)
+        if sys_n:
+            changed.extend(["strip_security_guidelines"] * sys_n)
+
+    if r.get("strip_pronoun_guidelines", False):
+        sys_n, _ = map_request_texts(
+            parsed, lambda t, legacy: strip_pronoun_guidelines_text(t), messages=False)
+        if sys_n:
+            changed.extend(["strip_pronoun_guidelines"] * sys_n)
+
+    if r.get("strip_caution_guidelines", False):
+        sys_n, _ = map_request_texts(
+            parsed, lambda t, legacy: strip_caution_guidelines_text(t), messages=False)
+        if sys_n:
+            changed.extend(["strip_caution_guidelines"] * sys_n)
 
     # 统一剔除清洗后变为空的残余消息与空 text 块 (例如被抽空的 reminder 块)
     msgs = parsed.get("messages")

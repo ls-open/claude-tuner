@@ -574,7 +574,7 @@
       <div class="head"><span class="num">④</span><h2>请求与提示词稳定化</h2>
         <span class="who">claude-tuner 独家</span><span class="tag">逐条可关</span></div>
       <div class="body">
-        <p class="lead">发往模型前的关键干预通道。包含<b>请求协议干预</b>（探针秒回、格式规范、思维链保全）与<b>提示词缓存防抖</b>（抹平动态时间戳与 Git 变动）。</p>
+        <p class="lead">发往模型前的关键干预通道。包含<b>请求协议干预</b>（探针秒回、格式规范、思维链保全）、<b>提示词缓存防抖</b>（抹平动态时间戳与 Git 变动）以及<b>纯指令修剪</b>（剥离防御免责与说教，降低本地脚本误拒答）。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
@@ -714,6 +714,11 @@ const RULE_GROUPS = [
     ['strip_git_status', '固定 Git 状态快照', '消除代码变动对前缀缓存的扰动'],
     ['strip_model_declarations', '移除官方模型自称声明', '清除客户端自动注入的“你由 Claude 模型驱动”等声明'],
   ]],
+  ['纯指令修剪（去说教、防误拒答）', '纯文本指令剔除，消除客户端硬编码的免责防御与道德说教，降低本地脚本误拒答', [
+    ['strip_security_guidelines', '移除安全与攻防限制指令', '剥离破坏性技术与渗透测试授权说教，消除本地运维脚本误拒答'],
+    ['strip_pronoun_guidelines', '移除人称代词道德指引', '剥离强制使用 they/them 等性别中立约束说教，让模型专注于纯粹代码工程'],
+    ['strip_caution_guidelines', '移除高危操作二次确认指引', '剥离向外发包与覆盖前反复警告的防御性说教，减少模型在正常编码操作时的过度犹豫'],
+  ]],
 ];
 
 const RULES = RULE_GROUPS.flatMap(g => g[2]);
@@ -764,6 +769,7 @@ const PRESETS = {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
       probe_interception: true,
+      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
       strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: false, strip_settings_tools: true,
@@ -782,6 +788,7 @@ const PRESETS = {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
       probe_interception: true,
+      strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true,
     },
     tool_pruning: {
       strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: true, strip_settings_tools: true,
@@ -800,6 +807,7 @@ const PRESETS = {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
       probe_interception: true,
+      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
       strip_sidebar_tools: false, strip_window_tools: false, strip_view_tools: false, strip_settings_tools: false,
