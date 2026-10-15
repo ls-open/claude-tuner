@@ -566,7 +566,7 @@
 
     <section id="s4">
       <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
-        <span class="who">claude-tuner 独家</span><span class="tag">逐条可关</span></div>
+        <span class="tag">逐条可关</span></div>
       <div class="body">
         <p class="lead">发往模型前的请求优化与提示词防抖通道，逐条可控，最大化命中 Prompt 缓存并消除误拒答。</p>
         <div id="ruleBox"></div>
@@ -575,7 +575,7 @@
 
     <section id="s5">
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
-        <span class="who">claude-tuner 独家</span><span class="tag">原子联动</span></div>
+        <span class="tag">原子联动</span></div>
       <div class="body">
         <p class="lead">按需精简客户端注入的外围工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
@@ -1131,7 +1131,8 @@ function checkCurrentPresetMatch(){
       $('#presetHead').textContent = pending
         ? '已套用「' + p.name + '」（尚未保存，点右上角【保存更改】生效）'
         : '已生效「' + p.name + '」';
-      renderCurrentState();
+      // 卡片已把这档的明细写清楚了；「当前配置」那行只在没有预设匹配时才现身，免得同屏说两遍
+      $('#presetNow').style.display = 'none';
       return;
     }
   }
@@ -1145,6 +1146,7 @@ function checkCurrentPresetMatch(){
   $('#presetHead').textContent = atInstallDefaults()
     ? '未套用任何档位 —— 下方开关就是安装时的默认值'
     : '未套用任何档位 —— 下方开关就是当前生效的设置';
+  $('#presetNow').style.display = '';
   renderCurrentState();
 }
 
