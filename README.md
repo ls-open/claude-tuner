@@ -223,14 +223,6 @@ bash ~/.claude/skills/claude-tuner/install.sh --uninstall
 
 ---
 
-## 免责声明
-
-本项目是**第三方开源工具，与 Anthropic 无任何隶属、赞助或背书关系**。「Claude」「Claude Code」
-是 Anthropic 的商标，此处仅用于说明本工具适配的对象。本项目不包含、也不再分发 Anthropic 的任何
-代码或资产；它只在用户本机上，通过客户端自带的 3P / 开发者接入配置，把用户自选的上游接进来。
-
----
-
 ## 许可证
 
 MIT License，详情参见 [LICENSE](LICENSE)。
