@@ -92,6 +92,14 @@ else
   warn "还没装的话，到官网下载： https://claude.com/product/claude-code"
 fi
 
+# 客户端在跑时**不能装**：安装要写它的配置文件（deploymentMode / 3P 配置），运行中的客户端会把
+# 改动回写覆盖 —— 结果是「装完了却没生效」。这检查必须放在动手之前，不能放最后（那时候文件已经写了）。
+if [ "$DRY_RUN" != 1 ] && pgrep -f "Claude.app/Contents/MacOS/Claude" >/dev/null 2>&1; then
+  warn "检测到 Claude 正在运行 —— 安装要写它的配置文件，运行中的客户端会把改动覆盖回去。"
+  warn "请先在菜单里点「退出 Claude」（不是关窗口），然后重跑本脚本。"
+  die "已中止，未写入任何文件。"
+fi
+
 # ── 卸载 ───────────────────────────────────────────────────
 if [ "$UNINSTALL" = 1 ]; then
   step "卸载"
@@ -321,7 +329,4 @@ if [ "$GATEWAY_OK" = 0 ]; then
 fi
 log "最后一步：**完全退出 Claude 再重新打开**"
 log "（不是关窗口 —— 要选「退出」；3P 的地址、Key、模型映射都只在启动时读一次）"
-if pgrep -f "Claude.app/Contents/MacOS/Claude" >/dev/null 2>&1; then
-  warn "检测到 Claude 正在运行，请先退干净。"
-fi
 log "──────────────────────────────────────────────"
