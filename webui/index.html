@@ -194,7 +194,7 @@
   .preset-now .now-chip b{color:var(--fg);font-weight:600}
   .preset-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
   @media (min-width: 920px){
-    .preset-cards{grid-template-columns:repeat(4, 1fr)}
+    .preset-cards{grid-template-columns:repeat(3, 1fr)}
   }
   .preset-card{background:var(--panel);
        border:1px solid var(--line2);border-radius:var(--radius-sm);
@@ -496,16 +496,8 @@
           </div>
           <div class="preset-detail" data-detail="vanilla"></div>
         </div>
-        <div class="preset-card" data-mode="custom">
-          <div class="preset-card-top">
-            <span class="preset-name">🎛 极客专家微调</span>
-            <span class="preset-badge">自由</span>
-          </div>
-          <div class="preset-detail">
-            <div>全部由下方开关自己定</div>
-          </div>
-        </div>
       </div>
+      <div class="hint" style="margin:12px 2px 0">档位 = 一键把下面这几十项按某一套配好；你完全可以不用档位，自己逐项调 —— 两者等价。</div>
     </div>
 
     <section id="s1">
@@ -702,8 +694,8 @@ const RULE_GROUPS = [
     ['probe_interception', '连通性探针本地秒回', '心跳不上云、不扣费'],
     ['strip_billing_header', '过滤客户端计费版本头', ''],
     ['restore_thinking', '自动回填思维链（Thinking）', '历史里缺了思考块会击穿前缀缓存'],
-    ['split_mixed_user_messages', '规范化图文工具混合消息', '部分上游对混杂消息直接报 400'],
-    ['tool_block_ordering', '并发工具块按 id 定序', '同一批工具每轮字节顺序一致（只重排、不删内容）；关掉后上游若不敏感也无妨'],
+    ['split_mixed_user_messages', '拆分「工具结果 + 文本」混在同一条里的消息', '客户端启动 Skill 时会这么发；部分上游要求紧跟工具调用的必须是纯工具结果'],
+    ['tool_block_ordering', '并发工具返回的块按 id 定序', '并发返回顺序不定 —— 乱序可能让上游报 400，也会击穿前缀缓存；只重排、不删内容'],
   ]],
   ['系统提示词防抖', '消除时间、Git 与额度等动态变动对前缀字节的扰动，最大化命中低价缓存', [
     ['strip_date', '抹平动态时间戳', ''],
@@ -990,11 +982,6 @@ function applyPreset(mode){
   // 卡片标记与那句提示**不在这里写** —— 由 checkCurrentPresetMatch 统一按勾选结果决定。
   // 这里各写一遍会立刻对不上：它只知道「你点了哪张卡」，不知道点完之后开关到底成了什么，
   // 于是标记和提示会各自说谎（而且 suggested 那圈边框清不掉，两种标记会叠在同一张卡上）。
-  if (mode === 'custom') {
-    checkCurrentPresetMatch();
-    say('下方每一项都按你自己勾的结果生效；改过之后卡片会自动切到「极客专家微调」');
-    return;
-  }
   const p = PRESETS[mode];
   if (!p) return;
 
