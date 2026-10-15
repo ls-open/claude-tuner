@@ -89,6 +89,7 @@ if [ -d "/Applications/Claude.app" ]; then
   fi
 else
   warn "没找到 /Applications/Claude.app —— 装完只有命令行 Claude Code 能用，桌面端那部分等你装上再说"
+  warn "还没装的话，到官网下载： https://claude.com/product/claude-code"
 fi
 
 # ── 卸载 ───────────────────────────────────────────────────

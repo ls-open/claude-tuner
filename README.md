@@ -72,6 +72,8 @@ curl -fsSL https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.s
 
 ## 装之前先确认
 
+- **📥 先装好 Claude 桌面端**：[到官网下载](https://claude.com/product/claude-code) 并至少打开一次
+  （客户端第一次启动会自建配置目录，见下面「安装」）。
 - **✅ 适用**：用 **API Key（桌面端 3P / 开发者接入模式）**。支持 Anthropic 官方 Key、第三方
   兼容模型（如 DeepSeek）、中转站与自建反向代理。
 - **🚫 不适用**：在桌面端直接用**官方网页账号（Pro / Team 邮箱登录）**。那条通道闭源，无法
