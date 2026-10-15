@@ -170,11 +170,17 @@ DEFAULT_RULES = {
 
 # 默认工具精简配置（模块化可插拔）。此处刻意不复述体积数字：
 # 客户端一升级就会变，写进代码必然漂移 —— 页面上按真实请求现称。
+#
+# **这份默认值 = 界面上的「日常开发均衡档」**（新装用户开箱即用的那一档）。
+# 改这里必须同步改 `webui/index.html` 的 `PRESETS.balanced.tool_pruning`，反之亦然 ——
+# 两处本来就是同一份「推荐基线」，分头改必然漂移。其余档位（纯代码极限 / 只换模型）是
+# 在它基础上的加减，不必对齐。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
-    # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索
-    "strip_web_search_tools": True,       # WebSearch（3P 下不可用）
-    "strip_web_fetch_tools": True,        # WebFetch（抓取无专门处理、不稳定，交给专门的抓取工具）
+    # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
+    # 默认**保留**：它俩是服务端工具，上游实现了才有用，纯代码/离线场景用户可自己关。
+    "strip_web_search_tools": False,      # WebSearch
+    "strip_web_fetch_tools": False,       # WebFetch
     # 桌面端界面遥控：按**功能**拆成六项。原来全在 strip_session_mgmt_tools 一个键下，
     # 实测管着 52 个工具 / 61 KB —— 想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，
     # 而两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
@@ -190,11 +196,11 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
     "strip_view_tools": False,            # mcp__ccd_view*（代码修改推送与预览面板，默认保留）
-    "strip_host_tools": True,             # mcp__ccd_host*（编辑器、存储、保持唤醒）
+    "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
     "strip_settings_tools": True,         # mcp__ccd_settings*
     "strip_directory_tools": True,        # mcp__ccd_directory*
     "strip_pr_ci_tools": True,            # 剥离 GitHub PR 关联与 CI 监控自动化 (mcp__ccd_pr__*)
-    "strip_terminal_tools": True,         # 剥离桌面右侧终端面板读取工具 (mcp__terminal__*)
+    "strip_terminal_tools": False,        # 桌面右侧终端面板读取工具 (mcp__terminal__*)
     "strip_notebook_tools": True,         # 剥离 Jupyter Notebook 单元格编辑工具 (NotebookEdit)
     "strip_design_sync_tools": True,      # 剥离 DesignSync (3P模式下无法官方认证)
     "strip_plugin_mgmt_tools": True,      # 剥离插件市场管理与技能建议死重 (mcp__plugins__*, mcp__skills__*)
