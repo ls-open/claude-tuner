@@ -135,7 +135,7 @@
        background:var(--top-bg);
        backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
        border-bottom:1px solid var(--line);transition:background .2s, border-color .2s}
-  header.top .inner{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;
+  header.top .inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;
        gap:20px;align-items:center;flex-wrap:wrap}
   header.top h1{font-family:var(--font-serif);font-size:18px;margin:0;font-weight:500;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;color:var(--fg)}
   .brand-mark{color:var(--accent);flex-shrink:0;vertical-align:middle}
@@ -145,7 +145,7 @@
   header.top .act{display:flex;align-items:center;gap:10px;margin-left:auto}
 
   /* ── 骨架 ───────────────────────────────────────────── */
-  .shell{max-width:1080px;margin:0 auto;padding:24px;display:grid;
+  .shell{max-width:1200px;margin:0 auto;padding:24px;display:grid;
          grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start}
 
   /* ── 侧栏（Claude Docs 风格极简导航） ─────────────────── */
@@ -205,8 +205,8 @@
        box-shadow:0 0 0 1px var(--accent), 0 4px 16px var(--accent-glow)}
   .preset-card.active::after{content:"✓ 当前使用";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
        padding:1px 7px;border-radius:99px;background:var(--accent);color:#ffffff;box-shadow:0 2px 8px var(--accent-glow)}
-  .preset-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-  .preset-name{font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--fg)}
+  .preset-card-top{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+  .preset-name{font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--fg);white-space:nowrap}
   .preset-card.active .preset-name{color:var(--accent)}
   /* 已点选、但还没保存：与「✓ 当前使用」区分开 —— 点了不等于生效 */
   .preset-card.pending{border-color:var(--warn);
@@ -214,7 +214,7 @@
   .preset-card.pending::after{content:"已选 · 待保存";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
        padding:1px 7px;border-radius:99px;background:var(--warn);color:#1a1a1a;box-shadow:0 2px 8px rgba(251,191,36,0.35)}
   .preset-card.pending .preset-name{color:var(--warn)}
-  .preset-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim2)}
+  .preset-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim2);white-space:nowrap;flex:none}
   .preset-badge.rec{background:var(--ok-dim);color:var(--ok);border-color:rgba(21,128,61,0.25)}
   .preset-badge.hot{background:var(--accent-dim);color:var(--accent);border-color:rgba(217,107,39,0.25)}
   .preset-detail{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:auto;padding-top:8px;
