@@ -491,8 +491,8 @@
         </div>
         <div class="preset-card" data-mode="vanilla">
           <div class="preset-card-top">
-            <span class="preset-name">🛠 原生全功能档</span>
-            <span class="preset-badge">官方原味</span>
+            <span class="preset-name">🛠 零干预档</span>
+            <span class="preset-badge">什么都不改</span>
           </div>
           <div class="preset-detail" data-detail="vanilla"></div>
         </div>
@@ -703,6 +703,7 @@ const RULE_GROUPS = [
     ['strip_billing_header', '过滤客户端计费版本头', ''],
     ['restore_thinking', '自动回填思维链（Thinking）', '历史里缺了思考块会击穿前缀缓存'],
     ['split_mixed_user_messages', '规范化图文工具混合消息', '部分上游对混杂消息直接报 400'],
+    ['tool_block_ordering', '并发工具块按 id 定序', '同一批工具每轮字节顺序一致（只重排、不删内容）；关掉后上游若不敏感也无妨'],
   ]],
   ['系统提示词防抖', '消除时间、Git 与额度等动态变动对前缀字节的扰动，最大化命中低价缓存', [
     ['strip_date', '抹平动态时间戳', ''],
@@ -774,7 +775,7 @@ const PRESETS = {
     rules: {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true,
+      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
       strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
@@ -796,7 +797,7 @@ const PRESETS = {
     rules: {
       strip_date: true, strip_git_status: true, strip_model_declarations: true,
       strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true,
+      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
       strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true,
     },
     tool_pruning: {
@@ -814,11 +815,11 @@ const PRESETS = {
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   vanilla: {
-    name: '原生全功能档',
+    name: '零干预档',
     rules: {
-      strip_date: true, strip_git_status: true, strip_model_declarations: true,
-      strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true,
+      probe_interception: false, strip_billing_header: false, restore_thinking: false,
+      split_mixed_user_messages: false, strip_date: false, strip_git_status: false,
+      strip_model_declarations: false, strip_total_tokens_tag: false, tool_block_ordering: false,
       strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
