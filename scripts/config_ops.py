@@ -460,8 +460,9 @@ def is_already_installed(cfg_3p, bridge_cfg):
 
 
 # 上游预设只做两件事：给一个 URL 省得用户敲，以及**知道的话**给一个默认上游模型。
-# url 是 Anthropic 格式的 base URL。url 为空的预设只是让人认出自己的情况，
-# 具体地址要用户自己填（中转站、自建代理等各人不同）。
+# url 是 Anthropic 格式的 base URL。「其他供应商 / 自建代理」的 url 留空是刻意的 ——
+# 地址各人不同，要用户自己填。**不再单列「官方模型中转站」**：它同样填不出 URL，
+# 摆一个选不动的入口，只会让人以为选它能自动配好。
 UPSTREAM_PRESETS = (
     {"id": "deepseek", "name": "DeepSeek 官方",
      "url": "https://api.deepseek.com/anthropic", "model": "deepseek-flash",
@@ -474,8 +475,6 @@ UPSTREAM_PRESETS = (
     {"id": "opencode-go", "name": "OpenCode Go（套餐制）",
      "url": "https://opencode.ai/zen/go", "model": "deepseek-flash",
      "key_hint": "在 opencode.ai 订阅后获取"},
-    {"id": "relay", "name": "Claude 官方模型中转站",
-     "url": "", "model": "", "key_hint": "由中转站提供"},
     {"id": "custom", "name": "其他供应商 / 自建代理",
      "url": "", "model": "", "key_hint": ""},
 )

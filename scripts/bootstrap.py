@@ -395,7 +395,7 @@ def build_parser():
     ins.add_argument("--force", action="store_true", help="已装过也强制重写")
     ins.add_argument("--key", default="", help="API Key（也可用环境变量 CLAUDE_TUNER_API_KEY）")
     ins.add_argument("--upstream", default="", help="上游 base URL，默认 DeepSeek 官方")
-    ins.add_argument("--preset", default="", help="上游预设 id（deepseek/opencode/relay/custom）")
+    ins.add_argument("--preset", default="", help="上游预设 id（deepseek/opencode/custom）")
     ins.add_argument("--model", default="", help="上游模型名（identity 预设不使用）")
     ins.add_argument("--no-cli", action="store_true", help="不写 ~/.claude/settings.json 的 CLI 联动")
     ins.add_argument("--no-restart", action="store_true",

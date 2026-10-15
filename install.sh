@@ -37,7 +37,7 @@ usage() {
 
   --key <KEY>        API Key（也可用环境变量 CLAUDE_TUNER_API_KEY；都不给则稍后在配置页填）
   --upstream <URL>   上游地址，默认 DeepSeek 官方
-  --preset <ID>      上游预设：deepseek / opencode / relay / custom
+  --preset <ID>      上游预设：deepseek / opencode / custom
   --model <NAME>     上游模型名
   --no-cli           不写 ~/.claude/settings.json（终端 Claude Code 不走本网关）
   --no-open          装完不自动打开配置页
