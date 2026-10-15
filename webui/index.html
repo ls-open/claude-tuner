@@ -979,10 +979,7 @@ function renderSwitches(d){
        `id="bundledSkills" ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
     SW('关闭客户端定时任务（Scheduled Tasks）',
        '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
-       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
-    SW('关闭 CoWork 协作界面的联网搜索',
-       '',
-       `id="coworkWebSearch" data-needs-closed ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart');
+       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart');
 
   checkCurrentPresetMatch();
 }
@@ -1593,8 +1590,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
   // 内部偏好
   const prefDefs = [
     ['bundledSkills', 'bundled_skills', '关闭随附技能与动态工作流', false],
-    ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true],
-    ['coworkWebSearch', 'cowork_web_search', '关闭 CoWork 协作界面联网搜索', true]
+    ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true]
   ];
   prefDefs.forEach(([elId, prop, title, invert]) => {
     const rawOld = CFG.client ? CFG.client[prop] : undefined;
@@ -1651,9 +1647,6 @@ $('#btnSave').onclick = async () => {
       chatTabEnabled: $('#surfChat').checked,
       coworkTabEnabled: $('#surfCowork').checked,
       isClaudeCodeForDesktopEnabled: $('#surfCode').checked,
-    },
-    client_prefs: {
-      coworkWebSearchEnabled: !$('#coworkWebSearch').checked,
     },
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }

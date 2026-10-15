@@ -226,8 +226,6 @@ def read_config_payload(handler):
         "versions": version_payload(),
         "client": {
             "running": client_running(),
-            "cowork_web_search": (_read(paths["desktop_config_3p"]).get("preferences") or {})
-                                 .get("coworkWebSearchEnabled"),
             # 允许定时任务写在 3P 配置里，不在桌面偏好里 —— 两者位置不同，
             # 页面上却该并排放在一起（用户眼里都是「开不开某项能力」）
             "scheduled_tasks": three_p.get("scheduledTasksEnabled") is True,
@@ -356,19 +354,6 @@ def apply_patch(handler, patch):
         three_p_changed = True
         notes.append("随附技能：%s" % ("剥离" if bundle else "保留"))
         effects["restart_client"] = True
-
-    prefs = patch.get("client_prefs")
-    if isinstance(prefs, dict) and prefs:
-        if client_running():
-            notes.append("浏览器工具那一项没改：客户端正在运行，改了会被它覆盖回去 —— "
-                         "先完全退出 Claude，再回这个页面改")
-        else:
-            desktop = _read(paths["desktop_config_3p"])
-            merged, changed = config_ops.merge_desktop_prefs(desktop, prefs)
-            if changed:
-                atomic_write_json(paths["desktop_config_3p"], merged)
-                notes += ["客户端偏好 %s" % k for k in changed]
-                effects["restart_client"] = True
 
     # 客户端行为开关与 CLI 联动
     settings_patch = dict(patch.get("settings") or {})

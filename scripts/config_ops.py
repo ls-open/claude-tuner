@@ -262,44 +262,6 @@ def managed_settings_present(existing):
     return any(k in existing for k in SETTINGS_TOP_KEYS)
 
 
-# 客户端桌面配置（claude_desktop_config.json）里允许本插件写的偏好键。
-# 这些都住在 preferences 里、客户端运行时是内存态：**客户端正在跑的时候写会
-# 被它覆盖回去**，所以页面上要提示先退出客户端再改。
-DESKTOP_PREF_KEYS = (
-    "coworkPreferredBrowser",      # built_in / chrome
-    # **刻意没有 bypassPermissionsModeEnabled（免确认执行模式）**：客户端已经改成
-    # `bypassPermissionsOptInByAccount[账号uuid]` 这种按账号存的 map，那个平铺键只在 map
-    # 不存在时才被读（客户端源码：`map 存在就用 map，否则才看平铺键`）。写过一版读它、
-    # 也写它 —— 结果是**页面上永远显示未开启、勾了也不生效**，因为 map 在时它整个被盖住。
-    # 它不是我们忽略了这个键，是这个键已经不管事了；按账号的那种形态我们不该替客户端改。
-    # 页面上给一句指引，让用户去客户端自己的设置里切。
-    # CoWork 会话的联网搜索。**这是官方的源头开关**：置 false 时客户端在组装请求之前
-    # 就把 WebSearch 从工具列表里摘掉（客户端源码：disallowedTools.push("WebSearch")），
-    # 比我们在网关里事后剥更干净 —— 连那段提示词都由客户端自己处理，不会留孤句。
-    # 我们保留网关侧的剥离作为兜底：它覆盖这台开关管不到的入口（比如 Code 标签页）。
-    "coworkWebSearchEnabled",
-)
-
-
-def merge_desktop_prefs(existing, patch):
-    """在桌面配置上合并偏好，返回 (新配置, 变动的键)。
-
-    只碰 DESKTOP_PREF_KEYS 里登记过的键 —— 那份文件里还有一大堆客户端自己的状态，
-    round-trip 时绝不能顺手改掉。
-    """
-    new = copy.deepcopy(existing) if isinstance(existing, dict) else {}
-    changed = []
-    prefs = new.get("preferences")
-    prefs = dict(prefs) if isinstance(prefs, dict) else {}
-    for k, v in (patch or {}).items():
-        if k in DESKTOP_PREF_KEYS and prefs.get(k) != v:
-            prefs[k] = v
-            changed.append(k)
-    if prefs:
-        new["preferences"] = prefs
-    return new, sorted(changed)
-
-
 # ==============================================================================
 # 3P 配置（configLibrary/<appliedId>.json）
 # ==============================================================================
