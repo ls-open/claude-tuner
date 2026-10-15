@@ -172,6 +172,7 @@ def load_rules_config():
 # 这里 import 进来再导出，sentinel.py 等既有调用方无需改动。
 from tool_rules import (  # noqa: E402
     PROMPT_PAIRS,
+    active_pairs,
     category_for,
     get_stripped_tool_names,
     orphan_mentions,
@@ -446,7 +447,7 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, missed=None):
+def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=None):
     """剥离「工具已被剥、说明段落却还留着」的孤句。
 
     配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if），
@@ -457,8 +458,10 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, missed
     按空行切段、段首命中锚点即摘除整段。段中顺带提一句工具名的不在这里处理（整段删
     会连累无关指引，句中手术又容易切坏），交给 orphan_mentions 去发现并报警。
 
-    `missed` 传入 list 时，把「该剥却一处都没命中」的配对 id 记进去 —— 那是客户端
-    改了措辞的信号，调用方据此报警（见 report_missing_pair_paragraphs）。
+    `found` 传入 set 时，把**本段里真被摘掉**的配对 id 记进去。判定「该剥却没摘到」
+    是**跨全部 system 块**的事（一个块没有不代表整份请求没有），所以只记命中、由调用方
+    收官：见 canonicalize 里 `active_pairs() - found`（`missed` 曾按块判定，把计费头/
+    身份那两块误报成失配，见 DECISIONS「配对段落失配的按块假报警」）。
     """
     if not isinstance(text, str):
         return text, False
@@ -473,8 +476,8 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, missed
             continue
         text, hit = _strip_paragraphs_by_predicate(
             text, pair_paragraph_predicate(pair), trim=False)
-        if not hit and missed is not None:
-            missed.append(pair["id"])
+        if hit and found is not None:
+            found.add(pair["id"])
     return text, (text != orig)
 
 
@@ -707,13 +710,16 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
     _ghost_names = get_stripped_tool_names(tp)
-    _pair_missed = []
+    _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, lambda t, legacy: strip_ghost_tool_instructions(
-            t, tp_cfg=tp, stripped_names=_ghost_names, missed=_pair_missed), messages=False)
+            t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found), messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
-    # 该删的整段一处都没找到 —— 客户端改了措辞的信号，别让它静默过去
-    report_missing_pair_paragraphs(_pair_missed)
+    # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
+    # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
+    # 别让它静默过去，但也别拿假报警淹掉它。
+    report_missing_pair_paragraphs(
+        [p["id"] for p in active_pairs(tp, _ghost_names) if p["id"] not in _pair_found])
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     if r.get("strip_security_guidelines", False):
