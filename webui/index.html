@@ -135,7 +135,7 @@
        background:var(--top-bg);
        backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
        border-bottom:1px solid var(--line);transition:background .2s, border-color .2s}
-  header.top .inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;
+  header.top .inner{max-width:1080px;margin:0 auto;padding:14px 24px;display:flex;
        gap:20px;align-items:center;flex-wrap:wrap}
   header.top h1{font-family:var(--font-serif);font-size:18px;margin:0;font-weight:500;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;color:var(--fg)}
   .brand-mark{color:var(--accent);flex-shrink:0;vertical-align:middle}
@@ -145,7 +145,7 @@
   header.top .act{display:flex;align-items:center;gap:10px;margin-left:auto}
 
   /* ── 骨架 ───────────────────────────────────────────── */
-  .shell{max-width:1200px;margin:0 auto;padding:24px;display:grid;
+  .shell{max-width:1080px;margin:0 auto;padding:24px;display:grid;
          grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start}
 
   /* ── 侧栏（Claude Docs 风格极简导航） ─────────────────── */
@@ -208,6 +208,12 @@
   .preset-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
   .preset-name{font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--fg)}
   .preset-card.active .preset-name{color:var(--accent)}
+  /* 已点选、但还没保存：与「✓ 当前使用」区分开 —— 点了不等于生效 */
+  .preset-card.pending{border-color:var(--warn);
+       box-shadow:0 0 0 1px var(--warn), 0 4px 16px rgba(251,191,36,0.16)}
+  .preset-card.pending::after{content:"已选 · 待保存";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
+       padding:1px 7px;border-radius:99px;background:var(--warn);color:#1a1a1a;box-shadow:0 2px 8px rgba(251,191,36,0.35)}
+  .preset-card.pending .preset-name{color:var(--warn)}
   .preset-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim2)}
   .preset-badge.rec{background:var(--ok-dim);color:var(--ok);border-color:rgba(21,128,61,0.25)}
   .preset-badge.hot{background:var(--accent-dim);color:var(--accent);border-color:rgba(217,107,39,0.25)}
@@ -415,7 +421,7 @@
     <a href="#s6"><span class="nav-ico">🎛️</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
-    <a href="#s9"><span class="nav-ico">📈</span>实时战绩</a>
+    <a href="#s9"><span class="nav-ico">📈</span>用量统计</a>
     <a href="#s7"><span class="nav-ico">⚙️</span>网关状态</a>
     <a href="#s8"><span class="nav-ico">📦</span>版本与更新</a>
 
@@ -586,7 +592,7 @@
     </section>
 
     <section id="s9">
-      <div class="head"><span class="num">⑦</span><h2>实时战绩</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
+      <div class="head"><span class="num">⑦</span><h2>用量统计</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
       <div class="body">
         <p class="lead">缓存命中率越高，实际费用越省、首字响应越快。</p>
         <div id="statBox"></div>
@@ -1084,11 +1090,22 @@ function atInstallDefaults(){
   return true;
 }
 
-function markPresetCards(mode){
-  // 只有一个标记了：正好等于某一档 → 那档挂「✓ 当前使用」。不等于任何档时传 null，全部清掉。
+function markPresetCards(mode, state){
+  // 只有一个标记了：正好等于某一档 → 挂标记。state 区分「已生效」(active) 与
+  // 「已选未保存」(pending)。不等于任何档时传 null，全部清掉。
   document.querySelectorAll('.preset-card').forEach(c => {
-    c.classList.toggle('active', c.dataset.mode === mode);
+    const on = c.dataset.mode === mode;
+    c.classList.toggle('active', on && state === 'active');
+    c.classList.toggle('pending', on && state === 'pending');
   });
+}
+
+// 表单与**已保存配置**有没有差异 —— 复用保存那条路径的同一份判据，
+// 别再单独写一套「脏没脏」的逻辑（两套迟早对不上）。
+function hasPendingChanges(){
+  if (!CFG) return false;
+  const {models, settings, tool_pruning, rules} = collectCurrentFormState();
+  return computePendingDiffs(models, settings, tool_pruning, rules).length > 0;
 }
 
 function checkCurrentPresetMatch(){
@@ -1109,8 +1126,11 @@ function checkCurrentPresetMatch(){
       if (el && el.checked !== p.bundle) { match = false; continue; }
     }
     if (match) {
-      markPresetCards(mode);
-      $('#presetHead').textContent = '已套用「' + p.name + '」';
+      const pending = hasPendingChanges();
+      markPresetCards(mode, pending ? 'pending' : 'active');
+      $('#presetHead').textContent = pending
+        ? '已套用「' + p.name + '」（尚未保存，点右上角【保存更改】生效）'
+        : '已生效「' + p.name + '」';
       renderCurrentState();
       return;
     }
@@ -1187,8 +1207,16 @@ function renderGateway(d){
 }
 
 const num = n => (n||0).toLocaleString('zh-CN');
+// Token 动辄上亿，逐位铺开（976,143,856）一眼读不出量级 —— 按中文习惯压成「亿 / 万」，
+// 精确值挂 title，鼠标悬停可看。次数、剥离次数这类小数字仍走 num。
+const fmtTokens = n => {
+  n = n || 0;
+  if (n >= 1e8) return (n / 1e8).toFixed(2).replace(/\.?0+$/, '') + ' 亿';
+  if (n >= 1e4) return (n / 1e4).toFixed(1).replace(/\.0$/, '') + ' 万';
+  return num(n);
+};
 
-// ── 实时战绩统计 ───────────────────────────────────────────
+// ── 用量统计 ───────────────────────────────────────────────
 async function renderStats(){
   const box = $('#statBox');
   box.innerHTML = '<div class="hint">正在读取实时统计……</div>';
@@ -1205,9 +1233,9 @@ async function renderStats(){
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
     `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>已统计 ${num(d.requests)} 次真实请求</small></div>`,
-    `<div class="k ok"><b>${num(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存价计费（省钱主力）</small></div>`,
-    `<div class="k"><b>${num(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
-    `<div class="k"><b>${num(t.output)}</b><small>生成的输出 Token</small></div>`,
+    `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存价计费（省钱主力）</small></div>`,
+    `<div class="k"><b title="${num(t.input + t.cache_creation)}">${fmtTokens(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
+    `<div class="k"><b title="${num(t.output)}">${fmtTokens(t.output)}</b><small>生成的输出 Token</small></div>`,
   ];
   const w = d.window || {};
   const fmt = t => (t ? t.slice(5, 16).replace('T', ' ') : '?');
@@ -1686,6 +1714,8 @@ $('#btnSave').onclick = async () => {
   tell(bodyHtml);
   const fresh = await api('/api/config');
   if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
+  // 保存后重算：卡片从「已选 · 待保存」翻成「✓ 当前使用」—— 以刚存下的配置为准
+  checkCurrentPresetMatch();
 };
 
 // ── 外观主题管理 ───────────────────────────────────────────

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""实时战绩：从网关日志里读**上游自己报回来的**真实用量，算命中率与 token 量。
+"""用量统计：从网关日志里读**上游自己报回来的**真实用量，算命中率与 token 量。
 
 这个文件存在的理由
 ------------------
@@ -198,7 +198,7 @@ def read_recent_usage(home=None):
 
 def main(argv=None):
     import argparse
-    parser = argparse.ArgumentParser(description="claude-tuner 实时战绩")
+    parser = argparse.ArgumentParser(description="claude-tuner 用量统计")
     parser.add_argument("--json", action="store_true", dest="as_json")
     args = parser.parse_args(argv)
     data = read_recent_usage()

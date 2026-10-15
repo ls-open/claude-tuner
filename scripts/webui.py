@@ -156,7 +156,7 @@ def version_payload():
 
 
 def stats_payload():
-    """实时战绩：从网关日志读上游自己报回来的真实用量。
+    """用量统计：从网关日志读上游自己报回来的真实用量。
 
     **不折算金额** —— 本项目支持任意上游，硬编码一张价目表只会给出没有依据的数字。
     客户端本身有官方机制（3P 的 inferenceModelPricing / inferenceModelPricingEnabled），
