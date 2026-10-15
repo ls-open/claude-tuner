@@ -976,7 +976,7 @@ function renderSwitches(d){
     `<div class="subgrp">客户端自带能力</div>` +
     SW('关闭随附技能与动态工作流',
        '移除随附技能与 Workflow 工具（两者互相指向，须同进同退）；用户自建技能不受影响。',
-       `id="bundledSkills" ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
+       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
     SW('关闭客户端定时任务（Scheduled Tasks）',
        '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart');
