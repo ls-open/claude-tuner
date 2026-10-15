@@ -1,0 +1,27 @@
+{
+ "upstream_url": "https://api.deepseek.com/anthropic/v1/messages",
+ "gateway_port": 8789,
+ "upstream_timeout": 45,
+ "default_model": "",
+ "unknown_model_fallback": true,
+ "rules": {
+  "probe_interception": true,
+  "strip_billing_header": true,
+  "strip_model_declarations": true,
+  "strip_date": true,
+  "strip_git_status": true,
+  "split_mixed_user_messages": true,
+  "restore_thinking": true
+ },
+ "tool_pruning": {
+  "enabled": true,
+  "strip_native_web_tools": true,
+  "strip_session_mgmt_tools": true,
+  "strip_pr_ci_tools": true,
+  "strip_terminal_tools": true,
+  "strip_notebook_tools": true,
+  "strip_design_sync_tools": true,
+  "strip_plugin_mgmt_tools": true,
+  "custom_strip_tools": []
+ }
+}

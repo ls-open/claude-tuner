@@ -1,0 +1,8 @@
+{
+  "name": "claude-tuner",
+  "description": "Claude Code (CC) 与 Claude Desktop (CCD) 双模本地透明中继，全厂商大模型桥接与缓存稳定化插件：无损思维链回填 (Thinking Hydration)、易变前缀清洗（动态日期 / Git 快照 / 计费头 / 模型宣称 / 系统提醒）、工具集精简、探针与联想请求本地秒回。",
+  "author": {
+    "name": "claude-tuner"
+  },
+  "license": "MIT"
+}
