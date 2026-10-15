@@ -266,7 +266,7 @@ def managed_settings_present(existing):
 # 这些都住在 preferences 里、客户端运行时是内存态：**客户端正在跑的时候写会
 # 被它覆盖回去**，所以页面上要提示先退出客户端再改。
 DESKTOP_PREF_KEYS = (
-    "coworkBrowserToolsEnabled",   # 应用内浏览器/预览/截图工具
+    "coworkBrowserToolsEnabled",   # 应用内浏览器面板（Claude Browser）的截图/预览/点击工具
     "coworkPreferredBrowser",      # built_in / chrome
     # **刻意没有 bypassPermissionsModeEnabled（免确认执行模式）**：客户端已经改成
     # `bypassPermissionsOptInByAccount[账号uuid]` 这种按账号存的 map，那个平铺键只在 map

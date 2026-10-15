@@ -983,7 +983,7 @@ function renderSwitches(d){
     SW('关闭 CoWork 协作界面的联网搜索',
        '',
        `id="coworkWebSearch" data-needs-closed ${d.client.cowork_web_search === false ? 'checked' : ''}`, 'restart') +
-    SW('关闭应用内无头浏览器工具（截图/预览/点击）',
+    SW('关闭应用内浏览器工具（截图/预览/点击）',
        '',
        `id="browserTools" data-needs-closed ${d.client.browser_tools === false ? 'checked' : ''}`, 'restart');
 
@@ -1598,7 +1598,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
     ['bundledSkills', 'bundled_skills', '关闭随附技能与动态工作流', false],
     ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true],
     ['coworkWebSearch', 'cowork_web_search', '关闭 CoWork 协作界面联网搜索', true],
-    ['browserTools', 'browser_tools', '关闭应用内无头浏览器工具', true]
+    ['browserTools', 'browser_tools', '关闭应用内浏览器工具', true]
   ];
   prefDefs.forEach(([elId, prop, title, invert]) => {
     const rawOld = CFG.client ? CFG.client[prop] : undefined;
