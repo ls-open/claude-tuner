@@ -71,9 +71,8 @@ CATEGORY_NAMESPACES = (
      ("mcp__ccd_session__spawn_task",
       "mcp__ccd_session__dismiss_task",
       "mcp__ccd_session_mgmt__stop_session")),
-    # 桌面端界面遥控：按**功能**拆成六项，不是一个开关管 52 个工具。
-    # 原来它们全在 strip_session_mgmt_tools 一个键下（实测 52 个 / 61 KB）——
-    # 用户想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，两者毫无关系。
+    # 桌面端界面遥控：按**功能**拆成六项，不合成一个大开关 —— 否则想清掉侧栏就得
+    # 连会话管理一起清，两者毫无关系。
     ("strip_session_tools", ("mcp__ccd_session", "mcp__session_info")),
     ("strip_sidebar_tools", ("mcp__ccd_sidebar",)),
     ("strip_window_tools", ("mcp__ccd_window",)),
@@ -188,10 +187,9 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 整段删会把无关指引一起删掉，句中手术又容易切坏。那类交给 orphan_mentions() 去发现。
 #
 # 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
-# 曾经写的是「首句 + 末句逐字全等」的正则 —— 客户端改一个标点就静默失配，
-# 工具照剥、段落留下，成了孤句（比不剥更糟），而且没人知道。锚点取短只留
-# 段首特征，段落后面怎么改写都还认得出；万一连锚点也被改写，见
-# missing_pair_paragraphs() —— 那种情况会被报出来，而不是静静地留着。
+# 锚点必须取短、只留段首特征：段落后面怎么改写都还认得出。拿「首句 + 末句逐字
+# 全等」当判据会在客户端改一个标点时静默失配 —— 工具照剥、段落留下，成了比不剥
+# 更糟的孤句。连锚点也被改写的情况由 missing_pair_paragraphs() 报出来。
 PROMPT_PAIRS = (
     {
         "id": "ccd_pr",

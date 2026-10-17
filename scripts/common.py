@@ -179,11 +179,10 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     # 默认**保留**：它俩是服务端工具，上游实现了才有用，纯代码/离线场景用户可自己关。
     "strip_web_search_tools": False,      # WebSearch
     "strip_web_fetch_tools": False,       # WebFetch
-    # 桌面端界面遥控：按**功能**拆成六项。原来全在 strip_session_mgmt_tools 一个键下，
-    # 实测管着 52 个工具 / 61 KB —— 想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，
-    # 而两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    # 会话管理里性质不同的六类单独成项（都默认开，与原来一个键全剥时行为一致）：
-    # 它们不是界面遥控，而是改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
+    # 桌面端界面遥控：按**功能**拆成六项 —— 合成一个键的话，想清掉侧栏就得连会话管理
+    # 一起清，两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
+    # 会话管理里性质不同的六类单独成项（默认全开）：它们不是界面遥控，而是改权限 /
+    # 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
     "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
     "strip_session_permission_tools": True,   # 改会话权限模式
     "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
@@ -209,10 +208,8 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_cross_session_tools": False,   # SendMessage / ListAgents
     "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
     "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
-    # 这两个是「多代理编排与后台任务」那个大开关拆开时掉出来的 —— 一路没人接住，
-    # 于是长期没有开关（哨兵看不出来，因为它当时只挑 mcp__ 前缀报）。同样是真本事，
     # 默认保留：TaskStop 用来终止跑飞的后台任务，ReportFindings 是 code-review 那套
-    # 技能把结论交回界面的通道。
+    # 技能把结论交回界面的通道 —— 都是有实际用途的能力，不是死重。
     "strip_task_stop_tools": False,       # TaskStop
     "strip_report_findings_tools": False, # ReportFindings
 }

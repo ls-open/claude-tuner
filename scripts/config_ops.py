@@ -187,7 +187,7 @@ SETTINGS_TOP_KEYS = (
     "alwaysThinkingEnabled",       # 支持思考的模型是否自动思考
 )
 # 注：`disableBundledSkills` **不在这里** —— 它是 3P 配置的键（客户端设置页也写那儿），
-# 归 `build_3p_bundle` 的 `bundled_skills` 管。曾经把它放这儿，于是那一半从未生效过。
+# 归 `build_3p_bundle` 的 `bundled_skills` 管。写到这个清单里等于永不生效。
 
 
 def cli_env(base_url, api_key, model, one_m=True):
