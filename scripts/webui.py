@@ -29,6 +29,8 @@ if SCRIPT_DIR not in sys.path:
 
 import config_ops  # noqa: E402
 from common import (  # noqa: E402
+    DEFAULT_PORT,
+    DEFAULT_PROBE_TIMEOUT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
     atomic_write_json,
@@ -39,7 +41,6 @@ from common import (  # noqa: E402
 HTML_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "webui", "index.html")
 TOKEN_FILE = os.path.join(config_ops.platform_paths()["bridge_home"], "webui.token")
 COOKIE_NAME = "claude_tuner_token"
-CLAUDE_TUNER_UPSTREAM_TIMEOUT = 15
 
 _html_cache = (0.0, "")
 
@@ -255,7 +256,7 @@ def read_config_payload(handler):
 def _port(handler):
     """当前网关端口：端口是 manager 独占决策，这里只从 config.json 读结果。"""
     port = _read(bridge_path()).get("gateway_port")
-    return port if isinstance(port, int) and port > 0 else 8789
+    return port if isinstance(port, int) and port > 0 else DEFAULT_PORT
 
 
 def apply_patch(handler, patch):
@@ -425,7 +426,7 @@ def _http_json(url, api_key, payload=None):
     headers = _upstream_headers(api_key, session_id="webui" + ("-opencode" if "opencode" in url.lower() else ""))
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if data else "GET")
-    with urllib.request.urlopen(req, timeout=CLAUDE_TUNER_UPSTREAM_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=DEFAULT_PROBE_TIMEOUT) as resp:
         body = resp.read(2 * 1024 * 1024).decode("utf-8", "replace")
     return json.loads(body) if body.strip() else {}
 

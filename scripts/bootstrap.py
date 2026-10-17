@@ -38,13 +38,12 @@ if SCRIPT_DIR not in sys.path:
 
 import config_ops  # noqa: E402
 from common import (  # noqa: E402
+    DEFAULT_PORT,
     atomic_write_json,
     ensure_config_initialized,
     find_active_3p_config_path,
     normalize_upstream,
 )
-
-DEFAULT_PORT = 8789
 
 
 def log(msg=""):

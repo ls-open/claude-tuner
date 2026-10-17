@@ -21,8 +21,11 @@ from urllib.parse import parse_qs, urlparse
 sys.dont_write_bytecode = True
 
 from common import (
+    DEFAULT_LOG_RETENTION_DAYS,
+    DEFAULT_PORT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
+    DEFAULT_UPSTREAM_TIMEOUT,
     atomic_write_json,
     ensure_config_initialized,
     client_api_key,
@@ -38,8 +41,6 @@ from common import (
 import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle_get / handle_post
 
 HOST = "127.0.0.1"
-DEFAULT_PORT = 8789
-DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT = 45  # 默认 45 秒上游超时，杜绝网络假死导致客户端被动干等 5 分钟
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 PROJECTS_DIR = os.environ.get("CLAUDE_PROJECTS_DIR", os.path.expanduser("~/.claude/projects"))
@@ -47,7 +48,6 @@ COWORK_SESSIONS_DIRS = [
     os.path.expanduser("~/Library/Application Support/Claude-3p/local-agent-mode-sessions"),
     os.path.expanduser("~/Library/Application Support/Claude/local-agent-mode-sessions"),
 ]
-DEFAULT_LOG_RETENTION_DAYS = 7  # 默认日志生命周期保留天数（可由 config.json 覆盖）
 CAPTURE_SESSIONS_DIR = "sessions"  # 按会话归档的子目录，见 save_session_capture()
 SESSION_KEY_LEN = 8  # 会话键取 session_id 前若干位，够区分同时开着的几个对话即可
 MAX_SESSION_CAPTURES = 20  # 会话归档保留份数上限（每份是一整段对话报文，不设闸门只增不减）
@@ -1639,7 +1639,7 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _get_upstream_timeout(self):
-        """解析上游请求超时时间（优先 env CLAUDE_TUNER_UPSTREAM_TIMEOUT，次优先 config.json，兜底 DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT）。"""
+        """解析上游请求超时时间（优先 env CLAUDE_TUNER_UPSTREAM_TIMEOUT，次优先 config.json，兜底 DEFAULT_UPSTREAM_TIMEOUT）。"""
         if "CLAUDE_TUNER_UPSTREAM_TIMEOUT" in os.environ:
             try:
                 return max(5, int(os.environ["CLAUDE_TUNER_UPSTREAM_TIMEOUT"]))
@@ -1647,9 +1647,9 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         cfg = _read_config()
         try:
-            return max(5, int(cfg.get("upstream_timeout", DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT)))
+            return max(5, int(cfg.get("upstream_timeout", DEFAULT_UPSTREAM_TIMEOUT)))
         except (ValueError, TypeError):
-            return DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT
+            return DEFAULT_UPSTREAM_TIMEOUT
 
     def _forward(self, parsed, mapped, started, session_id, kind):
         """上游转发总入口：解析 URL → 构造请求 → 流式回写 → 错误兜底。"""

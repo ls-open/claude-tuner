@@ -772,44 +772,18 @@ const PRUNING_GROUPS = [
 const PRESETS = {
   balanced: {
     name: '日常开发均衡档',
-    rules: {
-      strip_date: true, strip_git_status: true, strip_model_declarations: true,
-      strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
-      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
-    },
-    tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: false, strip_settings_tools: true,
-      strip_directory_tools: true, strip_session_tools: true, strip_host_tools: false,
-      strip_session_permission_tools: true, strip_session_model_tools: true,
-      strip_session_export_tools: true, strip_session_delete_tools: true,
-      strip_session_remote_tools: true, strip_session_task_tools: true,
-      strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
-      strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
-      strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
-    },
+    // 与出厂默认逐项一致：一个字都不用写，改默认值它就跟着变。
+    rules: {},
+    tool_pruning: {},
     bundle: false,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   pure_code: {
     name: '纯代码极限档',
-    rules: {
-      strip_date: true, strip_git_status: true, strip_model_declarations: true,
-      strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
-      strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true,
-    },
+    rules: { strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true },
     tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: true, strip_settings_tools: true,
-      strip_directory_tools: true, strip_session_tools: true, strip_host_tools: true,
-      strip_session_permission_tools: true, strip_session_model_tools: true,
-      strip_session_export_tools: true, strip_session_delete_tools: true,
-      strip_session_remote_tools: true, strip_session_task_tools: true,
-      strip_terminal_tools: true, strip_web_search_tools: true, strip_web_fetch_tools: true,
-      strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
-      strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
+      strip_view_tools: true, strip_host_tools: true, strip_terminal_tools: true,
+      strip_web_search_tools: true, strip_web_fetch_tools: true,
     },
     bundle: true,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
@@ -820,23 +794,31 @@ const PRESETS = {
       probe_interception: false, strip_billing_header: false, restore_thinking: false,
       split_mixed_user_messages: false, strip_date: false, strip_git_status: false,
       strip_model_declarations: false, strip_total_tokens_tag: false, tool_block_ordering: false,
-      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
-      strip_sidebar_tools: false, strip_window_tools: false, strip_view_tools: false, strip_settings_tools: false,
+      strip_sidebar_tools: false, strip_window_tools: false, strip_settings_tools: false,
       strip_directory_tools: false, strip_session_tools: false, strip_host_tools: false,
       strip_session_permission_tools: false, strip_session_model_tools: false,
       strip_session_export_tools: false, strip_session_delete_tools: false,
       strip_session_remote_tools: false, strip_session_task_tools: false,
-      strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
       strip_pr_ci_tools: false, strip_notebook_tools: false, strip_design_sync_tools: false,
-      strip_plugin_mgmt_tools: false, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
+      strip_plugin_mgmt_tools: false,
     },
     bundle: false,
     settings: { promptCacheTtl: false, promptSuggestionEnabled: true, autoCompactEnabled: true }
   }
 };
+
+// 每档只写**与默认值不同的那几项**，其余一律取后端下发的默认值。
+// 全量表曾经有三份副本，新增开关时漏改就静默生效（已经漏过两个），
+// 所以这里不再重复默认值 —— 只有一个地方定义默认值，就是 common.DEFAULT_*。
+function presetCfg(p){
+  const opts = (CFG && CFG.options) || {};
+  return {
+    rules: Object.assign({}, opts.rules_defaults || {}, p.rules),
+    tool_pruning: Object.assign({}, opts.pruning_defaults || {}, p.tool_pruning),
+  };
+}
 
 const WHEN = {
   now:     ['保存后即生效', 'gateway'],
@@ -991,16 +973,17 @@ function applyPreset(mode){
   // 这里各写一遍会立刻对不上：它只知道「你点了哪张卡」，不知道点完之后开关到底成了什么，
   // 于是标记和提示会各自说谎（而且 suggested 那圈边框清不掉，两种标记会叠在同一张卡上）。
   const p = PRESETS[mode];
+  const cfg = presetCfg(p);
   if (!p) return;
 
   // 1. 规则开关
-  Object.entries(p.rules).forEach(([k, v]) => {
+  Object.entries(cfg.rules).forEach(([k, v]) => {
     const el = $(`#ruleBox input[data-rule="${k}"]`);
     if (el) el.checked = v;
   });
 
   // 2. 工具精简
-  Object.entries(p.tool_pruning).forEach(([k, v]) => {
+  Object.entries(cfg.tool_pruning).forEach(([k, v]) => {
     const el = $(`#pruneBox input[data-tp="${k}"]`);
     if (el) el.checked = v;
   });
@@ -1039,8 +1022,9 @@ function renderPresetDetails(){
   document.querySelectorAll("[data-detail]").forEach(box => {
     const p = PRESETS[box.dataset.detail];
     if (!p) return;
-    const tpKeys = Object.keys(p.tool_pruning);
-    const off = tpKeys.filter(k => p.tool_pruning[k]).map(k => presetTpLabel(k));
+    const tp = presetCfg(p).tool_pruning;
+    const tpKeys = Object.keys(tp);
+    const off = tpKeys.filter(k => tp[k]).map(k => presetTpLabel(k));
     const tools = off.length
       ? `<b title="${esc(off.join("、"))}">剥掉 ${off.length}/${tpKeys.length} 项工具</b>`
       : `<b>工具一项不剥</b>`;
@@ -1100,13 +1084,14 @@ function hasPendingChanges(){
 
 function checkCurrentPresetMatch(){
   for (const [mode, p] of Object.entries(PRESETS)) {
+    const cfg = presetCfg(p);
     let match = true;
-    for (const [k, v] of Object.entries(p.rules)) {
+    for (const [k, v] of Object.entries(cfg.rules)) {
       const el = $(`#ruleBox input[data-rule="${k}"]`);
       if (el && el.checked !== v) { match = false; break; }
     }
     if (!match) continue;
-    for (const [k, v] of Object.entries(p.tool_pruning)) {
+    for (const [k, v] of Object.entries(cfg.tool_pruning)) {
       const el = $(`#pruneBox input[data-tp="${k}"]`);
       if (el && el.checked !== v) { match = false; break; }
     }

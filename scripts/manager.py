@@ -16,6 +16,7 @@ import urllib.request
 sys.dont_write_bytecode = True
 
 from common import (
+    DEFAULT_PORT,
     THREEP_CONFIG_GLOB,
     atomic_write_json,
     canonical_local_url,
@@ -36,7 +37,7 @@ INSTALL_ROOTS = (
 GATEWAY = os.path.join(SCRIPT_DIR, "gateway.py")
 GATEWAY_PID = os.path.join(BASE, "gateway.pid")
 CONFIG = os.path.join(BASE, "config.json")
-PORT_PREFERRED = int(os.environ.get("CLAUDE_TUNER_PORT", "8789"))
+PORT_PREFERRED = int(os.environ.get("CLAUDE_TUNER_PORT", str(DEFAULT_PORT)))
 PORT_SCAN_LIMIT = 20   # 最多向上扫描 20 个端口（8789~8808）
 QUIET = False          # main() 按 --quiet 覆盖；模块级留默认值，否则 log_msg 在 main 之外一调就 NameError
 

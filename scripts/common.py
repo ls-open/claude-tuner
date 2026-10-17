@@ -172,9 +172,7 @@ DEFAULT_RULES = {
 # 客户端一升级就会变，写进代码必然漂移 —— 页面上按真实请求现称。
 #
 # **这份默认值 = 界面上的「日常开发均衡档」**（新装用户开箱即用的那一档）。
-# 改这里必须同步改 `webui/index.html` 的 `PRESETS.balanced.tool_pruning`，反之亦然 ——
-# 两处本来就是同一份「推荐基线」，分头改必然漂移。其余档位（纯代码极限 / 只换模型）是
-# 在它基础上的加减，不必对齐。
+# 预设只写与这里不同的项，所以改默认值时界面自动跟着变，没有第二处要对齐。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
     # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
@@ -251,11 +249,18 @@ RENAMED_TOOL_PRUNING_KEYS = {
 }
 
 
+# 默认值只在这里定义一次，其余模块一律 import —— 同一个数字在几处各写一份，
+# 迟早有一处改漏，而症状是「配置台设了、网关没听」这种最难查的形态。
+DEFAULT_PORT = 8789
+DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
+DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案
+DEFAULT_LOG_RETENTION_DAYS = 7
+
 # 默认配置文件完整脚手架模板
 DEFAULT_CONFIG = {
     "upstream_url": "",
-    "gateway_port": 8789,
-    "upstream_timeout": 45,
+    "gateway_port": DEFAULT_PORT,
+    "upstream_timeout": DEFAULT_UPSTREAM_TIMEOUT,
     # 客户端代号漏配时的兜底上游模型（空 = 关闭，原样透传）。
     # 客户端模型选择器由 3P 的 inferenceModels 决定，用户换了代号而映射表没跟上时，
     # 原样透传会让上游以 404 打回 —— 那是首次安装最像「装坏了」的失败。
@@ -269,6 +274,9 @@ DEFAULT_CONFIG = {
     # 「允许定时任务」：写进 3P 的 scheduledTasksEnabled。默认关 —— 定时任务整套工具
     # 会从源头消失（客户端干脆不提供创建/修改/运行它们的工具），比事后剥离干净。
     "scheduled_tasks": False,
+    # 日志保留天数（网关按它清理归档）与入口报文抓包开关（默认关，开着每轮多写两份文件）
+    "log_retention_days": DEFAULT_LOG_RETENTION_DAYS,
+    "capture_raw_inbound": False,
     "rules": DEFAULT_RULES,
     "tool_pruning": DEFAULT_TOOL_PRUNING_CONFIG,
 }
