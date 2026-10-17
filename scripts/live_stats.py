@@ -175,21 +175,6 @@ def summarize(lines):
     }
 
 
-def get_log_retention_days(home=None):
-    """读取已配置的日志保留天数（默认 7 天）。"""
-    base = home or os.environ.get("CLAUDE_TUNER_HOME") or os.path.expanduser("~/.claude-tuner")
-    cfg_path = os.path.join(base, "config.json")
-    try:
-        if os.path.exists(cfg_path):
-            with open(cfg_path, "r", encoding="utf-8") as fh:
-                cfg = json.load(fh)
-                if isinstance(cfg, dict) and "log_retention_days" in cfg:
-                    return max(1, int(cfg["log_retention_days"]))
-    except Exception:
-        pass
-    return 7
-
-
 def read_recent_usage(home=None):
     """读全部日志（含历史归档文件）并汇总。
 
@@ -199,11 +184,8 @@ def read_recent_usage(home=None):
     """
     global _usage_cache
     paths = log_paths(home)
-    retention_days = get_log_retention_days(home)
     if not paths:
-        res = dict(summarize([]), log_missing=True)
-        res["retention_days"] = retention_days
-        return res
+        return dict(summarize([]), log_missing=True)
     try:
         key = tuple((p, os.path.getmtime(p), os.path.getsize(p)) for p in paths)
     except OSError:
@@ -215,31 +197,6 @@ def read_recent_usage(home=None):
         lines.extend(tail_lines(p))
     result = summarize(lines)
     result["log_files"] = len(paths)
-    result["retention_days"] = retention_days
     if key:
         _usage_cache = (key, result)
     return result
-
-
-def main(argv=None):
-    import argparse
-    parser = argparse.ArgumentParser(description="claude-tuner 用量统计")
-    parser.add_argument("--json", action="store_true", dest="as_json")
-    args = parser.parse_args(argv)
-    data = read_recent_usage()
-    if args.as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=1))
-        return 0
-    if not data["seen"]:
-        print("还没有可统计的请求。")
-        return 0
-    t = data["tokens"]
-    print("已统计 %d 次上游请求" % data["requests"])
-    print("  命中缓存 %.0f  (%.1f%%)" % (t["cache_read"], data["hit_rate"] * 100))
-    print("  未命中   %d" % (t["input"] + t["cache_creation"]))
-    print("  输出     %d" % t["output"])
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

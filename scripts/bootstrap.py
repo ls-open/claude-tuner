@@ -100,9 +100,9 @@ def gather_state(paths=None):
 # 计划（纯判断，不碰磁盘）
 # ==============================================================================
 
-def _write_action(path, data, reason, backup=True, mode=None):
+def _write_action(path, data, reason, backup=True):
     return {"kind": "write_json", "path": path, "data": data, "reason": reason,
-            "backup": backup, "mode": mode}
+            "backup": backup}
 
 
 def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=True, force=False):
@@ -276,11 +276,9 @@ def apply(actions, dry_run=False):
     return done, backups, problems
 
 
-def restart_gateway(dry_run=False):
+def restart_gateway():
     """拉起/重启本地网关（网关没有自我重启能力，必须由 manager 代劳）。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
-    if dry_run:
-        return 0
     try:
         subprocess.run([sys.executable, manager, "restart"], timeout=60,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

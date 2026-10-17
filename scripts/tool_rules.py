@@ -110,38 +110,6 @@ CATEGORY_NAMES = {
     "strip_report_findings_tools": ("ReportFindings",),
 }
 
-# 页面与 CLI 共用的类别中文名（配置页直接显示它，避免两处各译一遍）
-CATEGORY_LABELS = {
-    "strip_web_search_tools": "网页搜索",
-    "strip_web_fetch_tools": "网页抓取",
-    "strip_session_tools": "会话管理",
-    "strip_session_permission_tools": "会话权限模式",
-    "strip_session_model_tools": "会话模型与思考档位",
-    "strip_session_export_tools": "会话导出与检索",
-    "strip_session_delete_tools": "删除与归档会话",
-    "strip_session_remote_tools": "会话间消息与远程控制",
-    "strip_session_task_tools": "后台任务生命周期",
-    "strip_sidebar_tools": "侧栏管理",
-    "strip_window_tools": "窗口与分屏",
-    "strip_view_tools": "代码修改推送与预览面板",
-    "strip_host_tools": "编辑器与主机",
-    "strip_settings_tools": "界面偏好",
-    "strip_directory_tools": "目录切换",
-    "strip_pr_ci_tools": "PR 关联与 CI 监控",
-    "strip_terminal_tools": "右侧终端面板",
-    "strip_notebook_tools": "Notebook 单元格编辑",
-    "strip_design_sync_tools": "DesignSync",
-    "strip_plugin_mgmt_tools": "插件市场与技能建议",
-    "strip_cross_session_tools": "跨会话消息",
-    "strip_worktree_tools": "Git 工作树隔离",
-    "strip_plan_tools": "计划模式",
-    "strip_task_stop_tools": "终止后台任务",
-    "strip_report_findings_tools": "审查结论上报",
-    "custom": "你自己勾的",
-    "builtin": "恒定剥离",
-    "enabled": "总开关关着时的名单",
-}
-
 
 def get_stripped_tool_names(cfg):
     """根据配置动态计算需要被物理剥离的精确工具名称黑名单集合。"""
@@ -310,15 +278,6 @@ def missing_pair_paragraphs(text, cfg, stripped_names):
     return [{"id": p["id"], "anchor": p["anchor"], "why": p["why"]}
             for p in PROMPT_PAIRS
             if pair_is_orphaned(p, stripped_names, cfg) and pair_paragraph_missing(p, text)]
-
-
-def paired_tool_names(cfg):
-    """哪些工具名参与了配对 —— 配置页要据此告诉用户「勾它也会带走一段提示词」。"""
-    mapping = {}
-    for pair in PROMPT_PAIRS:
-        for name in pair["tools"]:
-            mapping.setdefault(name, []).append(pair["why"])
-    return mapping
 
 
 def orphan_mentions(text, stripped_names):

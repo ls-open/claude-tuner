@@ -218,37 +218,6 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
 }
 
 
-# 已废弃的配置键，由 ensure_config_initialized 自动从旧 config.json 中清理
-RETIRED_CONFIG_KEYS = (
-    "passthrough",                # 曾用于整体跳过稳定化，已被细粒度的 rules.* 取代
-    "cache_stabilize",            # 同上
-    "intercept_suggestion_mode",  # 网关侧输入预测拦截已移除（客户端自带的开关更好使）
-)
-
-# 已废弃的 tool_pruning 子键（同上，但它们在 tool_pruning 节点下，不是顶级键）
-RETIRED_TOOL_PRUNING_KEYS = (
-    "strip_cli_cron_tools",        # Cron 定时任务改由 3P 的 Allow scheduled tasks 在源头关闭
-    "strip_scheduled_tasks_tools", # 同上（两套机制一起被客户端开关移除）
-    "strip_workflow_tools",        # 动态工作流改由客户端的 enableWorkflows 在源头关闭
-)
-
-# 改过名的 tool_pruning 子键：旧名 → 新名（一个旧键可能拆成几个新键）。
-#
-# **改名时必须把旧值带过去，不能只删旧键。** 新键的默认值是 True，如果用户原来把
-# 旧键关掉过（= 想留着那批工具），直接删旧键 + 补新键会让它们被静默剥掉 ——
-# 他什么都没做，工具却没了。这类「升级后行为变了且没人知道」的问题最难排查。
-RENAMED_TOOL_PRUNING_KEYS = {
-    "strip_native_web_tools": ("strip_web_search_tools", "strip_web_fetch_tools"),
-    "strip_session_mgmt_tools": ("strip_session_tools", "strip_sidebar_tools",
-                                 "strip_window_tools", "strip_host_tools",
-                                 "strip_settings_tools", "strip_directory_tools"),
-    # Workflow 原本在这串里，已改由客户端的 enableWorkflows 管（不再有网关开关），
-    # 所以迁移只带剩下的三个；旧配置里的 strip_workflow_tools 由 RETIRED_TOOL_PRUNING_KEYS 清掉。
-    "strip_orchestration_tools": ("strip_cross_session_tools",
-                                  "strip_task_stop_tools", "strip_report_findings_tools"),
-}
-
-
 # 默认值只在这里定义一次，其余模块一律 import —— 同一个数字在几处各写一份，
 # 迟早有一处改漏，而症状是「配置台设了、网关没听」这种最难查的形态。
 DEFAULT_PORT = 8789
@@ -288,8 +257,7 @@ def ensure_config_initialized(config_path=None):
     """自动初始化或补全 ~/.claude-tuner/config.json 配置文件。
 
     1. 若文件不存在：自动生成包含 rules / tool_pruning 的脚手架配置；
-    2. 若文件已存在：安全补充缺失的顶级节点与子配置项，确保全新安装或升级后开箱即用；
-    3. 顺手清掉 RETIRED_CONFIG_KEYS 里的废弃键（只会删登记过的，不碰其余任何键）。
+    2. 若文件已存在：只补缺失的顶级节点与子配置项，不删任何已有键、不改任何已有值。
     """
     base_dir = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
     path = config_path or os.path.join(base_dir, "config.json")
@@ -310,36 +278,11 @@ def ensure_config_initialized(config_path=None):
                 cfg[k] = v
                 updated = True
 
-        # 改名的键：把旧值带到新键上（见 RENAMED_TOOL_PRUNING_KEYS 的注释）
-        if isinstance(cfg.get("tool_pruning"), dict):
-            tp = cfg["tool_pruning"]
-            for old, news in RENAMED_TOOL_PRUNING_KEYS.items():
-                if old not in tp:
-                    continue
-                old_value = tp.pop(old)
-                for n in news:
-                    if n not in tp:        # 新键已经在了？以新键为准，不覆盖用户的明确设置
-                        tp[n] = old_value
-                updated = True
-
         # 安全补充 tool_pruning 缺失的子配置项
         if "tool_pruning" in cfg and isinstance(cfg["tool_pruning"], dict):
             for tk, tv in DEFAULT_TOOL_PRUNING_CONFIG.items():
                 if tk not in cfg["tool_pruning"]:
                     cfg["tool_pruning"][tk] = tv
-                    updated = True
-
-        # 清掉已废弃的键（登记在 RETIRED_CONFIG_KEYS）
-        for rk in RETIRED_CONFIG_KEYS:
-            if rk in cfg:
-                cfg.pop(rk)
-                updated = True
-
-        # 同上，但作用于 tool_pruning 下的子键
-        if isinstance(cfg.get("tool_pruning"), dict):
-            for rk in RETIRED_TOOL_PRUNING_KEYS:
-                if rk in cfg["tool_pruning"]:
-                    cfg["tool_pruning"].pop(rk)
                     updated = True
 
         # 安全补充 rules 缺失的子配置项

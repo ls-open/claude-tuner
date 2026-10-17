@@ -3,7 +3,6 @@
 import json
 import glob
 import os
-import re
 import signal
 import socket
 import subprocess
@@ -27,13 +26,9 @@ from common import (
 
 BASE = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 客户端可能的插件加载位置：skills/<name>/（本仓形态）与 plugins/cache/<版本>/。
-# 两者都算「安装副本」，
-# 都有资格接管运行时；仓库工作副本不在其中（见 is_installed_copy）。
-INSTALL_ROOTS = (
-    os.path.expanduser("~/.claude/plugins/cache"),
-    os.path.expanduser("~/.claude/skills"),
-)
+# 客户端的插件加载位置：只有 skills/<name>/ 这一种。
+# 它才算「安装副本」，有资格接管运行时；仓库工作副本不在其中（见 is_installed_copy）。
+INSTALL_ROOTS = (os.path.expanduser("~/.claude/skills"),)
 GATEWAY = os.path.join(SCRIPT_DIR, "gateway.py")
 GATEWAY_PID = os.path.join(BASE, "gateway.pid")
 CONFIG = os.path.join(BASE, "config.json")
@@ -196,7 +191,7 @@ def gateway_alive():
 
 
 def is_installed_copy():
-    """判断当前 manager 是否运行在客户端安装目录（plugins/cache 或 skills/<name>）下。
+    """判断当前 manager 是否运行在客户端安装目录（skills/<name>）下。
 
     仅安装副本允许接管运行时并写入 runtime_script_dir，防止在源码目录直接执行时污染线上网关与 sync.py 推送目标。
     """
@@ -316,7 +311,7 @@ def _sync_locked():
         log_msg("synced:", line)
     if changed and gateway_alive():
         stop(GATEWAY_PID, "gateway")
-        if _spawn_unlocked(GATEWAY, [], "gateway", GATEWAY_PID, port):
+        if _spawn_unlocked(GATEWAY, "gateway", GATEWAY_PID, port):
             log_msg("gateway 已重启以应用新上游")
     upstream = cfg.get("upstream_url")
     if not upstream:
@@ -327,7 +322,7 @@ def _sync_locked():
     return upstream
 
 
-def _spawn_unlocked(script, args, name, pid_file, port=None):
+def _spawn_unlocked(script, name, pid_file, port=None):
     # 存活与否只认 HTTP 探活：pid 文件在这里没有发言权（pid 会被系统回收复用，
     # 而「端口上有没有人能应答」才是客户端真实的体验）。
     if gateway_alive():
@@ -341,7 +336,7 @@ def _spawn_unlocked(script, args, name, pid_file, port=None):
         kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL,
                   "env": env, "start_new_session": True}
         proc = subprocess.Popen(
-            [sys.executable, script] + args,
+            [sys.executable, script],
             **kwargs
         )
     # pid_file 原子写（与 save_port 一致）
@@ -358,11 +353,11 @@ def _spawn_unlocked(script, args, name, pid_file, port=None):
     return True
 
 
-def spawn(script, args, name, pid_file, port=None):
+def spawn(script, name, pid_file, port=None):
     ensure_dirs()
     lock = acquire_lock()
     try:
-        _spawn_unlocked(script, args, name, pid_file, port)
+        _spawn_unlocked(script, name, pid_file, port)
     finally:
         release_lock(lock)
 
@@ -402,7 +397,7 @@ def stop(pid_file, name):
 
 def start():
     check_runtime_dir()
-    spawn(GATEWAY, [], "gateway", GATEWAY_PID, resolve_port())
+    spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
 
 
 def stop_all():
@@ -540,7 +535,7 @@ def main():
                 check_runtime_dir()
                 sync()
                 if not gateway_alive():
-                    spawn(GATEWAY, [], "gateway", GATEWAY_PID, resolve_port())
+                    spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
             except Exception as exc:
                 log_msg("ensure warning (suppressed):", exc)
                 sys.exit(0)

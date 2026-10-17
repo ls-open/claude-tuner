@@ -539,7 +539,7 @@ def _gate(handler, query, need_token=True):
 def handle_get(handler, query):
     """处理 GET；返回 True 表示这个请求归配置台管。"""
     path = handler.path.split("?")[0]
-    if path not in ("/", "/index.html", "/api/config", "/api/status",
+    if path not in ("/", "/index.html", "/api/config",
                     "/api/upstream-models", "/api/update-check", "/api/stats"):
         return False
     if not _gate(handler, query, need_token=(path != "/")):
@@ -583,13 +583,6 @@ p{margin:0 0 12px;color:#8b94a7}b{color:#e8ebf0}</style>
 
     if path == "/api/config":
         handler._send_json(200, {"ok": True, "data": read_config_payload(handler)})
-        return True
-
-    if path == "/api/status":
-        handler._send_json(200, {"ok": True, "data": {
-            "port": _port(handler),
-            "token_file": TOKEN_FILE,
-        }})
         return True
 
     if path == "/api/update-check":

@@ -190,7 +190,6 @@ def apply_update():
             return {"ok": False, "error": "下载到的包没通过校验，保持原样", "detail": problems}
 
         stamp = time.strftime("%Y%m%dT%H%M%S")
-        backup_dir = os.path.join(os.path.dirname(PLUGIN_ROOT), "backups")
         # 备份放在运行目录里（~/.claude-tuner/backups/），不放进插件目录 ——
         # 免得同步时被当成多出来的文件
         backup_dir = os.path.join(os.path.expanduser("~"), ".claude-tuner", "backups")

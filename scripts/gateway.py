@@ -184,9 +184,6 @@ from tool_rules import (  # noqa: E402
 
 
 
-_INVENTORY_MAX_PROFILES = 8
-
-
 # 上一次报出来的孤句集合。逐轮重复报同一件事只会把日志刷满，
 # 但**变化时一定报** —— 客户端新增交叉引用时它就会变，那正是我们要知道的那一刻。
 _orphan_memo = [None]
@@ -1446,7 +1443,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         self.wfile.flush()
 
-    def _send_html(self, status, html, extra_headers=None):
+    def _send_html(self, status, html):
         """配置台页面。与 _send_json 同构，另加几条只对本机页面有意义的防护头。"""
         body = html.encode("utf-8")
         self.send_response(status)
@@ -1459,8 +1456,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy",
                          "default-src 'none'; style-src 'unsafe-inline'; "
                          "script-src 'unsafe-inline'; connect-src 'self'; img-src data:")
-        for k, v in (extra_headers or {}).items():
-            self.send_header(k, v)
         self.close_connection = True
         self.end_headers()
         self.wfile.write(body)
