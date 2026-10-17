@@ -40,30 +40,43 @@ def log_path(home=None):
 
 
 def log_paths(home=None):
-    """按时间从旧到新列出所有日志文件（含历史归档）。
+    """按时间从旧到新列出全部网关日志：各归档日文件 + 当前活跃的那一份。
 
-    **必须连轮转归档文件一起读**：只读当前那份，统计区间就只是「最近一份日志」，
-    而这份日志什么时候开始，页面上看不出来 —— 那等于给了个没有截止日期的数字。
+    三条必须的取舍：
+    - **必须读归档**：只读当前那份，统计区间就只是「最近一份日志」，而这份从什么时候开始
+      页面上看不出来 —— 等于给了一个没有截止日期的数字。
+    - **排除 `gateway.out.log`**：它是 manager 把 stdout 重定向出来的副本，同一行事件在里面
+      有第二份，读进来就双倍计数。
+    - **按真实路径去重**：`gateway.log` 是指向当天日文件的软链，两者是同一份，只能算一次。
     """
     base = log_path(home)
-    paths = []
+    logs_dir = os.path.dirname(base)
+    by_real = {}
     try:
-        import glob
-        for p in glob.glob(base + "*"):
-            if os.path.isfile(p):
-                paths.append(p)
-    except Exception:
-        pass
-    if os.path.isfile(base) and base not in paths:
-        paths.append(base)
-    # 时间序：历史归档文件按修改时间从旧到新排列，当前活跃日志 gateway.log 恒定排在最后（最新）
+        names = os.listdir(logs_dir)
+    except OSError:
+        return []
+    for name in names:
+        if not (name.startswith("gateway.") and name.endswith(".log")):
+            continue
+        if name == "gateway.out.log":
+            continue
+        path = os.path.join(logs_dir, name)
+        if not os.path.isfile(path):
+            continue
+        real = os.path.realpath(path)
+        prev = by_real.get(real)
+        # 软链与它指向的日文件是同一份：优先留真实文件那个名字
+        if prev is None or (os.path.islink(prev) and not os.path.islink(path)):
+            by_real[real] = path
+    paths = list(by_real.values())
+
     def rank(path):
-        if path == base:
-            return float("inf")
         try:
             return os.path.getmtime(path)
         except OSError:
             return 0.0
+
     return sorted(paths, key=rank)
 
 
