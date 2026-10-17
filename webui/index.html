@@ -602,6 +602,16 @@
           </div>
           <button id="btnRestart">重启网关</button>
         </div>
+        <div class="row" style="margin-top:14px;align-items:center;gap:12px;flex-wrap:wrap">
+          <label for="logRetention" style="font-size:13px;color:var(--dim);white-space:nowrap">日志滚动保留天数：</label>
+          <select id="logRetention" style="width:140px;height:32px;font-size:12.5px">
+            <option value="3">保留 3 天</option>
+            <option value="7">保留 7 天（默认）</option>
+            <option value="14">保留 14 天</option>
+            <option value="30">保留 30 天</option>
+          </select>
+          <span class="hint" style="margin:0">按自然日自动滚动归档，超出保留天数的历史日志自动清理。</span>
+        </div>
         <div class="hint">网关规则改动后立即生效，无需重启 Claude 客户端。</div>
       </div>
     </section>
@@ -1184,6 +1194,10 @@ function renderGateway(d){
   const tag = $('#gwTag');
   tag.textContent = d.gateway.unknown_model_fallback ? '漏配兜底：开' : '漏配兜底：关';
   tag.style.display = '';
+  if (d.gateway && d.gateway.log_retention_days) {
+    const sel = $('#logRetention');
+    if (sel) sel.value = String(d.gateway.log_retention_days);
+  }
   $('#apikey').placeholder = d.upstream.api_key_masked
     ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填入 API Key';
 }
@@ -1215,22 +1229,17 @@ async function renderStats(){
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
     `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>已统计 ${num(d.requests)} 次真实请求</small></div>`,
-    `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存价计费（省钱主力）</small></div>`,
+    `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存优惠价计费</small></div>`,
     `<div class="k"><b title="${num(t.input + t.cache_creation)}">${fmtTokens(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
     `<div class="k"><b title="${num(t.output)}">${fmtTokens(t.output)}</b><small>生成的输出 Token</small></div>`,
   ];
   const w = d.window || {};
   const fmt = t => (t ? t.slice(5, 16).replace('T', ' ') : '?');
+  const retDays = d.retention_days || 7;
   const span = `<div class="hint" style="margin-top:10px">
-      数据统计区间：${fmt(w.from)} → ${fmt(w.to)}${d.log_files > 1 ? `（含 ${d.log_files} 份轮转日志）` : ''} · 数字来自上游网关真实 usage
+      数据统计范围：近 <b>${retDays}</b> 天全局汇总（${fmt(w.from)} → ${fmt(w.to)}） · 提取自网关日志真实记录
     </div>`;
-  // `stripped_tools` 是**区间内累计剥离的次数**，不是「有多少条工具定义」——
-  // 同一个工具每轮都在重计一遍。直接说成「N 条工具定义」会给出一个明显不成立的说法
-  // （工具总共才几十个，这里却会显示十八万）。所以按每次请求平均说，累计数放括号里。
-  const perReq = d.requests ? Math.round(d.stripped_tools / d.requests) : 0;
-  const extra = d.stripped_tools
-    ? `<div class="hint" style="margin-top:10px">工具精简：每次请求平均剥离约 <b>${num(perReq)}</b> 个工具定义（区间内累计 ${num(d.stripped_tools)} 次，每轮重计）。</div>` : '';
-  box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}${extra}`;
+  box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}`;
 }
 
 // 运行时安全保护：客户端开启状态下拦截写入配置文件的开关
@@ -1410,7 +1419,8 @@ function collectCurrentFormState(){
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
   tool_pruning.custom_strip_tools = (CFG?.tool_pruning?.custom_strip_tools || []);
-  return {models, settings, tool_pruning, rules, on};
+  const log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
+  return {models, settings, tool_pruning, rules, on, log_retention_days};
 }
 
 function computePendingDiffs(models, settings, tool_pruning, rules) {
@@ -1594,6 +1604,19 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
     }
   });
 
+  // 日志保留天数
+  const oldDays = (CFG.gateway?.log_retention_days || 7);
+  const newDays = parseInt($('#logRetention')?.value || '7', 10);
+  if (oldDays !== newDays) {
+    diffs.push({
+      title: '日志保留天数',
+      from: `${oldDays} 天`,
+      to: `${newDays} 天`,
+      when: '保存后下次轮转生效',
+      badge: 'gateway'
+    });
+  }
+
   return diffs;
 }
 
@@ -1634,9 +1657,12 @@ $('#btnSave').onclick = async () => {
       coworkTabEnabled: $('#surfCowork').checked,
       isClaudeCodeForDesktopEnabled: $('#surfCode').checked,
     },
+    log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
   const fx = r.data.effects;
+  if (CFG.gateway) CFG.gateway.log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
+  renderStats();
   $('#apikey').value = '';
   const btn = $('#btnSave');
   if (btn) btn.classList.remove('has-unsaved');

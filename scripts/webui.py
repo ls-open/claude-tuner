@@ -206,7 +206,7 @@ def read_config_payload(handler):
             "port": _port(handler),
             "upstream_url": upstream,
             "default_model": bridge_cfg.get("default_model", ""),
-
+            "log_retention_days": int(bridge_cfg.get("log_retention_days", 7)),
             "unknown_model_fallback": bridge_cfg.get("unknown_model_fallback", True) is not False,
         },
         "three_p": {
@@ -315,6 +315,14 @@ def apply_patch(handler, patch):
         notes += ["工具精简 %s" % k for k in changed]
     if "unknown_model_fallback" in patch:
         bridge["unknown_model_fallback"] = bool(patch["unknown_model_fallback"])
+    if "log_retention_days" in patch:
+        try:
+            days = max(1, min(365, int(patch["log_retention_days"])))
+            if bridge.get("log_retention_days") != days:
+                bridge["log_retention_days"] = days
+                notes.append("日志保留天数已设为 %d 天" % days)
+        except (ValueError, TypeError):
+            pass
     if not bridge.get("rules"):
         bridge["rules"] = dict(DEFAULT_RULES)
     atomic_write_json(bridge_path(), bridge, indent=1)

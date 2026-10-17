@@ -47,8 +47,7 @@ COWORK_SESSIONS_DIRS = [
     os.path.expanduser("~/Library/Application Support/Claude-3p/local-agent-mode-sessions"),
     os.path.expanduser("~/Library/Application Support/Claude/local-agent-mode-sessions"),
 ]
-LOG_MAX_BYTES = 5 * 1024 * 1024
-LOG_OLD_MAX_AGE_DAYS = 7  # .old 轮转文件保留天数
+DEFAULT_LOG_RETENTION_DAYS = 7  # 默认日志生命周期保留天数（可由 config.json 覆盖）
 CAPTURE_SESSIONS_DIR = "sessions"  # 按会话归档的子目录，见 save_session_capture()
 SESSION_KEY_LEN = 8  # 会话键取 session_id 前若干位，够区分同时开着的几个对话即可
 MAX_SESSION_CAPTURES = 20  # 会话归档保留份数上限（每份是一整段对话报文，不设闸门只增不减）
@@ -266,20 +265,14 @@ def report_missing_pair_paragraphs(missed):
 
 
 def cleanup_runtime():
-    """清理超过保留期的日志轮转文件 (.old)，防止长期积累。
-
-    日志轮转本身由 check_log_rotation() 在写入侧事件驱动完成，此处只负责老化清理。
-    """
+    """启动期清理超期历史日志，保持日志目录整洁。"""
     log_dir = os.path.join(BASE_DIR, "logs")
     os.makedirs(log_dir, exist_ok=True)
     try:
-        cutoff = time.time() - LOG_OLD_MAX_AGE_DAYS * 86400
-        for name in os.listdir(log_dir):
-            if name.endswith(".old"):
-                full = os.path.join(log_dir, name)
-                if os.path.getmtime(full) < cutoff:
-                    os.remove(full)
-    except OSError:
+        cfg = load_rules_config()
+        retention = cfg.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)
+        purge_old_logs(log_dir, retention)
+    except Exception:
         pass
 
 
@@ -349,30 +342,53 @@ def map_model(model):
 
 _LOG_EVENT_COUNT = 0
 _LOG_LOCK = threading.Lock()
+DEFAULT_LOG_RETENTION_DAYS = 7
+
+
+def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
+    """扫描日志目录，清理超过 retention_days 天的历史日志，保持 logs 目录整洁。"""
+    try:
+        if not os.path.isdir(log_dir):
+            return
+        now = time.time()
+        max_age = max(1, int(retention_days)) * 86400
+        for fname in os.listdir(log_dir):
+            # 保护活跃主日志，不直接删除
+            if fname in ("gateway.log", "manager.log"):
+                continue
+            if not (fname.startswith("gateway") or fname.startswith("manager")):
+                continue
+            fpath = os.path.join(log_dir, fname)
+            try:
+                if os.path.islink(fpath):
+                    continue
+                if os.path.isfile(fpath):
+                    mtime = os.path.getmtime(fpath)
+                    if now - mtime > max_age:
+                        os.remove(fpath)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
 
 def check_log_rotation():
-    """事件驱动型日志轮转：每写入 50 条日志抽样检查一次大小，超 5MB 自动复制为 .old 并截断清空。
-    完全由事件驱动，零后台定时器、零常驻轮询线程、空闲时零系统开销。"""
+    """定期按生命周期清理过期的历史归档日志（默认 7 天）。"""
     global _LOG_EVENT_COUNT
     _LOG_EVENT_COUNT += 1
     if _LOG_EVENT_COUNT % 50 != 0:
         return
     log_dir = os.path.join(BASE_DIR, "logs")
-    log_path = os.path.join(log_dir, "gateway.log")
     try:
-        if os.path.exists(log_path) and os.path.getsize(log_path) > LOG_MAX_BYTES:
-            old_path = log_path + ".old"
-            import shutil
-            shutil.copyfile(log_path, old_path)
-            with open(log_path, "w", encoding="utf-8") as fh:
-                fh.truncate(0)
+        cfg = load_rules_config()
+        retention = cfg.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)
+        purge_old_logs(log_dir, retention)
     except Exception:
         pass
 
 
 def log_event(event, req_id=None):
-    """向 stdout 输出单行 JSON 结构化日志，统一注入 ts、level（默认 INFO）与可选 request_id。"""
+    """记录单行 JSON 结构化日志：统一注入 ts、level 与 request_id，并自然写入当天的日志文件。"""
     event["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     if req_id and "request_id" not in event:
         event["request_id"] = req_id
@@ -381,6 +397,27 @@ def log_event(event, req_id=None):
     line = json.dumps(event, ensure_ascii=False)
     with _LOG_LOCK:
         print(line, flush=True)
+        today_str = time.strftime("%Y-%m-%d")
+        log_dir = os.path.join(BASE_DIR, "logs")
+        try:
+            day_file = os.path.join(log_dir, f"gateway.{today_str}.log")
+            with open(day_file, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+            # 维护指向当天的 gateway.log 软链，兼容日常 tail -f 查看
+            symlink = os.path.join(log_dir, "gateway.log")
+            target = f"gateway.{today_str}.log"
+            if not os.path.islink(symlink) or os.readlink(symlink) != target:
+                if os.path.exists(symlink) or os.path.islink(symlink):
+                    try:
+                        os.remove(symlink)
+                    except OSError:
+                        pass
+                try:
+                    os.symlink(target, symlink)
+                except OSError:
+                    pass
+        except OSError:
+            pass
         check_log_rotation()
 
 
@@ -1150,19 +1187,8 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
     if not r.get("restore_thinking", True) or not session_id or not isinstance(incoming_msgs, list) or not incoming_msgs:
         return changed
 
-    thinking_index = None
-
-    # 统一读取 transcript 获取 thinking 索引（只调一次 glob + parse，带 mtime 内存缓存）
-    tpath = find_session_transcript(session_id)
-    if tpath:
-        thinking_index = parse_transcript_data(tpath)
-
-    # 先数一遍「历史里有几条 assistant 消息是没带 thinking 的」——不管索引建没建起来。
-    #
-    # 为什么这一步必须独立于后面的回填：以前只有回填成功才留痕，于是日志里
-    # 「一条回填记录都没有」既可能是「客户端没剥」（正常），也可能是「剥了、但我们的
-    # 索引没匹配上」（功能失效）—— 这两种情况在日志里长得一模一样，谁也没法判断
-    # 这条规则到底有没有在工作。分不清，就没法回答「它多长时间剥一次」这个问题。
+    # 1. 惰性检测：先在内存纯列表里数一遍「历史里有几条 assistant 消息是没带 thinking 的」
+    #    若无任何缺失（bare_assistant == 0，即 99% 的绝大多数常态），立即 0 开销放行，彻底杜绝磁盘 glob 扫描
     bare_assistant = 0
     for m in incoming_msgs:
         if not isinstance(m, dict) or m.get("role") != "assistant":
@@ -1178,13 +1204,20 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
         if has_body and not has_think:
             bare_assistant += 1
 
-    if bare_assistant:
-        changed.append("bare_thinking_%d" % bare_assistant)
+    if not bare_assistant:
+        return changed
+
+    changed.append("bare_thinking_%d" % bare_assistant)
+
+    # 2. 只有真查出有缺失（bare_assistant > 0）时，才按需触发磁盘寻找与增量解析
+    thinking_index = None
+    tpath = find_session_transcript(session_id)
+    if tpath:
+        thinking_index = parse_transcript_data(tpath)
 
     if not thinking_index:
-        if bare_assistant:
-            # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
-            changed.append("thinking_index_missing")
+        # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
+        changed.append("thinking_index_missing")
         return changed
 
     # 4. Thinking 确定性归一化与智能全量补齐

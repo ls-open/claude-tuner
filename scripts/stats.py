@@ -233,7 +233,7 @@ def get_session_hydration_details(sid):
     """扫描本地网关日志，按 session_id 过滤并统计本会话的 Thinking 补全次数。"""
     thinking_hydrations = 0
     try:
-        log_files = glob.glob(os.path.join(BASE, "logs", "gateway.log*"))
+        log_files = glob.glob(os.path.join(BASE, "logs", "gateway*.log*"))
         for lf in log_files:
             with open(lf, "r", errors="ignore") as fh:
                 for line in fh:

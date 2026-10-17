@@ -326,7 +326,7 @@ def _spawn_unlocked(script, args, name, pid_file, port=None):
     env = dict(os.environ)
     if port:
         env["CLAUDE_TUNER_PORT"] = str(port)
-    log_path = os.path.join(BASE, "logs", name + ".log")
+    log_path = os.path.join(BASE, "logs", name + ".out.log")
     with open(log_path, "a", encoding="utf-8") as log:
         kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL,
                   "env": env, "start_new_session": True}
@@ -443,23 +443,67 @@ def status():
             print("started:   %.3f" % started)
 
 
+def purge_old_manager_logs(log_dir, retention_days=None):
+    try:
+        if not os.path.isdir(log_dir):
+            return
+        if retention_days is None:
+            retention_days = 7
+            try:
+                cfg_path = os.path.join(BASE, "config.json")
+                if os.path.exists(cfg_path):
+                    with open(cfg_path, "r", encoding="utf-8") as fh:
+                        c = json.load(fh)
+                        if isinstance(c, dict) and "log_retention_days" in c:
+                            retention_days = int(c["log_retention_days"])
+            except Exception:
+                pass
+        now = time.time()
+        max_age = max(1, int(retention_days)) * 86400
+        for fname in os.listdir(log_dir):
+            if fname in ("manager.log", "gateway.log"):
+                continue
+            if not (fname.startswith("manager") or fname.startswith("gateway")):
+                continue
+            fpath = os.path.join(log_dir, fname)
+            try:
+                if os.path.islink(fpath):
+                    continue
+                if os.path.isfile(fpath):
+                    if now - os.path.getmtime(fpath) > max_age:
+                        os.remove(fpath)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def log_msg(*args):
-    """统一日志记录：在 --quiet 模式下完全静默 stdout 并记录到 manager.log（超 2MB 自动轮转）。"""
+    """统一日志记录：在 --quiet 模式下完全静默 stdout 并自然写入当天日志文件。"""
     msg = " ".join(str(a) for a in args)
     if not QUIET:
         print(msg)
     try:
         log_dir = os.path.join(BASE, "logs")
         os.makedirs(log_dir, exist_ok=True)
-        mgr_log = os.path.join(log_dir, "manager.log")
-        if os.path.exists(mgr_log) and os.path.getsize(mgr_log) > 2 * 1024 * 1024:
-            try:
-                os.replace(mgr_log, mgr_log + ".old")
-            except OSError:
-                pass
-        with open(mgr_log, "a", encoding="utf-8") as fh:
+        purge_old_manager_logs(log_dir)
+        today_str = time.strftime("%Y-%m-%d")
+        day_log = os.path.join(log_dir, f"manager.{today_str}.log")
+        with open(day_log, "a", encoding="utf-8") as fh:
             ts = time.strftime("%Y-%m-%d %H:%M:%S")
             fh.write("[%s] %s\n" % (ts, msg))
+        symlink = os.path.join(log_dir, "manager.log")
+        target = f"manager.{today_str}.log"
+        if not os.path.islink(symlink) or os.readlink(symlink) != target:
+            if os.path.exists(symlink) or os.path.islink(symlink):
+                try:
+                    os.remove(symlink)
+                except OSError:
+                    pass
+            try:
+                os.symlink(target, symlink)
+            except OSError:
+                pass
     except Exception:
         pass
 
