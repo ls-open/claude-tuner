@@ -628,11 +628,16 @@ def strip_total_tokens_tag_text(text):
 
 
 def prefix_hashes(parsed):
-    """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。"""
+    """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。
+
+    **不能 sort_keys**：发送侧用的是不排序的 `json.dumps`（见 `_build_upstream_request`），
+    所以这里也按原顺序序列化，摘要才等于"实际发出去的这段字节"的指纹。加了 sort_keys 就
+    会漏掉「客户端只改了键顺序」这一类 —— 线上前缀变了、摘要不变，归因会指向上游。
+    """
     def digest(value):
         try:
             return hashlib.sha256(
-                json.dumps(value or [], sort_keys=True, ensure_ascii=False).encode()
+                json.dumps(value or [], ensure_ascii=False).encode()
             ).hexdigest()[:12]
         except Exception:
             return ""
