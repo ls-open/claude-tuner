@@ -264,14 +264,23 @@ def report_missing_pair_paragraphs(missed):
                "note": "这些配对的工具已被全部剥离，但它们的说明段落没找到 —— 客户端可能改了措辞"})
 
 
+def log_retention_days():
+    """日志保留天数：config.json **顶层** `log_retention_days`，钳在 1~365，缺省 7。
+
+    刻意不放进 `rules` —— 它是运行期清理参数，不是前缀清洗规则（配置台也写在顶层）。
+    """
+    try:
+        return max(1, min(365, int(_read_config().get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS))))
+    except (TypeError, ValueError):
+        return DEFAULT_LOG_RETENTION_DAYS
+
+
 def cleanup_runtime():
     """启动期清理超期历史日志，保持日志目录整洁。"""
     log_dir = os.path.join(BASE_DIR, "logs")
     os.makedirs(log_dir, exist_ok=True)
     try:
-        cfg = load_rules_config()
-        retention = cfg.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)
-        purge_old_logs(log_dir, retention)
+        purge_old_logs(log_dir, log_retention_days())
     except Exception:
         pass
 
@@ -342,7 +351,6 @@ def map_model(model):
 
 _LOG_EVENT_COUNT = 0
 _LOG_LOCK = threading.Lock()
-DEFAULT_LOG_RETENTION_DAYS = 7
 
 
 def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
@@ -380,9 +388,7 @@ def check_log_rotation():
         return
     log_dir = os.path.join(BASE_DIR, "logs")
     try:
-        cfg = load_rules_config()
-        retention = cfg.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)
-        purge_old_logs(log_dir, retention)
+        purge_old_logs(log_dir, log_retention_days())
     except Exception:
         pass
 
