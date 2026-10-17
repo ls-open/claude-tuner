@@ -21,8 +21,11 @@ from urllib.parse import parse_qs, urlparse
 sys.dont_write_bytecode = True
 
 from common import (
+    DEFAULT_LOG_RETENTION_DAYS,
+    DEFAULT_PORT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
+    DEFAULT_UPSTREAM_TIMEOUT,
     atomic_write_json,
     ensure_config_initialized,
     client_api_key,
@@ -38,8 +41,6 @@ from common import (
 import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle_get / handle_post
 
 HOST = "127.0.0.1"
-DEFAULT_PORT = 8789
-DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT = 45  # 默认 45 秒上游超时，杜绝网络假死导致客户端被动干等 5 分钟
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 PROJECTS_DIR = os.environ.get("CLAUDE_PROJECTS_DIR", os.path.expanduser("~/.claude/projects"))
@@ -47,11 +48,10 @@ COWORK_SESSIONS_DIRS = [
     os.path.expanduser("~/Library/Application Support/Claude-3p/local-agent-mode-sessions"),
     os.path.expanduser("~/Library/Application Support/Claude/local-agent-mode-sessions"),
 ]
-LOG_MAX_BYTES = 5 * 1024 * 1024
-LOG_OLD_MAX_AGE_DAYS = 7  # .old 轮转文件保留天数
 CAPTURE_SESSIONS_DIR = "sessions"  # 按会话归档的子目录，见 save_session_capture()
 SESSION_KEY_LEN = 8  # 会话键取 session_id 前若干位，够区分同时开着的几个对话即可
 MAX_SESSION_CAPTURES = 20  # 会话归档保留份数上限（每份是一整段对话报文，不设闸门只增不减）
+BODY_READ_TIMEOUT = 30   # 读请求体的秒数上限（防止半截请求把线程钉死）
 MAX_BODY_BYTES = 50 * 1024 * 1024  # 50MB 保护上限，防止恶意或意外超大包引发 OOM
 ERROR_BODY_LOG_CHARS = 2000  # 上游错误体只记前 2000 字符：够定位原因，又不至于把日志撑爆
 
@@ -185,9 +185,6 @@ from tool_rules import (  # noqa: E402
 
 
 
-_INVENTORY_MAX_PROFILES = 8
-
-
 # 上一次报出来的孤句集合。逐轮重复报同一件事只会把日志刷满，
 # 但**变化时一定报** —— 客户端新增交叉引用时它就会变，那正是我们要知道的那一刻。
 _orphan_memo = [None]
@@ -265,21 +262,24 @@ def report_missing_pair_paragraphs(missed):
                "note": "这些配对的工具已被全部剥离，但它们的说明段落没找到 —— 客户端可能改了措辞"})
 
 
-def cleanup_runtime():
-    """清理超过保留期的日志轮转文件 (.old)，防止长期积累。
+def log_retention_days():
+    """日志保留天数：config.json **顶层** `log_retention_days`，钳在 1~365，缺省 7。
 
-    日志轮转本身由 check_log_rotation() 在写入侧事件驱动完成，此处只负责老化清理。
+    刻意不放进 `rules` —— 它是运行期清理参数，不是前缀清洗规则（配置台也写在顶层）。
     """
+    try:
+        return max(1, min(365, int(_read_config().get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS))))
+    except (TypeError, ValueError):
+        return DEFAULT_LOG_RETENTION_DAYS
+
+
+def cleanup_runtime():
+    """启动期清理超期历史日志，保持日志目录整洁。"""
     log_dir = os.path.join(BASE_DIR, "logs")
     os.makedirs(log_dir, exist_ok=True)
     try:
-        cutoff = time.time() - LOG_OLD_MAX_AGE_DAYS * 86400
-        for name in os.listdir(log_dir):
-            if name.endswith(".old"):
-                full = os.path.join(log_dir, name)
-                if os.path.getmtime(full) < cutoff:
-                    os.remove(full)
-    except OSError:
+        purge_old_logs(log_dir, log_retention_days())
+    except Exception:
         pass
 
 
@@ -349,31 +349,56 @@ def map_model(model):
 
 _LOG_EVENT_COUNT = 0
 _LOG_LOCK = threading.Lock()
+_req_ctx = threading.local()   # 当前线程正在处理的请求 id，见 log_event
+
+
+def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
+    """扫描日志目录，清理超过 retention_days 天的历史日志，保持 logs 目录整洁。"""
+    try:
+        if not os.path.isdir(log_dir):
+            return
+        now = time.time()
+        max_age = max(1, int(retention_days)) * 86400
+        for fname in os.listdir(log_dir):
+            # 保护活跃主日志，不直接删除
+            if fname in ("gateway.log", "manager.log"):
+                continue
+            if not (fname.startswith("gateway") or fname.startswith("manager")):
+                continue
+            fpath = os.path.join(log_dir, fname)
+            try:
+                if os.path.islink(fpath):
+                    continue
+                if os.path.isfile(fpath):
+                    mtime = os.path.getmtime(fpath)
+                    if now - mtime > max_age:
+                        os.remove(fpath)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
 
 def check_log_rotation():
-    """事件驱动型日志轮转：每写入 50 条日志抽样检查一次大小，超 5MB 自动复制为 .old 并截断清空。
-    完全由事件驱动，零后台定时器、零常驻轮询线程、空闲时零系统开销。"""
+    """定期按生命周期清理过期的历史归档日志（默认 7 天）。"""
     global _LOG_EVENT_COUNT
     _LOG_EVENT_COUNT += 1
     if _LOG_EVENT_COUNT % 50 != 0:
         return
     log_dir = os.path.join(BASE_DIR, "logs")
-    log_path = os.path.join(log_dir, "gateway.log")
     try:
-        if os.path.exists(log_path) and os.path.getsize(log_path) > LOG_MAX_BYTES:
-            old_path = log_path + ".old"
-            import shutil
-            shutil.copyfile(log_path, old_path)
-            with open(log_path, "w", encoding="utf-8") as fh:
-                fh.truncate(0)
+        purge_old_logs(log_dir, log_retention_days())
     except Exception:
         pass
 
 
 def log_event(event, req_id=None):
-    """向 stdout 输出单行 JSON 结构化日志，统一注入 ts、level（默认 INFO）与可选 request_id。"""
+    """记录单行 JSON 结构化日志：统一注入 ts、level 与 request_id，并自然写入当天的日志文件。"""
     event["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    if req_id is None:
+        # 模块级函数（例如 _guard_rule 报的 rule_failed）拿不到 handler 的 req_id，
+        # 从当前线程取；否则这类日志串不进具体那次请求，等于没法归因。
+        req_id = getattr(_req_ctx, "request_id", None)
     if req_id and "request_id" not in event:
         event["request_id"] = req_id
     if "level" not in event:
@@ -381,6 +406,27 @@ def log_event(event, req_id=None):
     line = json.dumps(event, ensure_ascii=False)
     with _LOG_LOCK:
         print(line, flush=True)
+        today_str = time.strftime("%Y-%m-%d")
+        log_dir = os.path.join(BASE_DIR, "logs")
+        try:
+            day_file = os.path.join(log_dir, f"gateway.{today_str}.log")
+            with open(day_file, "a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+            # 维护指向当天的 gateway.log 软链，兼容日常 tail -f 查看
+            symlink = os.path.join(log_dir, "gateway.log")
+            target = f"gateway.{today_str}.log"
+            if not os.path.islink(symlink) or os.readlink(symlink) != target:
+                if os.path.exists(symlink) or os.path.islink(symlink):
+                    try:
+                        os.remove(symlink)
+                    except OSError:
+                        pass
+                try:
+                    os.symlink(target, symlink)
+                except OSError:
+                    pass
+        except OSError:
+            pass
         check_log_rotation()
 
 
@@ -509,56 +555,45 @@ def _strip_paragraphs_by_predicate(text, predicate, trim=True):
     return (result.strip() if trim else result), True
 
 
-def strip_security_guidelines_text(text):
-    """剥离安全攻防与拒绝服务限制指令段落。
+# 客户端注入的「行为准则」段落：三段形状完全相同 —— 段首锚点 + 必须命中的特征词 +
+# 任一击中的旁证词。所以只存数据、由一个函数统一裁：加一类新准则 = 往表里加一行，
+# 不再复制一遍「起锚点 → 查关键词 → 切段」的循环（三份代码里改一处漏两处是迟早的）。
+GUIDELINE_PARAGRAPHS = {
+    "strip_security_guidelines": {
+        "anchor": "IMPORTANT:",
+        "requires": ("security testing",),
+        "any_of": ("destructive techniques", "dos attacks",
+                   "dual-use security tools", "supply chain compromise"),
+    },
+    "strip_pronoun_guidelines": {
+        "anchor": "When you use a pronoun for someone",
+        "requires": ("they/them",),
+        "any_of": ("misgender", "infer pronouns", "doesn't tell you someone's pronouns"),
+    },
+    "strip_caution_guidelines": {
+        "anchor": "For actions that are hard to reverse or outward-facing",
+        "requires": ("confirm first",),
+        "any_of": ("external service", "hard to reverse", "durably authorized"),
+    },
+}
 
-    特征：以 IMPORTANT: 开头，提及 security testing，且包含拒绝破坏性技术或双重用途工具授权。
-    """
-    def _is_security_para(p):
-        if not p.startswith("IMPORTANT:"):
+
+def strip_guideline_text(text, rule):
+    """按表里的一条准则剥段落：段首命中锚点、特征词全在、旁证词至少一个。"""
+    spec = GUIDELINE_PARAGRAPHS[rule]
+    anchor = spec["anchor"]
+    requires = spec["requires"]
+    any_of = spec["any_of"]
+
+    def _is_guideline_para(p):
+        if not p.startswith(anchor):
             return False
-        p_lower = p.lower()
-        if "security testing" not in p_lower:
+        lowered = p.lower()
+        if not all(word in lowered for word in requires):
             return False
-        return ("destructive techniques" in p_lower or 
-                "dos attacks" in p_lower or 
-                "dual-use security tools" in p_lower or
-                "supply chain compromise" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_security_para)
+        return any(word in lowered for word in any_of)
 
-
-def strip_pronoun_guidelines_text(text):
-    """剥离人称代词道德约束与性别中立指令段落。
-
-    特征：以 When you use a pronoun for someone 开头，提及 they/them，且说明不从名字推测性别。
-    """
-    def _is_pronoun_para(p):
-        if not p.startswith("When you use a pronoun for someone"):
-            return False
-        p_lower = p.lower()
-        if "they/them" not in p_lower:
-            return False
-        return ("misgender" in p_lower or 
-                "infer pronouns" in p_lower or
-                "doesn't tell you someone's pronouns" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_pronoun_para)
-
-
-def strip_caution_guidelines_text(text):
-    """剥离向外发送与不可逆操作防呆指引段落。
-
-    特征：以 For actions that are hard to reverse or outward-facing 开头，要求先确认或注意外部服务外发。
-    """
-    def _is_caution_para(p):
-        if not p.startswith("For actions that are hard to reverse or outward-facing"):
-            return False
-        p_lower = p.lower()
-        if "confirm first" not in p_lower:
-            return False
-        return ("external service" in p_lower or 
-                "hard to reverse" in p_lower or
-                "durably authorized" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_caution_para)
+    return _strip_paragraphs_by_predicate(text, _is_guideline_para)
 
 
 def strip_total_tokens_tag_text(text):
@@ -585,11 +620,16 @@ def strip_total_tokens_tag_text(text):
 
 
 def prefix_hashes(parsed):
-    """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。"""
+    """返回 (system, tools) 的 12 位 SHA-256 摘要，用于检测逐轮前缀漂移（messages 自然增长，不参与）。
+
+    **不能 sort_keys**：发送侧用的是不排序的 `json.dumps`（见 `_build_upstream_request`），
+    所以这里也按原顺序序列化，摘要才等于"实际发出去的这段字节"的指纹。加了 sort_keys 就
+    会漏掉「客户端只改了键顺序」这一类 —— 线上前缀变了、摘要不变，归因会指向上游。
+    """
     def digest(value):
         try:
             return hashlib.sha256(
-                json.dumps(value or [], sort_keys=True, ensure_ascii=False).encode()
+                json.dumps(value or [], ensure_ascii=False).encode()
             ).hexdigest()[:12]
         except Exception:
             return ""
@@ -634,6 +674,28 @@ def map_request_texts(parsed, fn, messages=True):
                 m["content"] = value
                 msg_hits += hits
     return sys_hits, msg_hits
+
+
+_rule_fail_memo = [None]
+
+
+def _guard_rule(name, fn):
+    """把一条清洗函数包成「永不抛异常」：炸了就原样放行，并记一条 `rule_failed`。
+
+    单条规则失配（客户端改了措辞、正则写漏、文本形态出乎意料）不该让这一轮**所有**规则
+    一起失效 —— 那会把「一条规则坏了」放大成「整段前缀全部失配」，症状只是缓存突然掉一大截，
+    而日志里只剩一行 stabilize_error，看不出是哪条。同一失败只报一次，免得刷满日志。
+    """
+    def wrapper(text, *args, **kwargs):
+        try:
+            return fn(text, *args, **kwargs)
+        except Exception as exc:
+            detail = "%s: %s" % (name, str(exc)[:200])
+            if detail != _rule_fail_memo[0]:
+                _rule_fail_memo[0] = detail
+                log_event({"event": "rule_failed", "rule": name, "error": str(exc)[:200]})
+            return text, False
+    return wrapper
 
 
 def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
@@ -687,14 +749,15 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             text = re.sub(r"currentDate:\s*[^\n]+\s*", "", text)
             return text, (1 if text != orig else 0)
 
-        sys_n, msg_n = map_request_texts(parsed, _clean_reminder_text)
+        sys_n, msg_n = map_request_texts(parsed, _guard_rule("strip_date", _clean_reminder_text))
         if sys_n + msg_n:
             changed.append("strip_date")
 
     # 3. 彻底物理剥离模型代号声明与版本宣称（全面覆盖 system 与 messages）
     if r.get("strip_model_declarations", True):
         sys_n, msg_n = map_request_texts(
-            parsed, lambda t, legacy: strip_model_declaration_text(t))
+            parsed, _guard_rule("strip_model_declarations",
+                                lambda t, legacy: strip_model_declaration_text(t)))
         changed.extend(["strip_model_declarations"] * sys_n)
         changed.extend(["strip_model_declarations_msg"] * msg_n)
 
@@ -703,7 +766,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         # legacy 按角色判定（见 map_request_texts）：system 与 role=system 的消息放行截断，
         # user/assistant 的裸句更可能是正常讨论，不截。
         sys_n, msg_n = map_request_texts(
-            parsed, lambda t, legacy: strip_git_status_text(t, legacy_truncate=legacy))
+            parsed, _guard_rule("strip_git_status",
+                                lambda t, legacy: strip_git_status_text(t, legacy_truncate=legacy)))
         changed.extend(["strip_git_status_system"] * sys_n)
         changed.extend(["strip_git_status_msg"] * msg_n)
 
@@ -712,8 +776,10 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     _ghost_names = get_stripped_tool_names(tp)
     _pair_found = set()
     sys_n, _ = map_request_texts(
-        parsed, lambda t, legacy: strip_ghost_tool_instructions(
-            t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found), messages=False)
+        parsed, _guard_rule("strip_ghost_tool_instructions",
+                            lambda t, legacy: strip_ghost_tool_instructions(
+                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found)),
+        messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
     # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
@@ -722,23 +788,16 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         [p["id"] for p in active_pairs(tp, _ghost_names) if p["id"] not in _pair_found])
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
-    if r.get("strip_security_guidelines", False):
+    for _guideline in GUIDELINE_PARAGRAPHS:
+        if not r.get(_guideline, False):
+            continue
         sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_security_guidelines_text(t), messages=False)
+            parsed,
+            _guard_rule(_guideline,
+                        lambda t, legacy, name=_guideline: strip_guideline_text(t, name)),
+            messages=False)
         if sys_n:
-            changed.extend(["strip_security_guidelines"] * sys_n)
-
-    if r.get("strip_pronoun_guidelines", False):
-        sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_pronoun_guidelines_text(t), messages=False)
-        if sys_n:
-            changed.extend(["strip_pronoun_guidelines"] * sys_n)
-
-    if r.get("strip_caution_guidelines", False):
-        sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_caution_guidelines_text(t), messages=False)
-        if sys_n:
-            changed.extend(["strip_caution_guidelines"] * sys_n)
+            changed.extend([_guideline] * sys_n)
 
     if r.get("strip_total_tokens_tag", True):
         # 仅在注入面生效（顶层 system 或 messages 中 role: system 的注入消息），严禁误伤正文真实讨论
@@ -746,7 +805,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             if not legacy:
                 return text, False
             return strip_total_tokens_tag_text(text)
-        sys_n, msg_n = map_request_texts(parsed, _strip_tokens_fn, messages=True)
+        sys_n, msg_n = map_request_texts(parsed, _guard_rule("strip_total_tokens_tag", _strip_tokens_fn), messages=True)
         if sys_n + msg_n:
             changed.extend(["strip_total_tokens_tag"] * (sys_n + msg_n))
 
@@ -1150,19 +1209,8 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
     if not r.get("restore_thinking", True) or not session_id or not isinstance(incoming_msgs, list) or not incoming_msgs:
         return changed
 
-    thinking_index = None
-
-    # 统一读取 transcript 获取 thinking 索引（只调一次 glob + parse，带 mtime 内存缓存）
-    tpath = find_session_transcript(session_id)
-    if tpath:
-        thinking_index = parse_transcript_data(tpath)
-
-    # 先数一遍「历史里有几条 assistant 消息是没带 thinking 的」——不管索引建没建起来。
-    #
-    # 为什么这一步必须独立于后面的回填：以前只有回填成功才留痕，于是日志里
-    # 「一条回填记录都没有」既可能是「客户端没剥」（正常），也可能是「剥了、但我们的
-    # 索引没匹配上」（功能失效）—— 这两种情况在日志里长得一模一样，谁也没法判断
-    # 这条规则到底有没有在工作。分不清，就没法回答「它多长时间剥一次」这个问题。
+    # 1. 惰性检测：先在内存纯列表里数一遍「历史里有几条 assistant 消息是没带 thinking 的」
+    #    若无任何缺失（bare_assistant == 0，即 99% 的绝大多数常态），立即 0 开销放行，彻底杜绝磁盘 glob 扫描
     bare_assistant = 0
     for m in incoming_msgs:
         if not isinstance(m, dict) or m.get("role") != "assistant":
@@ -1178,13 +1226,20 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
         if has_body and not has_think:
             bare_assistant += 1
 
-    if bare_assistant:
-        changed.append("bare_thinking_%d" % bare_assistant)
+    if not bare_assistant:
+        return changed
+
+    changed.append("bare_thinking_%d" % bare_assistant)
+
+    # 2. 只有真查出有缺失（bare_assistant > 0）时，才按需触发磁盘寻找与增量解析
+    thinking_index = None
+    tpath = find_session_transcript(session_id)
+    if tpath:
+        thinking_index = parse_transcript_data(tpath)
 
     if not thinking_index:
-        if bare_assistant:
-            # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
-            changed.append("thinking_index_missing")
+        # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
+        changed.append("thinking_index_missing")
         return changed
 
     # 4. Thinking 确定性归一化与智能全量补齐
@@ -1368,7 +1423,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
         self.wfile.flush()
 
-    def _send_html(self, status, html, extra_headers=None):
+    def _send_html(self, status, html):
         """配置台页面。与 _send_json 同构，另加几条只对本机页面有意义的防护头。"""
         body = html.encode("utf-8")
         self.send_response(status)
@@ -1381,8 +1436,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Security-Policy",
                          "default-src 'none'; style-src 'unsafe-inline'; "
                          "script-src 'unsafe-inline'; connect-src 'self'; img-src data:")
-        for k, v in (extra_headers or {}).items():
-            self.send_header(k, v)
         self.close_connection = True
         self.end_headers()
         self.wfile.write(body)
@@ -1448,6 +1501,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """POST /v1/messages 主入口：解析 → 探测拦截 → 缓存稳定化 → 上游转发。"""
         self._req_id = self._new_req_id()
+        _req_ctx.request_id = self._req_id
         started = time.time()
         if self.path.split("?")[0] != "/v1/messages":
             # 配置台的写接口：不参与稳定化，也不进消息日志
@@ -1490,7 +1544,14 @@ class Handler(BaseHTTPRequestHandler):
                     "error": {"type": "invalid_request_error", "message": "Request entity too large (max 50MB)"},
                 })
                 return None, True
-            body = self.rfile.read(length) if length else b"{}"
+            # 只给「读请求体」这一步设上限：客户端声明了 Content-Length 却不再发送时，
+            # 没有它这个线程会一直等下去（ThreadingHTTPServer 每连接一个线程）。
+            # 不动流式回写那侧的超时 —— 长回答可以有多次慢写，不该被这里掐断。
+            self.connection.settimeout(BODY_READ_TIMEOUT)
+            try:
+                body = self.rfile.read(length) if length else b"{}"
+            finally:
+                self.connection.settimeout(None)
             # 留存原始字节：稳定化中途失败时据此回滚到未改动的请求（见 _stabilize）
             self._raw_body = body
             parsed = json.loads(body.decode("utf-8"))
@@ -1557,7 +1618,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(200, resp)
 
     def _stabilize(self, parsed, session_id, kind, mapped):
-        """缓存稳定化预处理（失败回滚并降级放行，绝不阻断主请求）。"""
+        """缓存稳定化预处理（失败回滚并降级放行，绝不阻断主请求）。
+
+        单条规则内部的异常由 `canonicalize` 的 `_guard_rule` 就地兜住（只记一条 rule_failed，
+        其余规则照常跑完）；能走到下面这个 except 的是结构性故障（报文形态整个出乎意料），
+        此时才整轮回滚到原始字节再转发。
+        """
         rules = load_rules_config()
         tp_cfg = load_tool_pruning_config()
         try:
@@ -1595,7 +1661,7 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def _get_upstream_timeout(self):
-        """解析上游请求超时时间（优先 env CLAUDE_TUNER_UPSTREAM_TIMEOUT，次优先 config.json，兜底 DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT）。"""
+        """解析上游请求超时时间（优先 env CLAUDE_TUNER_UPSTREAM_TIMEOUT，次优先 config.json，兜底 DEFAULT_UPSTREAM_TIMEOUT）。"""
         if "CLAUDE_TUNER_UPSTREAM_TIMEOUT" in os.environ:
             try:
                 return max(5, int(os.environ["CLAUDE_TUNER_UPSTREAM_TIMEOUT"]))
@@ -1603,9 +1669,9 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         cfg = _read_config()
         try:
-            return max(5, int(cfg.get("upstream_timeout", DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT)))
+            return max(5, int(cfg.get("upstream_timeout", DEFAULT_UPSTREAM_TIMEOUT)))
         except (ValueError, TypeError):
-            return DEFAULT_CLAUDE_TUNER_UPSTREAM_TIMEOUT
+            return DEFAULT_UPSTREAM_TIMEOUT
 
     def _forward(self, parsed, mapped, started, session_id, kind):
         """上游转发总入口：解析 URL → 构造请求 → 流式回写 → 错误兜底。"""

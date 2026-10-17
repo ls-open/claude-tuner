@@ -5,7 +5,7 @@
 **先在临时目录里下全、验完，再动正在用的那份**；动之前先整份备份，失败回滚。
 
 下不下来的情况比想象中多（国内直连 GitHub 常不通），所以每条路都按
-同一套通道依次试：Gitee 镜像（配了才走）→ GitHub raw → jsdelivr → gh-proxy → ghfast。
+同一套通道依次试：GitHub raw → jsdelivr → gh-proxy → ghfast。
 用了哪条通道会如实报出来，不假装「更新成功」而实际一个字节没换。
 
 用法：
@@ -22,6 +22,8 @@ import sys
 import tarfile
 import tempfile
 import time
+
+from common import BACKUP_KEEP_TREES, prune_backups
 import urllib.request
 
 sys.dont_write_bytecode = True
@@ -37,11 +39,9 @@ TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 180
 
 
-def _sources(repo, mirror, ref, path):
+def _sources(repo, ref, path):
     """同一个文件的几条取用通道，按「国内直连优先」排。"""
     urls = []
-    if mirror:
-        urls.append("https://gitee.com/%s/raw/%s/%s" % (mirror, ref, path))
     urls.append("https://raw.githubusercontent.com/%s/%s/%s" % (repo, ref, path))
     urls.append("https://cdn.jsdelivr.net/gh/%s@%s/%s" % (repo, ref, path))
     urls.append("https://gh-proxy.com/https://raw.githubusercontent.com/%s/%s/%s"
@@ -51,10 +51,8 @@ def _sources(repo, mirror, ref, path):
     return urls
 
 
-def _archive_sources(repo, mirror, ref):
+def _archive_sources(repo, ref):
     urls = []
-    if mirror:
-        urls.append("https://gitee.com/%s/repository/archive/%s.tar.gz" % (mirror, ref))
     urls.append("https://codeload.github.com/%s/tar.gz/refs/heads/%s" % (repo, ref))
     urls.append("https://gh-proxy.com/https://github.com/%s/archive/refs/heads/%s.tar.gz"
                 % (repo, ref))
@@ -69,15 +67,14 @@ def _get(url, timeout=TIMEOUT):
         return resp.read()
 
 
-def fetch_text(path, repo=None, mirror=None, ref="main"):
+def fetch_text(path, repo=None, ref="main"):
     """取远端一个小文件，返回 (内容, 实际用的 URL)；全不通返回 (None, 试过的最后一条)。"""
     info = release_info()
     repo = repo or info["repo"]
-    mirror = mirror if mirror is not None else info["mirror"]
     if not repo:
         return None, ""
     tried = ""
-    for url in _sources(repo, mirror, ref, path):
+    for url in _sources(repo, ref, path):
         tried = url
         try:
             return _get(url).decode("utf-8", "replace").strip(), url
@@ -174,7 +171,7 @@ def apply_update():
     workdir = tempfile.mkdtemp(prefix="claude-tuner-update-")
     try:
         blob, used, errors = None, "", []
-        for url in _archive_sources(info["repo"], info["mirror"], "main"):
+        for url in _archive_sources(info["repo"], "main"):
             try:
                 blob = _get(url, timeout=DOWNLOAD_TIMEOUT)
                 used = url
@@ -190,7 +187,6 @@ def apply_update():
             return {"ok": False, "error": "下载到的包没通过校验，保持原样", "detail": problems}
 
         stamp = time.strftime("%Y%m%dT%H%M%S")
-        backup_dir = os.path.join(os.path.dirname(PLUGIN_ROOT), "backups")
         # 备份放在运行目录里（~/.claude-tuner/backups/），不放进插件目录 ——
         # 免得同步时被当成多出来的文件
         backup_dir = os.path.join(os.path.expanduser("~"), ".claude-tuner", "backups")
@@ -198,6 +194,8 @@ def apply_update():
         os.makedirs(backup_dir, exist_ok=True)
         shutil.copytree(PLUGIN_ROOT, backup, symlinks=True,
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        # 整树备份每次几百 KB，只留最近几份：够回滚，不会把磁盘堆满
+        prune_backups(backup_dir, BACKUP_KEEP_TREES, prefix="plugin-")
         for name in os.listdir(root):
             src = os.path.join(root, name)
             dst = os.path.join(PLUGIN_ROOT, name)

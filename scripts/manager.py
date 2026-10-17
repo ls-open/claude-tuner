@@ -3,7 +3,6 @@
 import json
 import glob
 import os
-import re
 import signal
 import socket
 import subprocess
@@ -16,6 +15,7 @@ import urllib.request
 sys.dont_write_bytecode = True
 
 from common import (
+    DEFAULT_PORT,
     THREEP_CONFIG_GLOB,
     atomic_write_json,
     canonical_local_url,
@@ -26,17 +26,13 @@ from common import (
 
 BASE = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# 客户端可能的插件加载位置：skills/<name>/（本仓形态）与 plugins/cache/<版本>/。
-# 两者都算「安装副本」，
-# 都有资格接管运行时；仓库工作副本不在其中（见 is_installed_copy）。
-INSTALL_ROOTS = (
-    os.path.expanduser("~/.claude/plugins/cache"),
-    os.path.expanduser("~/.claude/skills"),
-)
+# 客户端的插件加载位置：只有 skills/<name>/ 这一种。
+# 它才算「安装副本」，有资格接管运行时；仓库工作副本不在其中（见 is_installed_copy）。
+INSTALL_ROOTS = (os.path.expanduser("~/.claude/skills"),)
 GATEWAY = os.path.join(SCRIPT_DIR, "gateway.py")
 GATEWAY_PID = os.path.join(BASE, "gateway.pid")
 CONFIG = os.path.join(BASE, "config.json")
-PORT_PREFERRED = int(os.environ.get("CLAUDE_TUNER_PORT", "8789"))
+PORT_PREFERRED = int(os.environ.get("CLAUDE_TUNER_PORT", str(DEFAULT_PORT)))
 PORT_SCAN_LIMIT = 20   # 最多向上扫描 20 个端口（8789~8808）
 QUIET = False          # main() 按 --quiet 覆盖；模块级留默认值，否则 log_msg 在 main 之外一调就 NameError
 
@@ -162,20 +158,27 @@ def release_lock(fd):
         pass
 
 
-def is_running(pid_file):
+def read_pid(pid_file):
+    """读出 pid 文件里的进程号；文件缺失或内容坏掉时返回 None。"""
     try:
         with open(pid_file, "r", encoding="utf-8") as fh:
-            pid = int(fh.read().strip())
-        os.kill(pid, 0)
-    except Exception:
-        return False
-    # 进程号可能被系统回收复用，需确认仍是我们自己的脚本进程
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def pid_is_ours(pid):
+    """该 pid 现在是否仍是我们自己的脚本进程。
+
+    **任何失败都返回 False** —— 这个方向错了会去 kill 一个 pid 被系统回收后复用的
+    无关进程。活着与否另有 `gateway_alive()` 负责，这里只回答「能不能安全地杀」。
+    """
     try:
         res = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, timeout=5)
         return os.path.basename(GATEWAY) in (res.stdout or "")
     except Exception:
-        return True  # 无法判断时保守视为存活
+        return False
 
 
 def gateway_alive():
@@ -188,7 +191,7 @@ def gateway_alive():
 
 
 def is_installed_copy():
-    """判断当前 manager 是否运行在客户端安装目录（plugins/cache 或 skills/<name>）下。
+    """判断当前 manager 是否运行在客户端安装目录（skills/<name>）下。
 
     仅安装副本允许接管运行时并写入 runtime_script_dir，防止在源码目录直接执行时污染线上网关与 sync.py 推送目标。
     """
@@ -308,7 +311,7 @@ def _sync_locked():
         log_msg("synced:", line)
     if changed and gateway_alive():
         stop(GATEWAY_PID, "gateway")
-        if _spawn_unlocked(GATEWAY, [], "gateway", GATEWAY_PID, port):
+        if _spawn_unlocked(GATEWAY, "gateway", GATEWAY_PID, port):
             log_msg("gateway 已重启以应用新上游")
     upstream = cfg.get("upstream_url")
     if not upstream:
@@ -319,19 +322,21 @@ def _sync_locked():
     return upstream
 
 
-def _spawn_unlocked(script, args, name, pid_file, port=None):
-    if is_running(pid_file) or (name == "gateway" and gateway_alive()):
+def _spawn_unlocked(script, name, pid_file, port=None):
+    # 存活与否只认 HTTP 探活：pid 文件在这里没有发言权（pid 会被系统回收复用，
+    # 而「端口上有没有人能应答」才是客户端真实的体验）。
+    if gateway_alive():
         log_msg("%s already running" % name)
         return False
     env = dict(os.environ)
     if port:
         env["CLAUDE_TUNER_PORT"] = str(port)
-    log_path = os.path.join(BASE, "logs", name + ".log")
+    log_path = os.path.join(BASE, "logs", name + ".out.log")
     with open(log_path, "a", encoding="utf-8") as log:
         kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL,
                   "env": env, "start_new_session": True}
         proc = subprocess.Popen(
-            [sys.executable, script] + args,
+            [sys.executable, script],
             **kwargs
         )
     # pid_file 原子写（与 save_port 一致）
@@ -348,22 +353,26 @@ def _spawn_unlocked(script, args, name, pid_file, port=None):
     return True
 
 
-def spawn(script, args, name, pid_file, port=None):
+def spawn(script, name, pid_file, port=None):
     ensure_dirs()
     lock = acquire_lock()
     try:
-        _spawn_unlocked(script, args, name, pid_file, port)
+        _spawn_unlocked(script, name, pid_file, port)
     finally:
         release_lock(lock)
 
 
 def stop(pid_file, name):
-    if not is_running(pid_file):
+    pid = read_pid(pid_file)
+    if pid is None or not pid_is_ours(pid):
+        # 没有 pid 文件，或那个 pid 已经不是我们的进程：只清账本，绝不 kill
+        try:
+            os.remove(pid_file)
+        except OSError:
+            pass
         log_msg("%s not running" % name)
         return
     try:
-        with open(pid_file, "r", encoding="utf-8") as fh:
-            pid = int(fh.read().strip())
         sig_term = getattr(signal, "SIGTERM", signal.SIGINT)
         sig_kill = getattr(signal, "SIGKILL", sig_term)
         os.kill(pid, sig_term)
@@ -388,7 +397,7 @@ def stop(pid_file, name):
 
 def start():
     check_runtime_dir()
-    spawn(GATEWAY, [], "gateway", GATEWAY_PID, resolve_port())
+    spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
 
 
 def stop_all():
@@ -443,23 +452,67 @@ def status():
             print("started:   %.3f" % started)
 
 
+def purge_old_manager_logs(log_dir, retention_days=None):
+    try:
+        if not os.path.isdir(log_dir):
+            return
+        if retention_days is None:
+            retention_days = 7
+            try:
+                cfg_path = os.path.join(BASE, "config.json")
+                if os.path.exists(cfg_path):
+                    with open(cfg_path, "r", encoding="utf-8") as fh:
+                        c = json.load(fh)
+                        if isinstance(c, dict) and "log_retention_days" in c:
+                            retention_days = int(c["log_retention_days"])
+            except Exception:
+                pass
+        now = time.time()
+        max_age = max(1, int(retention_days)) * 86400
+        for fname in os.listdir(log_dir):
+            if fname in ("manager.log", "gateway.log"):
+                continue
+            if not (fname.startswith("manager") or fname.startswith("gateway")):
+                continue
+            fpath = os.path.join(log_dir, fname)
+            try:
+                if os.path.islink(fpath):
+                    continue
+                if os.path.isfile(fpath):
+                    if now - os.path.getmtime(fpath) > max_age:
+                        os.remove(fpath)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def log_msg(*args):
-    """统一日志记录：在 --quiet 模式下完全静默 stdout 并记录到 manager.log（超 2MB 自动轮转）。"""
+    """统一日志记录：在 --quiet 模式下完全静默 stdout 并自然写入当天日志文件。"""
     msg = " ".join(str(a) for a in args)
     if not QUIET:
         print(msg)
     try:
         log_dir = os.path.join(BASE, "logs")
         os.makedirs(log_dir, exist_ok=True)
-        mgr_log = os.path.join(log_dir, "manager.log")
-        if os.path.exists(mgr_log) and os.path.getsize(mgr_log) > 2 * 1024 * 1024:
-            try:
-                os.replace(mgr_log, mgr_log + ".old")
-            except OSError:
-                pass
-        with open(mgr_log, "a", encoding="utf-8") as fh:
+        purge_old_manager_logs(log_dir)
+        today_str = time.strftime("%Y-%m-%d")
+        day_log = os.path.join(log_dir, f"manager.{today_str}.log")
+        with open(day_log, "a", encoding="utf-8") as fh:
             ts = time.strftime("%Y-%m-%d %H:%M:%S")
             fh.write("[%s] %s\n" % (ts, msg))
+        symlink = os.path.join(log_dir, "manager.log")
+        target = f"manager.{today_str}.log"
+        if not os.path.islink(symlink) or os.readlink(symlink) != target:
+            if os.path.exists(symlink) or os.path.islink(symlink):
+                try:
+                    os.remove(symlink)
+                except OSError:
+                    pass
+            try:
+                os.symlink(target, symlink)
+            except OSError:
+                pass
     except Exception:
         pass
 
@@ -482,7 +535,7 @@ def main():
                 check_runtime_dir()
                 sync()
                 if not gateway_alive():
-                    spawn(GATEWAY, [], "gateway", GATEWAY_PID, resolve_port())
+                    spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
             except Exception as exc:
                 log_msg("ensure warning (suppressed):", exc)
                 sys.exit(0)

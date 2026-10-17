@@ -29,6 +29,8 @@ if SCRIPT_DIR not in sys.path:
 
 import config_ops  # noqa: E402
 from common import (  # noqa: E402
+    DEFAULT_PORT,
+    DEFAULT_PROBE_TIMEOUT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
     atomic_write_json,
@@ -39,7 +41,6 @@ from common import (  # noqa: E402
 HTML_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "webui", "index.html")
 TOKEN_FILE = os.path.join(config_ops.platform_paths()["bridge_home"], "webui.token")
 COOKIE_NAME = "claude_tuner_token"
-CLAUDE_TUNER_UPSTREAM_TIMEOUT = 15
 
 _html_cache = (0.0, "")
 
@@ -206,7 +207,7 @@ def read_config_payload(handler):
             "port": _port(handler),
             "upstream_url": upstream,
             "default_model": bridge_cfg.get("default_model", ""),
-
+            "log_retention_days": int(bridge_cfg.get("log_retention_days", 7)),
             "unknown_model_fallback": bridge_cfg.get("unknown_model_fallback", True) is not False,
         },
         "three_p": {
@@ -233,8 +234,8 @@ def read_config_payload(handler):
             # 那份随附技能清单（含 workflow-authoring），enableWorkflows 去掉的是 Workflow
             # 工具本身 —— 工具说明指着那条技能，只关一个就是半截引用，故同进同退。
             # **两个键住的地方不同**：disableBundledSkills 是 3P 配置的键（客户端的设置页
-            # 也写在那儿），enableWorkflows 是 Claude Code 那层的设置。以前两个都读
-            # ~/.claude/settings.json，于是客户端自己关掉的那个在页面上永远显示「没关」。
+            # 也写在那儿），enableWorkflows 是 Claude Code 那层的设置。读到错的地方，
+            # 客户端自己关掉的那个在页面上就会永远显示「没关」。
             "bundled_skills": (three_p.get("disableBundledSkills") is True
                                and claude_settings.get("enableWorkflows") is False),
             # 三个界面开关：**缺省即开**（客户端不认识 false 以外的值），
@@ -255,11 +256,23 @@ def read_config_payload(handler):
 def _port(handler):
     """当前网关端口：端口是 manager 独占决策，这里只从 config.json 读结果。"""
     port = _read(bridge_path()).get("gateway_port")
-    return port if isinstance(port, int) and port > 0 else 8789
+    return port if isinstance(port, int) and port > 0 else DEFAULT_PORT
+
+
+_write_lock = threading.Lock()
 
 
 def apply_patch(handler, patch):
-    """把前端交上来的补丁落盘，返回 (响应体, 需要重启什么)。"""
+    """把前端交上来的补丁落盘，返回 (响应体, 需要重启什么)。
+
+    整段读-改-写必须在锁内：配置是「读整份、改几项、写回整份」，两个标签页同时保存时
+    没有锁就会互相覆盖 —— 后写的把先写的那几项一起抹掉，而两边都提示「已保存」。
+    """
+    with _write_lock:
+        return _apply_patch_unlocked(handler, patch)
+
+
+def _apply_patch_unlocked(handler, patch):
     paths = _paths()
     effects = {"restart_gateway": False, "restart_client": False, "restart_session": False}
     notes = []
@@ -303,9 +316,8 @@ def apply_patch(handler, patch):
             three_p_changed = True
             notes.append("模型映射已更新")
             effects["restart_client"] = True
-    # 3P 配置的落盘**放在最后** —— 下面 surfaces / scheduled_tasks / bundled_skills
-    # 三块都还要往 three_p 里写。这里原来就写，于是那三块改的全是内存里的副本，
-    # 一个字节都没落盘（面板上勾了、看着生效了，重启客户端又回去了）。
+    # 3P 配置的落盘**必须放在最后** —— 下面 surfaces / scheduled_tasks / bundled_skills
+    # 三块都还要往 three_p 里写；先落盘的话，这三块改的只是内存副本，一个字节都存不下来。
     # 网关侧规则
     if isinstance(patch.get("rules"), dict):
         bridge, changed = config_ops.apply_rules_patch(bridge, patch["rules"])
@@ -315,6 +327,14 @@ def apply_patch(handler, patch):
         notes += ["工具精简 %s" % k for k in changed]
     if "unknown_model_fallback" in patch:
         bridge["unknown_model_fallback"] = bool(patch["unknown_model_fallback"])
+    if "log_retention_days" in patch:
+        try:
+            days = max(1, min(365, int(patch["log_retention_days"])))
+            if bridge.get("log_retention_days") != days:
+                bridge["log_retention_days"] = days
+                notes.append("日志保留天数已设为 %d 天" % days)
+        except (ValueError, TypeError):
+            pass
     if not bridge.get("rules"):
         bridge["rules"] = dict(DEFAULT_RULES)
     atomic_write_json(bridge_path(), bridge, indent=1)
@@ -417,7 +437,7 @@ def _http_json(url, api_key, payload=None):
     headers = _upstream_headers(api_key, session_id="webui" + ("-opencode" if "opencode" in url.lower() else ""))
     req = urllib.request.Request(url, data=data, headers=headers,
                                  method="POST" if data else "GET")
-    with urllib.request.urlopen(req, timeout=CLAUDE_TUNER_UPSTREAM_TIMEOUT) as resp:
+    with urllib.request.urlopen(req, timeout=DEFAULT_PROBE_TIMEOUT) as resp:
         body = resp.read(2 * 1024 * 1024).decode("utf-8", "replace")
     return json.loads(body) if body.strip() else {}
 
@@ -530,7 +550,7 @@ def _gate(handler, query, need_token=True):
 def handle_get(handler, query):
     """处理 GET；返回 True 表示这个请求归配置台管。"""
     path = handler.path.split("?")[0]
-    if path not in ("/", "/index.html", "/api/config", "/api/status",
+    if path not in ("/", "/index.html", "/api/config",
                     "/api/upstream-models", "/api/update-check", "/api/stats"):
         return False
     if not _gate(handler, query, need_token=(path != "/")):
@@ -542,9 +562,8 @@ def handle_get(handler, query):
             # 带 token 的链接一次性用完就丢：避免 token 留在浏览器历史与 Referer 里
             handler.send_response(302)
             handler.send_header("Location", "/")
-            # **必须带 Max-Age**。原来没带 → 是个会话级 cookie，浏览器一关就没了，
-            # 用户每次都得重新去找那个带 token 的链接 —— 他当然会觉得「为什么不能直接打开」。
-            # 带一年：拿链接开一次，之后直接访问 127.0.0.1:8789 就行。
+            # **必须带 Max-Age**：不带就是会话级 cookie，浏览器一关就没，用户每次都得
+            # 重新去找那个带 token 的链接。带一年：拿链接开一次，之后直接访问端口即可。
             handler.send_header("Set-Cookie",
                                 "%s=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000"
                                 % (COOKIE_NAME, token))
@@ -574,13 +593,6 @@ p{margin:0 0 12px;color:#8b94a7}b{color:#e8ebf0}</style>
 
     if path == "/api/config":
         handler._send_json(200, {"ok": True, "data": read_config_payload(handler)})
-        return True
-
-    if path == "/api/status":
-        handler._send_json(200, {"ok": True, "data": {
-            "port": _port(handler),
-            "token_file": TOKEN_FILE,
-        }})
         return True
 
     if path == "/api/update-check":

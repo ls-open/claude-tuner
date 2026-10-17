@@ -24,10 +24,9 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-# 历史日志也一起读：日志按 LOG_MAX_BYTES(5MB) 轮转，只读当前那份的话，
-# 页面上那个数字只是最近一份日志的，而且**没人知道它截止到什么时候**。
-# 轮转文件（.old / .old.1 …）保留 LOG_OLD_MAX_AGE_DAYS(7) 天。
-TAIL_BYTES = 6 * 1024 * 1024      # 单份最多读这么多（当前那份可能到 5MB）
+# 历史日志也一起读：日志按自然日滚动归档，活跃日志连同各归档文件一起汇总，
+# 确保统计区间覆盖配置的全部保留天数（默认 7 天）。
+TAIL_BYTES = 6 * 1024 * 1024      # 单份最多读这么多
 MAX_EVENTS = 20000                # 单次汇总最多统计的事件行数上限（防异常大的日志）
 
 # 按「文件 + mtime + 大小」缓存汇总结果。读十兆日志要一两百毫秒，
@@ -41,31 +40,43 @@ def log_path(home=None):
 
 
 def log_paths(home=None):
-    """按时间从旧到新列出所有日志文件（含轮转的 .old / .old.1 …）。
+    """按时间从旧到新列出全部网关日志：各归档日文件 + 当前活跃的那一份。
 
-    **必须连轮转文件一起读**：只读当前那份，统计区间就只是「最近一份日志」，
-    而这份日志什么时候开始，页面上看不出来 —— 那等于给了个没有截止日期的数字。
+    三条必须的取舍：
+    - **必须读归档**：只读当前那份，统计区间就只是「最近一份日志」，而这份从什么时候开始
+      页面上看不出来 —— 等于给了一个没有截止日期的数字。
+    - **排除 `gateway.out.log`**：它是 manager 把 stdout 重定向出来的副本，同一行事件在里面
+      有第二份，读进来就双倍计数。
+    - **按真实路径去重**：`gateway.log` 是指向当天日文件的软链，两者是同一份，只能算一次。
     """
     base = log_path(home)
-    paths = []
+    logs_dir = os.path.dirname(base)
+    by_real = {}
     try:
-        import glob
-        for p in glob.glob(base + "*"):
-            if os.path.isfile(p):
-                paths.append(p)
-    except Exception:
-        pass
-    if os.path.isfile(base) and base not in paths:
-        paths.append(base)
-    # 时间序：轮转文件里序号越大越旧（.old 比 .old.1 新），当前那份最新
+        names = os.listdir(logs_dir)
+    except OSError:
+        return []
+    for name in names:
+        if not (name.startswith("gateway.") and name.endswith(".log")):
+            continue
+        if name == "gateway.out.log":
+            continue
+        path = os.path.join(logs_dir, name)
+        if not os.path.isfile(path):
+            continue
+        real = os.path.realpath(path)
+        prev = by_real.get(real)
+        # 软链与它指向的日文件是同一份：优先留真实文件那个名字
+        if prev is None or (os.path.islink(prev) and not os.path.islink(path)):
+            by_real[real] = path
+    paths = list(by_real.values())
+
     def rank(path):
-        if path == base:
-            return (1, 0)
-        suffix = path[len(base):]
         try:
-            return (0, -int(suffix.rsplit(".", 1)[-1]))
-        except ValueError:
-            return (0, 0)
+            return os.path.getmtime(path)
+        except OSError:
+            return 0.0
+
     return sorted(paths, key=rank)
 
 
@@ -102,7 +113,7 @@ def _usage_of(event):
 
 
 def summarize(lines):
-    """把日志行汇总成战绩。纯函数（喂行数组，返回结果），便于单测直接调。"""
+    """把日志行汇总为大盘真实用量。纯函数，不推算、不造假、基于上游原生 usage。"""
     total = {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     requests = 0
     first_ts = last_ts = ""
@@ -148,12 +159,10 @@ def summarize(lines):
             total[k] += usage[k]
         last = {"usage": usage, "ts": event.get("ts", ""), "model": event.get("model_mapped", "")}
 
-    # 命中率的分母是「上游这一轮读进去的全部输入」：命中的 + 新写入缓存的 + 完全没走缓存的。
-    # 只拿 cache_read / input 会把命中率算得虚高 —— 那等于把分母里的命中部分扔掉。
     billed_input = total["input"] + total["cache_read"] + total["cache_creation"]
     hit_rate = (total["cache_read"] / billed_input) if billed_input else 0.0
 
-    result = {
+    return {
         "seen": requests > 0,
         "requests": requests,
         "tokens": total,
@@ -162,17 +171,14 @@ def summarize(lines):
         "stripped_events": stripped_events,
         "stripped_tools": stripped_tools,
         "last": last,
-        # 统计区间。**必须报出来** —— 日志会轮转、轮转文件只留几天，不写区间的话
-        # 读到的人无法判断这个数字覆盖了多久，等于给了一个没有截止日期的数。
         "window": {"from": first_ts, "to": last_ts},
     }
-    return result
 
 
 def read_recent_usage(home=None):
-    """读全部日志（含轮转文件）并汇总。
+    """读全部日志（含历史归档文件）并汇总。
 
-    读轮转文件而不只是当前那份，是因为日志按 5MB 轮转 —— 只读当前那份，覆盖区间
+    读归档文件而不只是当前那份，是因为单份日志有体积上限 —— 只读当前那份，覆盖区间
     可能只有一两天，而页面上的数字看起来像是「一直以来的总计」。结果里带 window
     区间与文件数，让读的人知道这个数覆盖了多久。
     """
@@ -194,27 +200,3 @@ def read_recent_usage(home=None):
     if key:
         _usage_cache = (key, result)
     return result
-
-
-def main(argv=None):
-    import argparse
-    parser = argparse.ArgumentParser(description="claude-tuner 用量统计")
-    parser.add_argument("--json", action="store_true", dest="as_json")
-    args = parser.parse_args(argv)
-    data = read_recent_usage()
-    if args.as_json:
-        print(json.dumps(data, ensure_ascii=False, indent=1))
-        return 0
-    if not data["seen"]:
-        print("还没有可统计的请求。")
-        return 0
-    t = data["tokens"]
-    print("已统计 %d 次上游请求" % data["requests"])
-    print("  命中缓存 %.0f  (%.1f%%)" % (t["cache_read"], data["hit_rate"] * 100))
-    print("  未命中   %d" % (t["input"] + t["cache_creation"]))
-    print("  输出     %d" % t["output"])
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

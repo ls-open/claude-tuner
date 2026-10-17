@@ -1,6 +1,5 @@
 {
   "repo": "ls-open/claude-tuner",
-  "mirror": "",
-  "version": "0.2.0",
-  "tested_client": "2.37337.1"
+  "version": "0.3.0",
+  "tested_client": "2.42304.0"
 }

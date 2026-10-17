@@ -38,13 +38,14 @@ if SCRIPT_DIR not in sys.path:
 
 import config_ops  # noqa: E402
 from common import (  # noqa: E402
+    BACKUP_KEEP_FILES,
+    DEFAULT_PORT,
     atomic_write_json,
     ensure_config_initialized,
     find_active_3p_config_path,
     normalize_upstream,
+    prune_backups,
 )
-
-DEFAULT_PORT = 8789
 
 
 def log(msg=""):
@@ -101,9 +102,9 @@ def gather_state(paths=None):
 # 计划（纯判断，不碰磁盘）
 # ==============================================================================
 
-def _write_action(path, data, reason, backup=True, mode=None):
+def _write_action(path, data, reason, backup=True):
     return {"kind": "write_json", "path": path, "data": data, "reason": reason,
-            "backup": backup, "mode": mode}
+            "backup": backup}
 
 
 def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=True, force=False):
@@ -232,12 +233,13 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
 # ==============================================================================
 
 def _backup(path, ts, dry_run):
-    """改既有文件前先备份到 ~/.claude-tuner/backups/3p/；备份永不自动删。"""
+    """改既有文件前先备份到 ~/.claude-tuner/backups/3p/，只留最近 BACKUP_KEEP_FILES 份。"""
     dest = config_ops.backup_path(path, ts)
     if dry_run:
         return dest
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     shutil.copy2(path, dest)
+    prune_backups(os.path.dirname(dest), BACKUP_KEEP_FILES)
     return dest
 
 
@@ -277,11 +279,9 @@ def apply(actions, dry_run=False):
     return done, backups, problems
 
 
-def restart_gateway(dry_run=False):
+def restart_gateway():
     """拉起/重启本地网关（网关没有自我重启能力，必须由 manager 代劳）。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
-    if dry_run:
-        return 0
     try:
         subprocess.run([sys.executable, manager, "restart"], timeout=60,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

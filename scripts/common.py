@@ -6,6 +6,44 @@
 import json
 import os
 import re
+import shutil
+
+
+BACKUP_KEEP_FILES = 20   # ~/.claude-tuner/backups/3p/ 里保留多少份单文件备份
+BACKUP_KEEP_TREES = 5    # 插件整树备份（每次自更新一份，几百 KB）保留多少份
+
+
+def prune_backups(directory, keep, prefix=None):
+    """只留 directory 下最近的 keep 份备份（按 mtime 从新到旧），其余删掉，返回删掉的路径。
+
+    备份是为了「刚改坏了能回去」，不是审计留痕。只增不减的话，反复重装或自更新下来会
+    堆到几千份，真要回滚时反而分不清哪份有用 —— 而每一份都占着磁盘。
+    """
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return []
+    entries = [os.path.join(directory, n) for n in names
+               if prefix is None or n.startswith(prefix)]
+
+    def mtime(path):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return 0.0
+
+    entries.sort(key=mtime, reverse=True)
+    removed = []
+    for path in entries[max(0, int(keep)):]:
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError:
+            continue
+        removed.append(path)
+    return removed
 
 
 def get_3p_config_dir():
@@ -172,20 +210,17 @@ DEFAULT_RULES = {
 # 客户端一升级就会变，写进代码必然漂移 —— 页面上按真实请求现称。
 #
 # **这份默认值 = 界面上的「日常开发均衡档」**（新装用户开箱即用的那一档）。
-# 改这里必须同步改 `webui/index.html` 的 `PRESETS.balanced.tool_pruning`，反之亦然 ——
-# 两处本来就是同一份「推荐基线」，分头改必然漂移。其余档位（纯代码极限 / 只换模型）是
-# 在它基础上的加减，不必对齐。
+# 预设只写与这里不同的项，所以改默认值时界面自动跟着变，没有第二处要对齐。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
     # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
     # 默认**保留**：它俩是服务端工具，上游实现了才有用，纯代码/离线场景用户可自己关。
     "strip_web_search_tools": False,      # WebSearch
     "strip_web_fetch_tools": False,       # WebFetch
-    # 桌面端界面遥控：按**功能**拆成六项。原来全在 strip_session_mgmt_tools 一个键下，
-    # 实测管着 52 个工具 / 61 KB —— 想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，
-    # 而两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    # 会话管理里性质不同的六类单独成项（都默认开，与原来一个键全剥时行为一致）：
-    # 它们不是界面遥控，而是改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
+    # 桌面端界面遥控：按**功能**拆成六项 —— 合成一个键的话，想清掉侧栏就得连会话管理
+    # 一起清，两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
+    # 会话管理里性质不同的六类单独成项（默认全开）：它们不是界面遥控，而是改权限 /
+    # 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
     "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
     "strip_session_permission_tools": True,   # 改会话权限模式
     "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
@@ -195,7 +230,7 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_session_task_tools": True,         # 起 / 停会话内的后台任务
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
-    "strip_view_tools": False,            # mcp__ccd_view*（代码修改推送与预览面板，默认保留）
+    "strip_view_tools": False,            # mcp__ccd_view*（diff／文件／终端／浏览器预览面板，默认保留）
     "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
     "strip_settings_tools": True,         # mcp__ccd_settings*
     "strip_directory_tools": True,        # mcp__ccd_directory*
@@ -211,51 +246,25 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_cross_session_tools": False,   # SendMessage / ListAgents
     "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
     "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
-    # 这两个是「多代理编排与后台任务」那个大开关拆开时掉出来的 —— 一路没人接住，
-    # 于是长期没有开关（哨兵看不出来，因为它当时只挑 mcp__ 前缀报）。同样是真本事，
     # 默认保留：TaskStop 用来终止跑飞的后台任务，ReportFindings 是 code-review 那套
-    # 技能把结论交回界面的通道。
+    # 技能把结论交回界面的通道 —— 都是有实际用途的能力，不是死重。
     "strip_task_stop_tools": False,       # TaskStop
     "strip_report_findings_tools": False, # ReportFindings
 }
 
 
-# 已废弃的配置键，由 ensure_config_initialized 自动从旧 config.json 中清理
-RETIRED_CONFIG_KEYS = (
-    "passthrough",                # 曾用于整体跳过稳定化，已被细粒度的 rules.* 取代
-    "cache_stabilize",            # 同上
-    "intercept_suggestion_mode",  # 网关侧输入预测拦截已移除（客户端自带的开关更好使）
-)
-
-# 已废弃的 tool_pruning 子键（同上，但它们在 tool_pruning 节点下，不是顶级键）
-RETIRED_TOOL_PRUNING_KEYS = (
-    "strip_cli_cron_tools",        # Cron 定时任务改由 3P 的 Allow scheduled tasks 在源头关闭
-    "strip_scheduled_tasks_tools", # 同上（两套机制一起被客户端开关移除）
-    "strip_workflow_tools",        # 动态工作流改由客户端的 enableWorkflows 在源头关闭
-)
-
-# 改过名的 tool_pruning 子键：旧名 → 新名（一个旧键可能拆成几个新键）。
-#
-# **改名时必须把旧值带过去，不能只删旧键。** 新键的默认值是 True，如果用户原来把
-# 旧键关掉过（= 想留着那批工具），直接删旧键 + 补新键会让它们被静默剥掉 ——
-# 他什么都没做，工具却没了。这类「升级后行为变了且没人知道」的问题最难排查。
-RENAMED_TOOL_PRUNING_KEYS = {
-    "strip_native_web_tools": ("strip_web_search_tools", "strip_web_fetch_tools"),
-    "strip_session_mgmt_tools": ("strip_session_tools", "strip_sidebar_tools",
-                                 "strip_window_tools", "strip_host_tools",
-                                 "strip_settings_tools", "strip_directory_tools"),
-    # Workflow 原本在这串里，已改由客户端的 enableWorkflows 管（不再有网关开关），
-    # 所以迁移只带剩下的三个；旧配置里的 strip_workflow_tools 由 RETIRED_TOOL_PRUNING_KEYS 清掉。
-    "strip_orchestration_tools": ("strip_cross_session_tools",
-                                  "strip_task_stop_tools", "strip_report_findings_tools"),
-}
-
+# 默认值只在这里定义一次，其余模块一律 import —— 同一个数字在几处各写一份，
+# 迟早有一处改漏，而症状是「配置台设了、网关没听」这种最难查的形态。
+DEFAULT_PORT = 8789
+DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
+DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案
+DEFAULT_LOG_RETENTION_DAYS = 7
 
 # 默认配置文件完整脚手架模板
 DEFAULT_CONFIG = {
     "upstream_url": "",
-    "gateway_port": 8789,
-    "upstream_timeout": 45,
+    "gateway_port": DEFAULT_PORT,
+    "upstream_timeout": DEFAULT_UPSTREAM_TIMEOUT,
     # 客户端代号漏配时的兜底上游模型（空 = 关闭，原样透传）。
     # 客户端模型选择器由 3P 的 inferenceModels 决定，用户换了代号而映射表没跟上时，
     # 原样透传会让上游以 404 打回 —— 那是首次安装最像「装坏了」的失败。
@@ -269,6 +278,9 @@ DEFAULT_CONFIG = {
     # 「允许定时任务」：写进 3P 的 scheduledTasksEnabled。默认关 —— 定时任务整套工具
     # 会从源头消失（客户端干脆不提供创建/修改/运行它们的工具），比事后剥离干净。
     "scheduled_tasks": False,
+    # 日志保留天数（网关按它清理归档）与入口报文抓包开关（默认关，开着每轮多写两份文件）
+    "log_retention_days": DEFAULT_LOG_RETENTION_DAYS,
+    "capture_raw_inbound": False,
     "rules": DEFAULT_RULES,
     "tool_pruning": DEFAULT_TOOL_PRUNING_CONFIG,
 }
@@ -280,8 +292,7 @@ def ensure_config_initialized(config_path=None):
     """自动初始化或补全 ~/.claude-tuner/config.json 配置文件。
 
     1. 若文件不存在：自动生成包含 rules / tool_pruning 的脚手架配置；
-    2. 若文件已存在：安全补充缺失的顶级节点与子配置项，确保全新安装或升级后开箱即用；
-    3. 顺手清掉 RETIRED_CONFIG_KEYS 里的废弃键（只会删登记过的，不碰其余任何键）。
+    2. 若文件已存在：只补缺失的顶级节点与子配置项，不删任何已有键、不改任何已有值。
     """
     base_dir = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
     path = config_path or os.path.join(base_dir, "config.json")
@@ -302,36 +313,11 @@ def ensure_config_initialized(config_path=None):
                 cfg[k] = v
                 updated = True
 
-        # 改名的键：把旧值带到新键上（见 RENAMED_TOOL_PRUNING_KEYS 的注释）
-        if isinstance(cfg.get("tool_pruning"), dict):
-            tp = cfg["tool_pruning"]
-            for old, news in RENAMED_TOOL_PRUNING_KEYS.items():
-                if old not in tp:
-                    continue
-                old_value = tp.pop(old)
-                for n in news:
-                    if n not in tp:        # 新键已经在了？以新键为准，不覆盖用户的明确设置
-                        tp[n] = old_value
-                updated = True
-
         # 安全补充 tool_pruning 缺失的子配置项
         if "tool_pruning" in cfg and isinstance(cfg["tool_pruning"], dict):
             for tk, tv in DEFAULT_TOOL_PRUNING_CONFIG.items():
                 if tk not in cfg["tool_pruning"]:
                     cfg["tool_pruning"][tk] = tv
-                    updated = True
-
-        # 清掉已废弃的键（登记在 RETIRED_CONFIG_KEYS）
-        for rk in RETIRED_CONFIG_KEYS:
-            if rk in cfg:
-                cfg.pop(rk)
-                updated = True
-
-        # 同上，但作用于 tool_pruning 下的子键
-        if isinstance(cfg.get("tool_pruning"), dict):
-            for rk in RETIRED_TOOL_PRUNING_KEYS:
-                if rk in cfg["tool_pruning"]:
-                    cfg["tool_pruning"].pop(rk)
                     updated = True
 
         # 安全补充 rules 缺失的子配置项
@@ -447,11 +433,11 @@ _release_cache = None
 
 
 def release_info():
-    """读 release.json：从哪个仓库来（repo / mirror）、本版号、按哪个客户端版本验过。"""
+    """读 release.json：从哪个仓库来、本版号、按哪个客户端版本验过。"""
     global _release_cache
     if _release_cache is not None:
         return _release_cache
-    info = {"repo": "", "mirror": "", "version": "", "tested_client": ""}
+    info = {"repo": "", "version": "", "tested_client": ""}
     try:
         with open(RELEASE_FILE, "r", encoding="utf-8") as fh:
             data = json.load(fh)

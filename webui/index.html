@@ -602,6 +602,16 @@
           </div>
           <button id="btnRestart">重启网关</button>
         </div>
+        <div class="row" style="margin-top:14px;align-items:center;gap:12px;flex-wrap:wrap">
+          <label for="logRetention" style="font-size:13px;color:var(--dim);white-space:nowrap">日志滚动保留天数：</label>
+          <select id="logRetention" style="width:140px;height:32px;font-size:12.5px">
+            <option value="3">保留 3 天</option>
+            <option value="7">保留 7 天（默认）</option>
+            <option value="14">保留 14 天</option>
+            <option value="30">保留 30 天</option>
+          </select>
+          <span class="hint" style="margin:0">按自然日自动滚动归档，超出保留天数的历史日志自动清理。</span>
+        </div>
         <div class="hint">网关规则改动后立即生效，无需重启 Claude 客户端。</div>
       </div>
     </section>
@@ -653,8 +663,7 @@ function showToast(text, kind = 'ok', duration = 2400) {
 
 // 两个通道分工，**不要同时写两处**：`say` 是顶栏那行常驻状态（就在保存按钮旁边，
 // 顶栏是 sticky 的，一直看得见）；`showToast` 是给**一次性动作**的回执，用完即走。
-// 早先 say 同时弹 toast，结果是同一条消息同屏出现两遍，而「N 项修改待保存」每动一个
-// 开关就弹一次。
+// 一处同时写两边，同一条消息就会同屏出现两遍。
 const say = (text, kind) => {
   const m = $('#msg');
   if (m) { m.textContent = text; m.className = kind || ''; }
@@ -714,7 +723,7 @@ const PRUNING_GROUPS = [
   ['桌面界面遥控类', '控制桌面端窗口、侧栏与分屏等本地 UI 辅助工具（剥除不影响编码能力）', [
     ['strip_sidebar_tools', '移除侧栏管理工具', '建立分区、归档、置顶等界面操作'],
     ['strip_window_tools', '移除窗口与分屏遥控', ''],
-    ['strip_view_tools', '移除修改推送与预览面板', '客户端提示词要求模型用它推送 diff／文件／终端面板，故默认保留'],
+    ['strip_view_tools', '移除面板呈现（diff／文件／终端／浏览器预览）', '客户端提示词要求模型用它推送 diff／文件／终端面板并打开浏览器预览，故默认保留'],
     ['strip_settings_tools', '移除界面偏好控制', ''],
     ['strip_directory_tools', '移除会话目录切换', ''],
   ]],
@@ -748,58 +757,31 @@ const PRUNING_GROUPS = [
   ]],
 ];
 
-// 「随附技能与动态工作流」原来是个复合开关（客户端设置 + 网关剥 Workflow 工具）。
-// 现在两半都是**客户端自己的设置**：`disableBundledSkills` 去掉那份随附技能清单
-// （含 workflow-authoring），`enableWorkflows` 去掉 Workflow 工具本身 —— 工具说明
-// 指着那条技能，只关一个就是半截引用，所以仍是一个开关同时写两个键。
+// 「随附技能与动态工作流」一个开关、两个键，两半都是**客户端自己的设置**：
+// `disableBundledSkills` 去掉那份随附技能清单（含 workflow-authoring），
+// `enableWorkflows` 去掉 Workflow 工具本身 —— 工具说明指着那条技能，只关一个就是
+// 半截引用，所以两者同进同退。
 // 它住在客户端偏好区，跟「关闭客户端定时任务」同一处、同一套写法（见 renderSwitches）。
 
 // ── 场景预设定义 ───────────────────────────────────────────
 // `settings` 里写的是**设置本身的值**，不是复选框状态 —— 复选框全是「关闭某某」的反向开关，
-// 所以 applyPreset 里那两处取反是必需的。写反了不会报错，只会安静地把开关翻到反面
-// （balanced 的 autoCompactEnabled 就曾经写成 true：点「推荐」再保存，反而把自动压缩打开，
-// 与安装默认和 README 的 FAQ 相反）。加开关时对着 applyPreset 逐条核一遍。
+// 所以 applyPreset 里那两处取反是必需的。写反了不会报错，只会安静地把开关翻到反面，
+// 正好与「推荐」的意图相反。加开关时对着 applyPreset 逐条核一遍。
 const PRESETS = {
   balanced: {
     name: '日常开发均衡档',
-    rules: {
-      strip_date: true, strip_git_status: true, strip_model_declarations: true,
-      strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
-      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
-    },
-    tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: false, strip_settings_tools: true,
-      strip_directory_tools: true, strip_session_tools: true, strip_host_tools: false,
-      strip_session_permission_tools: true, strip_session_model_tools: true,
-      strip_session_export_tools: true, strip_session_delete_tools: true,
-      strip_session_remote_tools: true, strip_session_task_tools: true,
-      strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
-      strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
-      strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
-    },
+    // 与出厂默认逐项一致：一个字都不用写，改默认值它就跟着变。
+    rules: {},
+    tool_pruning: {},
     bundle: false,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
   },
   pure_code: {
     name: '纯代码极限档',
-    rules: {
-      strip_date: true, strip_git_status: true, strip_model_declarations: true,
-      strip_billing_header: true, restore_thinking: true, split_mixed_user_messages: true,
-      probe_interception: true, strip_total_tokens_tag: true, tool_block_ordering: true,
-      strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true,
-    },
+    rules: { strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true },
     tool_pruning: {
-      strip_sidebar_tools: true, strip_window_tools: true, strip_view_tools: true, strip_settings_tools: true,
-      strip_directory_tools: true, strip_session_tools: true, strip_host_tools: true,
-      strip_session_permission_tools: true, strip_session_model_tools: true,
-      strip_session_export_tools: true, strip_session_delete_tools: true,
-      strip_session_remote_tools: true, strip_session_task_tools: true,
-      strip_terminal_tools: true, strip_web_search_tools: true, strip_web_fetch_tools: true,
-      strip_pr_ci_tools: true, strip_notebook_tools: true, strip_design_sync_tools: true,
-      strip_plugin_mgmt_tools: true, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
+      strip_view_tools: true, strip_host_tools: true, strip_terminal_tools: true,
+      strip_web_search_tools: true, strip_web_fetch_tools: true,
     },
     bundle: true,
     settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
@@ -810,23 +792,30 @@ const PRESETS = {
       probe_interception: false, strip_billing_header: false, restore_thinking: false,
       split_mixed_user_messages: false, strip_date: false, strip_git_status: false,
       strip_model_declarations: false, strip_total_tokens_tag: false, tool_block_ordering: false,
-      strip_security_guidelines: false, strip_pronoun_guidelines: false, strip_caution_guidelines: false,
     },
     tool_pruning: {
-      strip_sidebar_tools: false, strip_window_tools: false, strip_view_tools: false, strip_settings_tools: false,
+      strip_sidebar_tools: false, strip_window_tools: false, strip_settings_tools: false,
       strip_directory_tools: false, strip_session_tools: false, strip_host_tools: false,
       strip_session_permission_tools: false, strip_session_model_tools: false,
       strip_session_export_tools: false, strip_session_delete_tools: false,
       strip_session_remote_tools: false, strip_session_task_tools: false,
-      strip_terminal_tools: false, strip_web_search_tools: false, strip_web_fetch_tools: false,
       strip_pr_ci_tools: false, strip_notebook_tools: false, strip_design_sync_tools: false,
-      strip_plugin_mgmt_tools: false, strip_cross_session_tools: false, strip_worktree_tools: false,
-      strip_plan_tools: false,
+      strip_plugin_mgmt_tools: false,
     },
     bundle: false,
     settings: { promptCacheTtl: false, promptSuggestionEnabled: true, autoCompactEnabled: true }
   }
 };
+
+// 每档只写**与默认值不同的那几项**，其余一律取后端下发的默认值 ——
+// 默认值只在 common.DEFAULT_* 定义一处，新增开关时不必回头改这里。
+function presetCfg(p){
+  const opts = (CFG && CFG.options) || {};
+  return {
+    rules: Object.assign({}, opts.rules_defaults || {}, p.rules),
+    tool_pruning: Object.assign({}, opts.pruning_defaults || {}, p.tool_pruning),
+  };
+}
 
 const WHEN = {
   now:     ['保存后即生效', 'gateway'],
@@ -981,16 +970,17 @@ function applyPreset(mode){
   // 这里各写一遍会立刻对不上：它只知道「你点了哪张卡」，不知道点完之后开关到底成了什么，
   // 于是标记和提示会各自说谎（而且 suggested 那圈边框清不掉，两种标记会叠在同一张卡上）。
   const p = PRESETS[mode];
+  const cfg = presetCfg(p);
   if (!p) return;
 
   // 1. 规则开关
-  Object.entries(p.rules).forEach(([k, v]) => {
+  Object.entries(cfg.rules).forEach(([k, v]) => {
     const el = $(`#ruleBox input[data-rule="${k}"]`);
     if (el) el.checked = v;
   });
 
   // 2. 工具精简
-  Object.entries(p.tool_pruning).forEach(([k, v]) => {
+  Object.entries(cfg.tool_pruning).forEach(([k, v]) => {
     const el = $(`#pruneBox input[data-tp="${k}"]`);
     if (el) el.checked = v;
   });
@@ -1012,9 +1002,8 @@ function applyPreset(mode){
 }
 
 // ── 预设卡片上的明细：从 PRESETS 数据现算，不手写 ───────────
-// 手写的那份一定会跟数据漂移。上一版四个档位的说明就全是手写的，于是「随附技能与 Workflow
-// 也一并剥掉」这件不容易察觉的能力损失，四个卡片里一个字都没提。这里直接读同一份数据，
-// 写不到就不会出现 —— 加开关时也不必记得回来改文案。
+// 手写的那份一定会跟数据漂移。这里直接读同一份数据，写不到就不会出现 ——
+// 加开关时也不必记得回来改文案。
 function presetTpLabel(key){
   for (const [, , items] of PRUNING_GROUPS){
     const hit = items.find(([k]) => k === key);
@@ -1029,8 +1018,9 @@ function renderPresetDetails(){
   document.querySelectorAll("[data-detail]").forEach(box => {
     const p = PRESETS[box.dataset.detail];
     if (!p) return;
-    const tpKeys = Object.keys(p.tool_pruning);
-    const off = tpKeys.filter(k => p.tool_pruning[k]).map(k => presetTpLabel(k));
+    const tp = presetCfg(p).tool_pruning;
+    const tpKeys = Object.keys(tp);
+    const off = tpKeys.filter(k => tp[k]).map(k => presetTpLabel(k));
     const tools = off.length
       ? `<b title="${esc(off.join("、"))}">剥掉 ${off.length}/${tpKeys.length} 项工具</b>`
       : `<b>工具一项不剥</b>`;
@@ -1090,13 +1080,14 @@ function hasPendingChanges(){
 
 function checkCurrentPresetMatch(){
   for (const [mode, p] of Object.entries(PRESETS)) {
+    const cfg = presetCfg(p);
     let match = true;
-    for (const [k, v] of Object.entries(p.rules)) {
+    for (const [k, v] of Object.entries(cfg.rules)) {
       const el = $(`#ruleBox input[data-rule="${k}"]`);
       if (el && el.checked !== v) { match = false; break; }
     }
     if (!match) continue;
-    for (const [k, v] of Object.entries(p.tool_pruning)) {
+    for (const [k, v] of Object.entries(cfg.tool_pruning)) {
       const el = $(`#pruneBox input[data-tp="${k}"]`);
       if (el && el.checked !== v) { match = false; break; }
     }
@@ -1118,10 +1109,8 @@ function checkCurrentPresetMatch(){
   }
   // 不匹配任何档位时**不给任何卡片挂标记**，只陈述事实。
   //
-  // 曾经这里标过「推荐档 = 建议起点」的灰边，也标过「微调 = 当前使用」，两个都不对：
-  // 前者是替用户做决定（老用户会问「我一直用得好好的，你建议我改什么」），后者更糟 ——
-  // 全新安装的配置逐项等于出厂默认、用户一个字没改过，却被说成「你的自定义配置」。
-  // 页面能给的最有用的东西是**当前到底是什么**，那由下面那行事实去说。
+  // 不匹配任何档位时**不给任何卡片挂标记**：页面能给的最有用的东西是**当前到底是什么**，
+  // 那由下面那行事实去说；替用户贴「建议起点」或「你的自定义」都是替他下结论。
   markPresetCards(null);
   $('#presetHead').textContent = atInstallDefaults()
     ? '未套用任何档位 —— 下方开关就是安装时的默认值'
@@ -1184,6 +1173,10 @@ function renderGateway(d){
   const tag = $('#gwTag');
   tag.textContent = d.gateway.unknown_model_fallback ? '漏配兜底：开' : '漏配兜底：关';
   tag.style.display = '';
+  if (d.gateway && d.gateway.log_retention_days) {
+    const sel = $('#logRetention');
+    if (sel) sel.value = String(d.gateway.log_retention_days);
+  }
   $('#apikey').placeholder = d.upstream.api_key_masked
     ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填入 API Key';
 }
@@ -1215,22 +1208,20 @@ async function renderStats(){
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
     `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>已统计 ${num(d.requests)} 次真实请求</small></div>`,
-    `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存价计费（省钱主力）</small></div>`,
+    `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存优惠价计费</small></div>`,
     `<div class="k"><b title="${num(t.input + t.cache_creation)}">${fmtTokens(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
     `<div class="k"><b title="${num(t.output)}">${fmtTokens(t.output)}</b><small>生成的输出 Token</small></div>`,
   ];
   const w = d.window || {};
   const fmt = t => (t ? t.slice(5, 16).replace('T', ' ') : '?');
+  const files = d.log_files || 0;
+  // 只报事实：起止时刻与读了几份日志都由数据本身决定，不再写「近 N 天」——
+  // 那个 N 是保留期配置，数据远没有那么多天的时候它就是一句假话。
   const span = `<div class="hint" style="margin-top:10px">
-      数据统计区间：${fmt(w.from)} → ${fmt(w.to)}${d.log_files > 1 ? `（含 ${d.log_files} 份轮转日志）` : ''} · 数字来自上游网关真实 usage
+      数据统计范围：${fmt(w.from)} → ${fmt(w.to)}（${files} 份日志） · 含所有会话与子代理<br>
+      与终端 <b>stats.py</b> 的口径不同：那份是「当前会话主对话」的逐轮命中，这份是日志窗口内的全部请求
     </div>`;
-  // `stripped_tools` 是**区间内累计剥离的次数**，不是「有多少条工具定义」——
-  // 同一个工具每轮都在重计一遍。直接说成「N 条工具定义」会给出一个明显不成立的说法
-  // （工具总共才几十个，这里却会显示十八万）。所以按每次请求平均说，累计数放括号里。
-  const perReq = d.requests ? Math.round(d.stripped_tools / d.requests) : 0;
-  const extra = d.stripped_tools
-    ? `<div class="hint" style="margin-top:10px">工具精简：每次请求平均剥离约 <b>${num(perReq)}</b> 个工具定义（区间内累计 ${num(d.stripped_tools)} 次，每轮重计）。</div>` : '';
-  box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}${extra}`;
+  box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}`;
 }
 
 // 运行时安全保护：客户端开启状态下拦截写入配置文件的开关
@@ -1410,7 +1401,8 @@ function collectCurrentFormState(){
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
   tool_pruning.custom_strip_tools = (CFG?.tool_pruning?.custom_strip_tools || []);
-  return {models, settings, tool_pruning, rules, on};
+  const log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
+  return {models, settings, tool_pruning, rules, on, log_retention_days};
 }
 
 function computePendingDiffs(models, settings, tool_pruning, rules) {
@@ -1425,8 +1417,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       title: '上游接口地址',
       from: oldUp || '（未配置）',
       to: newUp || '（空）',
-      when: '保存后即生效',
-      badge: 'gateway'
+      ...{ when: WHEN.now[0], badge: WHEN.now[1] },
     });
   }
 
@@ -1464,8 +1455,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         title: label,
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
-        when: '保存后即生效',
-        badge: 'gateway'
+        ...{ when: WHEN.now[0], badge: WHEN.now[1] }
       });
     }
   });
@@ -1482,8 +1472,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
           title: label,
           from: oldVal ? '开' : '关',
           to: newVal ? '开' : '关',
-          when: '保存后即生效',
-          badge: 'gateway'
+          ...{ when: WHEN.now[0], badge: WHEN.now[1] }
         });
       }
     });
@@ -1594,6 +1583,19 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
     }
   });
 
+  // 日志保留天数
+  const oldDays = (CFG.gateway?.log_retention_days || 7);
+  const newDays = parseInt($('#logRetention')?.value || '7', 10);
+  if (oldDays !== newDays) {
+    diffs.push({
+      title: '日志保留天数',
+      from: `${oldDays} 天`,
+      to: `${newDays} 天`,
+      when: '保存后下次轮转生效',
+      badge: 'gateway'
+    });
+  }
+
   return diffs;
 }
 
@@ -1634,9 +1636,12 @@ $('#btnSave').onclick = async () => {
       coworkTabEnabled: $('#surfCowork').checked,
       isClaudeCodeForDesktopEnabled: $('#surfCode').checked,
     },
+    log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
   const fx = r.data.effects;
+  if (CFG.gateway) CFG.gateway.log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
+  renderStats();
   $('#apikey').value = '';
   const btn = $('#btnSave');
   if (btn) btn.classList.remove('has-unsaved');

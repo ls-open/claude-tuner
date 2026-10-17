@@ -215,9 +215,8 @@ def unknown_tools(names, cfg):
     本身就是判定结论（开着是死重、关着是判为保留）。所以判为保留的命名空间不会
     每次跟版都被当成新面孔重报一遍，也不需要另维护一份「允许清单」。
 
-    **含原生工具**：以前只看 `mcp__` 前缀，于是掉出开关范围的原生工具完全没人管
-    —— `TaskStop` / `ReportFindings` 就是这么漏掉的（「多代理编排」那个大开关拆开时，
-    它们谁也没接住）。
+    **含原生工具**：只看 `mcp__` 前缀会漏掉不在任何开关里的原生工具 —— 它们占着上下文
+    却没人能剥，而这正是最该被看见的一类。
     """
     stripped = gateway.get_stripped_tool_names(cfg)
     return [n for n in names
@@ -489,8 +488,7 @@ def _diff_captures(old, new):
 def cmd_compare(key_a, key_b):
     """两份抓包对一遍：客户端这次升级动了什么。
 
-    跟版时最想先知道的就是这个。以前靠手写脚本比（2026-10 那次 2.1.293 → 2.1.295
-    就是这么比的），现在一条命令。
+    跟版时最想先知道的就是这个：客户端这次到底动了哪几句。
     """
     pa, pb = _resolve_key(key_a), _resolve_key(key_b)
     if not pa or not pb:

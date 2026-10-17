@@ -71,9 +71,8 @@ CATEGORY_NAMESPACES = (
      ("mcp__ccd_session__spawn_task",
       "mcp__ccd_session__dismiss_task",
       "mcp__ccd_session_mgmt__stop_session")),
-    # 桌面端界面遥控：按**功能**拆成六项，不是一个开关管 52 个工具。
-    # 原来它们全在 strip_session_mgmt_tools 一个键下（实测 52 个 / 61 KB）——
-    # 用户想清掉侧栏那 9 KB，就得连会话管理那 32 KB 一起清掉，两者毫无关系。
+    # 桌面端界面遥控：按**功能**拆成六项，不合成一个大开关 —— 否则想清掉侧栏就得
+    # 连会话管理一起清，两者毫无关系。
     ("strip_session_tools", ("mcp__ccd_session", "mcp__session_info")),
     ("strip_sidebar_tools", ("mcp__ccd_sidebar",)),
     ("strip_window_tools", ("mcp__ccd_window",)),
@@ -108,38 +107,6 @@ CATEGORY_NAMES = {
     # 默认关 —— 与其余几项同理，删不删由用户自己掂量。
     "strip_task_stop_tools": ("TaskStop",),
     "strip_report_findings_tools": ("ReportFindings",),
-}
-
-# 页面与 CLI 共用的类别中文名（配置页直接显示它，避免两处各译一遍）
-CATEGORY_LABELS = {
-    "strip_web_search_tools": "网页搜索",
-    "strip_web_fetch_tools": "网页抓取",
-    "strip_session_tools": "会话管理",
-    "strip_session_permission_tools": "会话权限模式",
-    "strip_session_model_tools": "会话模型与思考档位",
-    "strip_session_export_tools": "会话导出与检索",
-    "strip_session_delete_tools": "删除与归档会话",
-    "strip_session_remote_tools": "会话间消息与远程控制",
-    "strip_session_task_tools": "后台任务生命周期",
-    "strip_sidebar_tools": "侧栏管理",
-    "strip_window_tools": "窗口与分屏",
-    "strip_view_tools": "代码修改推送与预览面板",
-    "strip_host_tools": "编辑器与主机",
-    "strip_settings_tools": "界面偏好",
-    "strip_directory_tools": "目录切换",
-    "strip_pr_ci_tools": "PR 关联与 CI 监控",
-    "strip_terminal_tools": "右侧终端面板",
-    "strip_notebook_tools": "Notebook 单元格编辑",
-    "strip_design_sync_tools": "DesignSync",
-    "strip_plugin_mgmt_tools": "插件市场与技能建议",
-    "strip_cross_session_tools": "跨会话消息",
-    "strip_worktree_tools": "Git 工作树隔离",
-    "strip_plan_tools": "计划模式",
-    "strip_task_stop_tools": "终止后台任务",
-    "strip_report_findings_tools": "审查结论上报",
-    "custom": "你自己勾的",
-    "builtin": "恒定剥离",
-    "enabled": "总开关关着时的名单",
 }
 
 
@@ -220,10 +187,9 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 整段删会把无关指引一起删掉，句中手术又容易切坏。那类交给 orphan_mentions() 去发现。
 #
 # 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
-# 曾经写的是「首句 + 末句逐字全等」的正则 —— 客户端改一个标点就静默失配，
-# 工具照剥、段落留下，成了孤句（比不剥更糟），而且没人知道。锚点取短只留
-# 段首特征，段落后面怎么改写都还认得出；万一连锚点也被改写，见
-# missing_pair_paragraphs() —— 那种情况会被报出来，而不是静静地留着。
+# 锚点必须取短、只留段首特征：段落后面怎么改写都还认得出。拿「首句 + 末句逐字
+# 全等」当判据会在客户端改一个标点时静默失配 —— 工具照剥、段落留下，成了比不剥
+# 更糟的孤句。连锚点也被改写的情况由 missing_pair_paragraphs() 报出来。
 PROMPT_PAIRS = (
     {
         "id": "ccd_pr",
@@ -310,15 +276,6 @@ def missing_pair_paragraphs(text, cfg, stripped_names):
     return [{"id": p["id"], "anchor": p["anchor"], "why": p["why"]}
             for p in PROMPT_PAIRS
             if pair_is_orphaned(p, stripped_names, cfg) and pair_paragraph_missing(p, text)]
-
-
-def paired_tool_names(cfg):
-    """哪些工具名参与了配对 —— 配置页要据此告诉用户「勾它也会带走一段提示词」。"""
-    mapping = {}
-    for pair in PROMPT_PAIRS:
-        for name in pair["tools"]:
-            mapping.setdefault(name, []).append(pair["why"])
-    return mapping
 
 
 def orphan_mentions(text, stripped_names):

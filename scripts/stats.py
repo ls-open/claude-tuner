@@ -9,6 +9,12 @@ import time
 
 sys.dont_write_bytecode = True  # 不在插件运行目录留 __pycache__（代码以仓库为准）
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+
+import live_stats  # noqa: E402  （日志文件枚举只此一份，两份实现会把同一行读成两三次）
+
 BASE = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 
 # 「重算」判定的回落门槛（回落不足 DROP_MIN_DELTA 视为记录抖动，不构成重算）
@@ -187,9 +193,11 @@ def parse_session_transcript(filepath):
 
                 usage = msg.get("usage")
                 if usage and isinstance(usage, dict):
-                    # 客户端本地合成的消息（上下文提示、打断占位等）usage 恒为 0，且没有发生过
-                    # API 调用；拿它去比上一轮会凭空造出一次「重算」，必须先排除。
-                    if msg.get("model") == "<synthetic>":
+                    # 两类本地合成消息必须排除：
+                    # · `<synthetic>`：客户端本地的上下文提示、打断占位，usage 恒为 0；
+                    # · `probe`：连通性探针（input_tokens=1、cache_read=0），网关本地秒回、
+                    #   从未打到上游。它会同时污染「调用次数」和「重算」（cache_read 必回落）。
+                    if msg.get("model") in ("<synthetic>", "probe"):
                         continue
                     resp_id = msg.get("id") or d.get("uuid")
                     if resp_id in seen_response_ids:
@@ -233,8 +241,7 @@ def get_session_hydration_details(sid):
     """扫描本地网关日志，按 session_id 过滤并统计本会话的 Thinking 补全次数。"""
     thinking_hydrations = 0
     try:
-        log_files = glob.glob(os.path.join(BASE, "logs", "gateway.log*"))
-        for lf in log_files:
+        for lf in live_stats.log_paths(BASE):
             with open(lf, "r", errors="ignore") as fh:
                 for line in fh:
                     if "canonicalized" not in line:
