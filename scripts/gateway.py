@@ -51,6 +51,7 @@ COWORK_SESSIONS_DIRS = [
 CAPTURE_SESSIONS_DIR = "sessions"  # 按会话归档的子目录，见 save_session_capture()
 SESSION_KEY_LEN = 8  # 会话键取 session_id 前若干位，够区分同时开着的几个对话即可
 MAX_SESSION_CAPTURES = 20  # 会话归档保留份数上限（每份是一整段对话报文，不设闸门只增不减）
+BODY_READ_TIMEOUT = 30   # 读请求体的秒数上限（防止半截请求把线程钉死）
 MAX_BODY_BYTES = 50 * 1024 * 1024  # 50MB 保护上限，防止恶意或意外超大包引发 OOM
 ERROR_BODY_LOG_CHARS = 2000  # 上游错误体只记前 2000 字符：够定位原因，又不至于把日志撑爆
 
@@ -1564,7 +1565,14 @@ class Handler(BaseHTTPRequestHandler):
                     "error": {"type": "invalid_request_error", "message": "Request entity too large (max 50MB)"},
                 })
                 return None, True
-            body = self.rfile.read(length) if length else b"{}"
+            # 只给「读请求体」这一步设上限：客户端声明了 Content-Length 却不再发送时，
+            # 没有它这个线程会一直等下去（ThreadingHTTPServer 每连接一个线程）。
+            # 不动流式回写那侧的超时 —— 长回答可以有多次慢写，不该被这里掐断。
+            self.connection.settimeout(BODY_READ_TIMEOUT)
+            try:
+                body = self.rfile.read(length) if length else b"{}"
+            finally:
+                self.connection.settimeout(None)
             # 留存原始字节：稳定化中途失败时据此回滚到未改动的请求（见 _stabilize）
             self._raw_body = body
             parsed = json.loads(body.decode("utf-8"))

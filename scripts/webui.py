@@ -259,8 +259,20 @@ def _port(handler):
     return port if isinstance(port, int) and port > 0 else DEFAULT_PORT
 
 
+_write_lock = threading.Lock()
+
+
 def apply_patch(handler, patch):
-    """把前端交上来的补丁落盘，返回 (响应体, 需要重启什么)。"""
+    """把前端交上来的补丁落盘，返回 (响应体, 需要重启什么)。
+
+    整段读-改-写必须在锁内：配置是「读整份、改几项、写回整份」，两个标签页同时保存时
+    没有锁就会互相覆盖 —— 后写的把先写的那几项一起抹掉，而两边都提示「已保存」。
+    """
+    with _write_lock:
+        return _apply_patch_unlocked(handler, patch)
+
+
+def _apply_patch_unlocked(handler, patch):
     paths = _paths()
     effects = {"restart_gateway": False, "restart_client": False, "restart_session": False}
     notes = []
