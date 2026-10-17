@@ -6,6 +6,44 @@
 import json
 import os
 import re
+import shutil
+
+
+BACKUP_KEEP_FILES = 20   # ~/.claude-tuner/backups/3p/ 里保留多少份单文件备份
+BACKUP_KEEP_TREES = 5    # 插件整树备份（每次自更新一份，几百 KB）保留多少份
+
+
+def prune_backups(directory, keep, prefix=None):
+    """只留 directory 下最近的 keep 份备份（按 mtime 从新到旧），其余删掉，返回删掉的路径。
+
+    备份是为了「刚改坏了能回去」，不是审计留痕。只增不减的话，反复重装或自更新下来会
+    堆到几千份，真要回滚时反而分不清哪份有用 —— 而每一份都占着磁盘。
+    """
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return []
+    entries = [os.path.join(directory, n) for n in names
+               if prefix is None or n.startswith(prefix)]
+
+    def mtime(path):
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return 0.0
+
+    entries.sort(key=mtime, reverse=True)
+    removed = []
+    for path in entries[max(0, int(keep)):]:
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+        except OSError:
+            continue
+        removed.append(path)
+    return removed
 
 
 def get_3p_config_dir():
@@ -395,11 +433,11 @@ _release_cache = None
 
 
 def release_info():
-    """读 release.json：从哪个仓库来（repo / mirror）、本版号、按哪个客户端版本验过。"""
+    """读 release.json：从哪个仓库来、本版号、按哪个客户端版本验过。"""
     global _release_cache
     if _release_cache is not None:
         return _release_cache
-    info = {"repo": "", "mirror": "", "version": "", "tested_client": ""}
+    info = {"repo": "", "version": "", "tested_client": ""}
     try:
         with open(RELEASE_FILE, "r", encoding="utf-8") as fh:
             data = json.load(fh)
