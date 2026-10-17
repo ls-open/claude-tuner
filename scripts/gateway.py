@@ -351,6 +351,7 @@ def map_model(model):
 
 _LOG_EVENT_COUNT = 0
 _LOG_LOCK = threading.Lock()
+_req_ctx = threading.local()   # 当前线程正在处理的请求 id，见 log_event
 
 
 def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
@@ -396,6 +397,10 @@ def check_log_rotation():
 def log_event(event, req_id=None):
     """记录单行 JSON 结构化日志：统一注入 ts、level 与 request_id，并自然写入当天的日志文件。"""
     event["ts"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    if req_id is None:
+        # 模块级函数（例如 _guard_rule 报的 rule_failed）拿不到 handler 的 req_id，
+        # 从当前线程取；否则这类日志串不进具体那次请求，等于没法归因。
+        req_id = getattr(_req_ctx, "request_id", None)
     if req_id and "request_id" not in event:
         event["request_id"] = req_id
     if "level" not in event:
@@ -684,6 +689,28 @@ def map_request_texts(parsed, fn, messages=True):
     return sys_hits, msg_hits
 
 
+_rule_fail_memo = [None]
+
+
+def _guard_rule(name, fn):
+    """把一条清洗函数包成「永不抛异常」：炸了就原样放行，并记一条 `rule_failed`。
+
+    单条规则失配（客户端改了措辞、正则写漏、文本形态出乎意料）不该让这一轮**所有**规则
+    一起失效 —— 那会把「一条规则坏了」放大成「整段前缀全部失配」，症状只是缓存突然掉一大截，
+    而日志里只剩一行 stabilize_error，看不出是哪条。同一失败只报一次，免得刷满日志。
+    """
+    def wrapper(text, *args, **kwargs):
+        try:
+            return fn(text, *args, **kwargs)
+        except Exception as exc:
+            detail = "%s: %s" % (name, str(exc)[:200])
+            if detail != _rule_fail_memo[0]:
+                _rule_fail_memo[0] = detail
+                log_event({"event": "rule_failed", "rule": name, "error": str(exc)[:200]})
+            return text, False
+    return wrapper
+
+
 def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     """Stabilize cache-relevant bytes without touching semantic content."""
     changed = []
@@ -735,14 +762,15 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             text = re.sub(r"currentDate:\s*[^\n]+\s*", "", text)
             return text, (1 if text != orig else 0)
 
-        sys_n, msg_n = map_request_texts(parsed, _clean_reminder_text)
+        sys_n, msg_n = map_request_texts(parsed, _guard_rule("strip_date", _clean_reminder_text))
         if sys_n + msg_n:
             changed.append("strip_date")
 
     # 3. 彻底物理剥离模型代号声明与版本宣称（全面覆盖 system 与 messages）
     if r.get("strip_model_declarations", True):
         sys_n, msg_n = map_request_texts(
-            parsed, lambda t, legacy: strip_model_declaration_text(t))
+            parsed, _guard_rule("strip_model_declarations",
+                                lambda t, legacy: strip_model_declaration_text(t)))
         changed.extend(["strip_model_declarations"] * sys_n)
         changed.extend(["strip_model_declarations_msg"] * msg_n)
 
@@ -751,7 +779,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         # legacy 按角色判定（见 map_request_texts）：system 与 role=system 的消息放行截断，
         # user/assistant 的裸句更可能是正常讨论，不截。
         sys_n, msg_n = map_request_texts(
-            parsed, lambda t, legacy: strip_git_status_text(t, legacy_truncate=legacy))
+            parsed, _guard_rule("strip_git_status",
+                                lambda t, legacy: strip_git_status_text(t, legacy_truncate=legacy)))
         changed.extend(["strip_git_status_system"] * sys_n)
         changed.extend(["strip_git_status_msg"] * msg_n)
 
@@ -760,8 +789,10 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     _ghost_names = get_stripped_tool_names(tp)
     _pair_found = set()
     sys_n, _ = map_request_texts(
-        parsed, lambda t, legacy: strip_ghost_tool_instructions(
-            t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found), messages=False)
+        parsed, _guard_rule("strip_ghost_tool_instructions",
+                            lambda t, legacy: strip_ghost_tool_instructions(
+                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found)),
+        messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
     # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
@@ -772,19 +803,22 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     if r.get("strip_security_guidelines", False):
         sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_security_guidelines_text(t), messages=False)
+            parsed, _guard_rule("strip_security_guidelines",
+                                lambda t, legacy: strip_security_guidelines_text(t)), messages=False)
         if sys_n:
             changed.extend(["strip_security_guidelines"] * sys_n)
 
     if r.get("strip_pronoun_guidelines", False):
         sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_pronoun_guidelines_text(t), messages=False)
+            parsed, _guard_rule("strip_pronoun_guidelines",
+                                lambda t, legacy: strip_pronoun_guidelines_text(t)), messages=False)
         if sys_n:
             changed.extend(["strip_pronoun_guidelines"] * sys_n)
 
     if r.get("strip_caution_guidelines", False):
         sys_n, _ = map_request_texts(
-            parsed, lambda t, legacy: strip_caution_guidelines_text(t), messages=False)
+            parsed, _guard_rule("strip_caution_guidelines",
+                                lambda t, legacy: strip_caution_guidelines_text(t)), messages=False)
         if sys_n:
             changed.extend(["strip_caution_guidelines"] * sys_n)
 
@@ -794,7 +828,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
             if not legacy:
                 return text, False
             return strip_total_tokens_tag_text(text)
-        sys_n, msg_n = map_request_texts(parsed, _strip_tokens_fn, messages=True)
+        sys_n, msg_n = map_request_texts(parsed, _guard_rule("strip_total_tokens_tag", _strip_tokens_fn), messages=True)
         if sys_n + msg_n:
             changed.extend(["strip_total_tokens_tag"] * (sys_n + msg_n))
 
@@ -1492,6 +1526,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         """POST /v1/messages 主入口：解析 → 探测拦截 → 缓存稳定化 → 上游转发。"""
         self._req_id = self._new_req_id()
+        _req_ctx.request_id = self._req_id
         started = time.time()
         if self.path.split("?")[0] != "/v1/messages":
             # 配置台的写接口：不参与稳定化，也不进消息日志
@@ -1601,7 +1636,12 @@ class Handler(BaseHTTPRequestHandler):
         self._send_json(200, resp)
 
     def _stabilize(self, parsed, session_id, kind, mapped):
-        """缓存稳定化预处理（失败回滚并降级放行，绝不阻断主请求）。"""
+        """缓存稳定化预处理（失败回滚并降级放行，绝不阻断主请求）。
+
+        单条规则内部的异常由 `canonicalize` 的 `_guard_rule` 就地兜住（只记一条 rule_failed，
+        其余规则照常跑完）；能走到下面这个 except 的是结构性故障（报文形态整个出乎意料），
+        此时才整轮回滚到原始字节再转发。
+        """
         rules = load_rules_config()
         tp_cfg = load_tool_pruning_config()
         try:
