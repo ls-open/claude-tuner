@@ -1423,8 +1423,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       title: '上游接口地址',
       from: oldUp || '（未配置）',
       to: newUp || '（空）',
-      when: '保存后即生效',
-      badge: 'gateway'
+      ...{ when: WHEN.now[0], badge: WHEN.now[1] },
     });
   }
 
@@ -1462,8 +1461,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         title: label,
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
-        when: '保存后即生效',
-        badge: 'gateway'
+        ...{ when: WHEN.now[0], badge: WHEN.now[1] }
       });
     }
   });
@@ -1480,8 +1478,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
           title: label,
           from: oldVal ? '开' : '关',
           to: newVal ? '开' : '关',
-          when: '保存后即生效',
-          badge: 'gateway'
+          ...{ when: WHEN.now[0], badge: WHEN.now[1] }
         });
       }
     });
