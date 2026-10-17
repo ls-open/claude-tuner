@@ -162,20 +162,27 @@ def release_lock(fd):
         pass
 
 
-def is_running(pid_file):
+def read_pid(pid_file):
+    """读出 pid 文件里的进程号；文件缺失或内容坏掉时返回 None。"""
     try:
         with open(pid_file, "r", encoding="utf-8") as fh:
-            pid = int(fh.read().strip())
-        os.kill(pid, 0)
-    except Exception:
-        return False
-    # 进程号可能被系统回收复用，需确认仍是我们自己的脚本进程
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def pid_is_ours(pid):
+    """该 pid 现在是否仍是我们自己的脚本进程。
+
+    **任何失败都返回 False** —— 这个方向错了会去 kill 一个 pid 被系统回收后复用的
+    无关进程。活着与否另有 `gateway_alive()` 负责，这里只回答「能不能安全地杀」。
+    """
     try:
         res = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, timeout=5)
         return os.path.basename(GATEWAY) in (res.stdout or "")
     except Exception:
-        return True  # 无法判断时保守视为存活
+        return False
 
 
 def gateway_alive():
@@ -320,7 +327,9 @@ def _sync_locked():
 
 
 def _spawn_unlocked(script, args, name, pid_file, port=None):
-    if is_running(pid_file) or (name == "gateway" and gateway_alive()):
+    # 存活与否只认 HTTP 探活：pid 文件在这里没有发言权（pid 会被系统回收复用，
+    # 而「端口上有没有人能应答」才是客户端真实的体验）。
+    if gateway_alive():
         log_msg("%s already running" % name)
         return False
     env = dict(os.environ)
@@ -358,12 +367,16 @@ def spawn(script, args, name, pid_file, port=None):
 
 
 def stop(pid_file, name):
-    if not is_running(pid_file):
+    pid = read_pid(pid_file)
+    if pid is None or not pid_is_ours(pid):
+        # 没有 pid 文件，或那个 pid 已经不是我们的进程：只清账本，绝不 kill
+        try:
+            os.remove(pid_file)
+        except OSError:
+            pass
         log_msg("%s not running" % name)
         return
     try:
-        with open(pid_file, "r", encoding="utf-8") as fh:
-            pid = int(fh.read().strip())
         sig_term = getattr(signal, "SIGTERM", signal.SIGINT)
         sig_kill = getattr(signal, "SIGKILL", sig_term)
         os.kill(pid, sig_term)
