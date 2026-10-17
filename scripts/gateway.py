@@ -37,6 +37,7 @@ from common import (
     find_active_3p_config_path,
     read_3p_models,
     normalize_upstream,
+    plugin_version,
 )
 import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle_get / handle_post
 
@@ -1597,6 +1598,8 @@ class Handler(BaseHTTPRequestHandler):
             "tools": len(parsed.get("tools", []) or []),
             "kind": kind,
             "ua": self.headers.get("User-Agent", ""),
+            # 发版号只落在这里与配置页：UA 里放的是身份代号，不随发版号变。
+            "plugin": plugin_version(),
         }
         if kind == "subagent":
             sub_id, sub_task = extract_subagent_fingerprint(parsed)

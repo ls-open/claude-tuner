@@ -337,8 +337,10 @@ def ensure_config_initialized(config_path=None):
 # 上游客户端标识（本插件唯一一处定义，gateway / manager 共用）：
 # - 对所有上游恒定显式发送自有 User-Agent（避免漏出 Python-urllib 默认指纹触发 Cloudflare 1010 拦截）；
 # - 仅对 OpenCode 上游附带 x-opencode-session 以协助路由与提示词缓存。
-# - 版本号代表上游可见的客户端身份（与清单文件无关），改动可能触发路由/缓存分桶重置，仅在需变更身份时手动提升。
-CLIENT_UA = "claude-tuner/0.2.0"
+# - 斜杠后是**身份代号**（generation），不是发版号：它回答「这条流量属于哪种实现形态」，
+#   只在改变我们**发出去的形态**（协议构造、转译方式）时才提升。发版号见 release.json，
+#   只出现在日志与配置页 —— 每版必变的数字放进请求头，等于每次升级都付一次缓存冷启动。
+CLIENT_UA = "claude-tuner/1"
 
 
 def is_opencode_upstream(url):
