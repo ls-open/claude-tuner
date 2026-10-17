@@ -230,7 +230,7 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_session_task_tools": True,         # 起 / 停会话内的后台任务
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
-    "strip_view_tools": False,            # mcp__ccd_view*（代码修改推送与预览面板，默认保留）
+    "strip_view_tools": False,            # mcp__ccd_view*（diff／文件／终端／浏览器预览面板，默认保留）
     "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
     "strip_settings_tools": True,         # mcp__ccd_settings*
     "strip_directory_tools": True,        # mcp__ccd_directory*
