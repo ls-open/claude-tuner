@@ -555,56 +555,45 @@ def _strip_paragraphs_by_predicate(text, predicate, trim=True):
     return (result.strip() if trim else result), True
 
 
-def strip_security_guidelines_text(text):
-    """剥离安全攻防与拒绝服务限制指令段落。
+# 客户端注入的「行为准则」段落：三段形状完全相同 —— 段首锚点 + 必须命中的特征词 +
+# 任一击中的旁证词。所以只存数据、由一个函数统一裁：加一类新准则 = 往表里加一行，
+# 不再复制一遍「起锚点 → 查关键词 → 切段」的循环（三份代码里改一处漏两处是迟早的）。
+GUIDELINE_PARAGRAPHS = {
+    "strip_security_guidelines": {
+        "anchor": "IMPORTANT:",
+        "requires": ("security testing",),
+        "any_of": ("destructive techniques", "dos attacks",
+                   "dual-use security tools", "supply chain compromise"),
+    },
+    "strip_pronoun_guidelines": {
+        "anchor": "When you use a pronoun for someone",
+        "requires": ("they/them",),
+        "any_of": ("misgender", "infer pronouns", "doesn't tell you someone's pronouns"),
+    },
+    "strip_caution_guidelines": {
+        "anchor": "For actions that are hard to reverse or outward-facing",
+        "requires": ("confirm first",),
+        "any_of": ("external service", "hard to reverse", "durably authorized"),
+    },
+}
 
-    特征：以 IMPORTANT: 开头，提及 security testing，且包含拒绝破坏性技术或双重用途工具授权。
-    """
-    def _is_security_para(p):
-        if not p.startswith("IMPORTANT:"):
+
+def strip_guideline_text(text, rule):
+    """按表里的一条准则剥段落：段首命中锚点、特征词全在、旁证词至少一个。"""
+    spec = GUIDELINE_PARAGRAPHS[rule]
+    anchor = spec["anchor"]
+    requires = spec["requires"]
+    any_of = spec["any_of"]
+
+    def _is_guideline_para(p):
+        if not p.startswith(anchor):
             return False
-        p_lower = p.lower()
-        if "security testing" not in p_lower:
+        lowered = p.lower()
+        if not all(word in lowered for word in requires):
             return False
-        return ("destructive techniques" in p_lower or 
-                "dos attacks" in p_lower or 
-                "dual-use security tools" in p_lower or
-                "supply chain compromise" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_security_para)
+        return any(word in lowered for word in any_of)
 
-
-def strip_pronoun_guidelines_text(text):
-    """剥离人称代词道德约束与性别中立指令段落。
-
-    特征：以 When you use a pronoun for someone 开头，提及 they/them，且说明不从名字推测性别。
-    """
-    def _is_pronoun_para(p):
-        if not p.startswith("When you use a pronoun for someone"):
-            return False
-        p_lower = p.lower()
-        if "they/them" not in p_lower:
-            return False
-        return ("misgender" in p_lower or 
-                "infer pronouns" in p_lower or
-                "doesn't tell you someone's pronouns" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_pronoun_para)
-
-
-def strip_caution_guidelines_text(text):
-    """剥离向外发送与不可逆操作防呆指引段落。
-
-    特征：以 For actions that are hard to reverse or outward-facing 开头，要求先确认或注意外部服务外发。
-    """
-    def _is_caution_para(p):
-        if not p.startswith("For actions that are hard to reverse or outward-facing"):
-            return False
-        p_lower = p.lower()
-        if "confirm first" not in p_lower:
-            return False
-        return ("external service" in p_lower or 
-                "hard to reverse" in p_lower or
-                "durably authorized" in p_lower)
-    return _strip_paragraphs_by_predicate(text, _is_caution_para)
+    return _strip_paragraphs_by_predicate(text, _is_guideline_para)
 
 
 def strip_total_tokens_tag_text(text):
@@ -799,26 +788,16 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
         [p["id"] for p in active_pairs(tp, _ghost_names) if p["id"] not in _pair_found])
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
-    if r.get("strip_security_guidelines", False):
+    for _guideline in GUIDELINE_PARAGRAPHS:
+        if not r.get(_guideline, False):
+            continue
         sys_n, _ = map_request_texts(
-            parsed, _guard_rule("strip_security_guidelines",
-                                lambda t, legacy: strip_security_guidelines_text(t)), messages=False)
+            parsed,
+            _guard_rule(_guideline,
+                        lambda t, legacy, name=_guideline: strip_guideline_text(t, name)),
+            messages=False)
         if sys_n:
-            changed.extend(["strip_security_guidelines"] * sys_n)
-
-    if r.get("strip_pronoun_guidelines", False):
-        sys_n, _ = map_request_texts(
-            parsed, _guard_rule("strip_pronoun_guidelines",
-                                lambda t, legacy: strip_pronoun_guidelines_text(t)), messages=False)
-        if sys_n:
-            changed.extend(["strip_pronoun_guidelines"] * sys_n)
-
-    if r.get("strip_caution_guidelines", False):
-        sys_n, _ = map_request_texts(
-            parsed, _guard_rule("strip_caution_guidelines",
-                                lambda t, legacy: strip_caution_guidelines_text(t)), messages=False)
-        if sys_n:
-            changed.extend(["strip_caution_guidelines"] * sys_n)
+            changed.extend([_guideline] * sys_n)
 
     if r.get("strip_total_tokens_tag", True):
         # 仅在注入面生效（顶层 system 或 messages 中 role: system 的注入消息），严禁误伤正文真实讨论
