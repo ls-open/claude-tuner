@@ -15,7 +15,6 @@ set -euo pipefail
 
 # ↓ 发布时改这两行（公开仓库的 owner/repo；镜像是给国内直连用的，可以留空）
 REPO_SLUG="${CLAUDE_TUNER_REPO:-ls-open/claude-tuner}"
-MIRROR_REPO="${CLAUDE_TUNER_MIRROR:-}"
 REF="${CLAUDE_TUNER_REF:-main}"
 PLUGIN_NAME="claude-tuner"
 DEST="${CLAUDE_TUNER_DIR:-$HOME/.claude/skills/$PLUGIN_NAME}"
@@ -37,7 +36,7 @@ usage() {
 
   --key <KEY>        API Key（也可用环境变量 CLAUDE_TUNER_API_KEY；都不给则稍后在配置页填）
   --upstream <URL>   上游地址，默认 DeepSeek 官方
-  --preset <ID>      上游预设：deepseek / opencode / custom
+  --preset <ID>      上游预设：deepseek / opencode-zen / opencode-go / custom
   --model <NAME>     上游模型名
   --no-cli           不写 ~/.claude/settings.json（终端 Claude Code 不走本网关）
   --no-open          装完不自动打开配置页
@@ -129,11 +128,7 @@ else
   command -v curl >/dev/null || die "没找到 curl，无法下载插件"
   log "  从公开仓库下载：$REPO_SLUG@$REF"
   # 国内直连 github 常不通，按这几条通道依次试；全不通就让用户走 zip 那条路。
-  # 镜像（Gitee 等）排在最前 —— 国内直连它是这几条里最快的。
-  CANDIDATES=""
-  [ -n "$MIRROR_REPO" ] && CANDIDATES="https://gitee.com/$MIRROR_REPO/repository/archive/$REF.tar.gz"
-  CANDIDATES="$CANDIDATES
-https://codeload.github.com/$REPO_SLUG/tar.gz/refs/heads/$REF
+  CANDIDATES="https://codeload.github.com/$REPO_SLUG/tar.gz/refs/heads/$REF
 https://gh-proxy.com/https://github.com/$REPO_SLUG/archive/refs/heads/$REF.tar.gz
 https://ghfast.top/https://github.com/$REPO_SLUG/archive/refs/heads/$REF.tar.gz"
   for base in $CANDIDATES; do
@@ -145,7 +140,7 @@ https://ghfast.top/https://github.com/$REPO_SLUG/archive/refs/heads/$REF.tar.gz"
     TMP_DIR="$(mktemp -d)"
     if curl -fsSL --connect-timeout 10 --max-time 180 -o "$TMP_DIR/pkg.tar.gz" "$base" 2>/dev/null; then
       tar -xzf "$TMP_DIR/pkg.tar.gz" -C "$TMP_DIR"
-      SRC="$(find "$TMP_DIR" -maxdepth 1 -type d -name '*claude-tuner*' -o -maxdepth 1 -type d -name '*claude-tuner*' | head -1)"
+      SRC="$(find "$TMP_DIR" -maxdepth 1 -type d -name '*claude-tuner*' | head -1)"
       [ -n "$SRC" ] || SRC="$(find "$TMP_DIR" -maxdepth 1 -mindepth 1 -type d | head -1)"
       ok "已下载（$base 这条通道）"
       break
