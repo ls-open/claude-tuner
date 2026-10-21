@@ -494,7 +494,7 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=None):
+def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=None, incoming_tools=None):
     """剥离「工具已被剥、说明段落却还留着」的孤句。
 
     配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if），
@@ -520,6 +520,8 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=
     orig = text
     for pair in PROMPT_PAIRS:
         if not pair_is_orphaned(pair, names, cfg):
+            continue
+        if incoming_tools is not None and not any(t in incoming_tools for t in pair["tools"]):
             continue
         text, hit = _strip_paragraphs_by_predicate(
             text, pair_paragraph_predicate(pair), trim=False)
@@ -775,18 +777,21 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
     _ghost_names = get_stripped_tool_names(tp)
+    _incoming_tools = None
+    if isinstance(parsed.get("tools"), list):
+        _incoming_tools = {t.get("name") for t in parsed["tools"] if isinstance(t, dict) and t.get("name")}
     _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
                             lambda t, legacy: strip_ghost_tool_instructions(
-                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found)),
+                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_incoming_tools)),
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
     # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
-    # 别让它静默过去，但也别拿假报警淹掉它。
+    # 别让它静默过去，但也别拿假报警淹掉它。传入 _incoming_tools 杜绝非 Code 模式虚报缺失。
     report_missing_pair_paragraphs(
-        [p["id"] for p in active_pairs(tp, _ghost_names) if p["id"] not in _pair_found])
+        [p["id"] for p in active_pairs(tp, _ghost_names, incoming_tools=_incoming_tools) if p["id"] not in _pair_found])
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     for _guideline in GUIDELINE_PARAGRAPHS:
@@ -915,13 +920,39 @@ def split_mixed_user_messages(parsed):
 
 def classify_kind(parsed):
     sysv = parsed.get("system")
+    is_sub = False
+    is_cw = False
     if isinstance(sysv, list):
         for b in sysv:
             t = b.get("text") if isinstance(b, dict) else (b if isinstance(b, str) else None)
             if isinstance(t, str) and t.strip().startswith("x-anthropic-billing-header:"):
-                return "subagent" if "cc_is_subagent=true" in t else "main"
+                if "cc_is_subagent=true" in t:
+                    is_sub = True
+                if "cc_entrypoint=local-agent" in t:
+                    is_cw = True
+                break
     elif isinstance(sysv, str) and sysv.strip().startswith("x-anthropic-billing-header:"):
-        return "subagent" if "cc_is_subagent=true" in sysv else "main"
+        if "cc_is_subagent=true" in sysv:
+            is_sub = True
+        if "cc_entrypoint=local-agent" in sysv:
+            is_cw = True
+
+    # 兜底：若计费头已被清洗或缺失，根据 tools 命名空间判定是否 cowork
+    if not is_cw:
+        tools = parsed.get("tools")
+        if isinstance(tools, list):
+            for tool in tools:
+                name = tool.get("name") if isinstance(tool, dict) else tool
+                if isinstance(name, str) and name.startswith("mcp__cowork__"):
+                    is_cw = True
+                    break
+
+    if is_sub and is_cw:
+        return "cowork_subagent"
+    if is_sub:
+        return "subagent"
+    if is_cw:
+        return "cowork"
     return "main"
 
 
@@ -962,13 +993,21 @@ def clean_text_for_fp(text):
 def session_capture_key(parsed, kind=None):
     """本次请求在会话归档里的键；取不到会话 id 时返回 None。
 
-    子代理与主会话**共用同一个 session_id**（客户端如此），所以键上必须再带 `_subagent`
-    后缀，否则一份审计用的子代理报文会把同会话的主会话归档顶掉。
+    子代理与主会话**共用同一个 session_id**（客户端如此），所以键上必须带对应后缀
+    （`_subagent` 或 `_cowork_subagent`），否则一份审计用的子代理报文会把同会话的主会话归档顶掉。
     """
     sid = extract_session_id(parsed)
     if not sid:
         return None
-    suffix = "_subagent" if (kind or classify_kind(parsed)) == "subagent" else ""
+    k = kind or classify_kind(parsed)
+    if k == "cowork_subagent":
+        suffix = "_cowork_subagent"
+    elif k == "subagent":
+        suffix = "_subagent"
+    elif k == "cowork":
+        suffix = "_cowork"
+    else:
+        suffix = ""
     return sid[:SESSION_KEY_LEN] + suffix
 
 
@@ -1146,11 +1185,11 @@ def parse_transcript_data(tpath):
         return index
 
 
-def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
+def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=None):
     """主请求前置稳定化预处理：
     1. 稳定工具顺序 + 模块化工具裁剪 (Tool Pruning)
     2. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
-    3. 回填被客户端剥离的 thinking blocks (Thinking Restoration)
+    3. 回填被客户端剥离的 thinking blocks (Thinking Restoration) —— 仅对主会话生效，子代理生命周期独立无需回填
     """
     changed = []
     r = rules or load_rules_config()
@@ -1207,7 +1246,9 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None):
                     if orig_ids != new_ids:
                         changed.append("tool_use_blocks_sorted_%d" % len(orig_ids))
 
-    if not r.get("restore_thinking", True) or not session_id or not isinstance(incoming_msgs, list) or not incoming_msgs:
+    # 子代理生命周期独立且短暂，无做历史思维链回填的必要，直接跳过彻底避免磁盘扫描
+    is_sub = kind in ("subagent", "cowork_subagent") if kind else (classify_kind(parsed) in ("subagent", "cowork_subagent"))
+    if is_sub or not r.get("restore_thinking", True) or not session_id or not isinstance(incoming_msgs, list) or not incoming_msgs:
         return changed
 
     # 1. 惰性检测：先在内存纯列表里数一遍「历史里有几条 assistant 消息是没带 thinking 的」
@@ -1484,15 +1525,28 @@ class Handler(BaseHTTPRequestHandler):
             capture_dir = os.path.join(BASE_DIR, "captures")
             os.makedirs(capture_dir, exist_ok=True)
             model_raw = str(parsed.get("model") or "unknown").replace("/", "_").replace(":", "_")
-            suffix = "_subagent" if kind == "subagent" else ""
-            # 1. 统一保存该模型的最新专属快照 (子代理保存为 _subagent.json，避免覆盖主会话快照)
+            suffix_map = {
+                "subagent": "_subagent",
+                "cowork": "_cowork",
+                "cowork_subagent": "_cowork_subagent",
+            }
+            suffix = suffix_map.get(kind, "")
+            # 1. 统一保存该模型的最新专属快照 (子代理保存为 _subagent.json 或 _cowork_subagent.json，CoWork 保存为 _cowork.json)
             model_path = os.path.join(capture_dir, f"latest_raw_inbound_{model_raw}{suffix}.json")
             with open(model_path, "w", encoding="utf-8") as fh:
                 json.dump(parsed, fh, ensure_ascii=False, indent=2)
-            # 2. 同时更新一份全局主会话最新快照 (仅主会话更新)
-            if kind != "subagent":
+            # 2. 同时更新一份全局主会话最新快照 (仅非子代理更新，CoWork/CoWork子代理另存一份专属最新快照)
+            if kind not in ("subagent", "cowork_subagent"):
                 latest_path = os.path.join(capture_dir, "latest_raw_inbound.json")
                 with open(latest_path, "w", encoding="utf-8") as fh:
+                    json.dump(parsed, fh, ensure_ascii=False, indent=2)
+            if kind == "cowork":
+                cowork_path = os.path.join(capture_dir, "latest_raw_inbound_cowork.json")
+                with open(cowork_path, "w", encoding="utf-8") as fh:
+                    json.dump(parsed, fh, ensure_ascii=False, indent=2)
+            elif kind == "cowork_subagent":
+                cws_path = os.path.join(capture_dir, "latest_raw_inbound_cowork_subagent.json")
+                with open(cws_path, "w", encoding="utf-8") as fh:
                     json.dump(parsed, fh, ensure_ascii=False, indent=2)
             # 3. 按会话归档一份 (唯一不会被别的对话顶掉的那份，见 save_session_capture 注释)
             save_session_capture(capture_dir, parsed, kind)
@@ -1601,7 +1655,7 @@ class Handler(BaseHTTPRequestHandler):
             # 发版号只落在这里与配置页：UA 里放的是身份代号，不随发版号变。
             "plugin": plugin_version(),
         }
-        if kind == "subagent":
+        if kind in ("subagent", "cowork_subagent"):
             sub_id, sub_task = extract_subagent_fingerprint(parsed)
             entry["subagent_id"] = sub_id
             entry["subagent_task"] = sub_task
@@ -1630,7 +1684,7 @@ class Handler(BaseHTTPRequestHandler):
         rules = load_rules_config()
         tp_cfg = load_tool_pruning_config()
         try:
-            stabilize_changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg)
+            stabilize_changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
             changed = canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg)
             changed = stabilize_changed + changed
         except Exception as exc:

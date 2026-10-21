@@ -247,9 +247,16 @@ def pair_is_orphaned(pair, stripped_names, cfg):
     return all(should_strip_tool(name, stripped_names, cfg) for name in pair["tools"])
 
 
-def active_pairs(cfg, stripped_names):
-    """当前配置下已成孤句的配对（工具全剥了，段落也该走）。"""
-    return [p for p in PROMPT_PAIRS if pair_is_orphaned(p, stripped_names, cfg)]
+def active_pairs(cfg, stripped_names, incoming_tools=None):
+    """当前配置下已成孤句的配对（工具全剥了，段落也该走）。
+
+    若传入 incoming_tools，则限定只关注当前请求里确实存在的工具对应的配对；
+    对于 CoWork 等不包含某些 UI 工具（如 ccd_pr）的模式，不会虚报段落失配。
+    """
+    pairs = [p for p in PROMPT_PAIRS if pair_is_orphaned(p, stripped_names, cfg)]
+    if incoming_tools is not None:
+        pairs = [p for p in pairs if any(t in incoming_tools for t in p["tools"])]
+    return pairs
 
 
 def pair_paragraph_predicate(pair):
@@ -266,7 +273,7 @@ def pair_paragraph_missing(pair, text):
                    for p in text.split("\n\n") if p.strip())
 
 
-def missing_pair_paragraphs(text, cfg, stripped_names):
+def missing_pair_paragraphs(text, cfg, stripped_names, incoming_tools=None):
     """该剥的配对里，段首锚点一处都没命中的那些 —— 即「承诺要删的整段没删掉」。
 
     这是**故障**，不是取舍：工具已经全被剥了，解释它们的整段却还留在提示词里，
@@ -274,8 +281,8 @@ def missing_pair_paragraphs(text, cfg, stripped_names):
     网关据此记 WARN，哨兵据此把结论从 ✅ 拉下来。
     """
     return [{"id": p["id"], "anchor": p["anchor"], "why": p["why"]}
-            for p in PROMPT_PAIRS
-            if pair_is_orphaned(p, stripped_names, cfg) and pair_paragraph_missing(p, text)]
+            for p in active_pairs(cfg, stripped_names, incoming_tools=incoming_tools)
+            if pair_paragraph_missing(p, text)]
 
 
 def orphan_mentions(text, stripped_names):

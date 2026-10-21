@@ -88,11 +88,15 @@ def _session_dir():
 def _norm_session(value):
     """把 --session 的取值归一成归档文件名（不含 .json）。
 
-    接受会话短键（`06aed897`）、完整 uuid（`06aed897-3c5c-…`）、以及子代理后缀
-    （`06aed897_subagent`）—— 与 `--model` 允许写 `<模型>_subagent` 是同一套约定。
+    接受会话短键（`06aed897`）、完整 uuid（`06aed897-3c5c-…`）、以及子代理/CoWork后缀
+    （`06aed897_subagent` / `06aed897_cowork` / `06aed897_cowork_subagent`）—— 与 `--model` 允许写 `<模型>_subagent` / `<模型>_cowork` 是同一套约定。
     """
     v = str(value).strip()
-    suffix = "_subagent" if v.endswith("_subagent") else ""
+    suffix = ""
+    for s in ("_cowork_subagent", "_subagent", "_cowork"):
+        if v.endswith(s):
+            suffix = s
+            break
     core = v[: -len(suffix)] if suffix else v
     return core.split("-")[0][: gateway.SESSION_KEY_LEN] + suffix
 
@@ -118,10 +122,10 @@ def _resolve_current(model=None, session=None):
     if os.path.exists(global_path):
         return global_path
 
-    # 排除 `_subagent.json` 子代理抓包，仅在主会话模型抓包间做自动单选（需审子代理时可显式传 --model <name>_subagent）
+    # 排除 `_subagent.json`、`_cowork.json` 与 `_cowork_subagent.json` 特殊形态抓包，仅在主会话模型抓包间做自动单选（需审子代理或CoWork时可显式传对应后缀）
     per_model = sorted(
         p for p in glob.glob(os.path.join(CAPTURE_DIR, PER_MODEL_PREFIX + "*.json"))
-        if not p.endswith("_subagent.json")
+        if not (p.endswith("_subagent.json") or p.endswith("_cowork.json") or p.endswith("_cowork_subagent.json"))
     )
     if len(per_model) == 1:
         return per_model[0]
