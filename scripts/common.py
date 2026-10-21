@@ -453,7 +453,7 @@ def release_info():
 
 def plugin_version():
     """本插件的版本号。刻意不写进 plugin.json —— 那份清单是给客户端读的，
-    版本号在里面不起开关作用（见 DECISIONS #9）；这里用它只为「装的是哪一版」。"""
+    版本号在里面不起开关作用；这里用它只为「装的是哪一版」。"""
     return release_info()["version"]
 
 

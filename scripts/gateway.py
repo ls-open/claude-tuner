@@ -508,7 +508,7 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=
     `found` 传入 set 时，把**本段里真被摘掉**的配对 id 记进去。判定「该剥却没摘到」
     是**跨全部 system 块**的事（一个块没有不代表整份请求没有），所以只记命中、由调用方
     收官：见 canonicalize 里 `active_pairs() - found`（`missed` 曾按块判定，把计费头/
-    身份那两块误报成失配，见 DECISIONS「配对段落失配的按块假报警」）。
+    身份那两块误报成失配）。
     """
     if not isinstance(text, str):
         return text, False
