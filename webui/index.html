@@ -135,13 +135,13 @@
        background:var(--top-bg);
        backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
        border-bottom:1px solid var(--line);transition:background .2s, border-color .2s}
-  header.top .inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;
+  header.top .inner{max-width:1200px;margin:0 auto;padding:20px 24px 18px;display:flex;
        gap:20px;align-items:center;flex-wrap:wrap}
-  header.top h1{font-family:var(--font-serif);font-size:18px;margin:0;font-weight:500;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;color:var(--fg)}
+  /* 衬线大标题是 Claude 的识别符号：小标题用衬线只是「字体选对了」，大一号才成调子 */
+  header.top h1{font-family:var(--font-serif);font-size:29px;margin:0;font-weight:500;
+       letter-spacing:-.025em;line-height:1.15;display:flex;align-items:center;gap:12px;color:var(--fg)}
   .brand-mark{color:var(--accent);flex-shrink:0;vertical-align:middle}
-  header.top .slogan-tag{font-family:var(--font-sans);font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;
-       background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent-dim)}
-  header.top .sub{margin:4px 0 0 32px;font-size:12.5px;color:var(--dim);max-width:760px;line-height:1.5}
+  header.top .sub{margin:7px 0 0 38px;font-size:13px;color:var(--dim);max-width:760px;line-height:1.6}
   header.top .act{display:flex;align-items:center;gap:10px;margin-left:auto}
 
   /* ── 骨架 ───────────────────────────────────────────── */
@@ -149,14 +149,14 @@
          grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start}
 
   /* ── 侧栏（Claude Docs 风格极简导航） ─────────────────── */
-  nav.side{position:sticky;top:98px;font-size:13px;display:flex;flex-direction:column;gap:2px}
-  nav.side .grp{margin:18px 0 6px;padding:0 8px;border:none;
+  nav.side{position:sticky;top:116px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+  nav.side .grp{margin:22px 0 6px;padding:0 8px;border:none;
        font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:0.04em}
   nav.side > .grp:first-child{margin-top:0}
   nav.side a{position:relative;display:flex;align-items:center;gap:9px;padding:7px 11px;
        border-radius:var(--radius-sm);color:var(--dim);font-weight:500;
        transition:all .15s ease;user-select:none}
-  nav.side a .nav-ico{font-size:13px;width:16px;text-align:center;flex-shrink:0;opacity:0.85;display:inline-block}
+  nav.side a .nav-ico{font-family:var(--font-serif);font-size:13px;width:16px;text-align:center;flex-shrink:0;opacity:.65;display:inline-block}
   nav.side a:hover{color:var(--fg);background:var(--panel2);transform:translateX(2px)}
   nav.side a.on{color:var(--nav-active-fg);font-weight:600;background:var(--nav-active-bg)}
   nav.side a.on .nav-ico{opacity:1}
@@ -241,9 +241,9 @@
 
   /* ── 卡片 ───────────────────────────────────────────── */
   section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-          margin-bottom:18px;overflow:hidden;scroll-margin-top:92px;
+          margin-bottom:26px;overflow:hidden;scroll-margin-top:122px;
           box-shadow:var(--card-shadow);transition:background .2s, border-color .2s}
-  .head{display:flex;align-items:center;gap:10px;padding:15px 20px;
+  .head{display:flex;align-items:center;gap:10px;padding:18px 22px;
         background:linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
         border-bottom:1px solid var(--line)}
   h2{font-family:var(--font-serif);font-size:15.5px;margin:0;font-weight:500;letter-spacing:-.01em;color:var(--fg)}
@@ -272,8 +272,7 @@
   button.primary{background:var(--btn-primary-bg);border-color:transparent;color:var(--btn-primary-fg);font-weight:500;
         box-shadow:0 1px 3px rgba(0,0,0,0.12)}
   button.primary:hover{background:var(--btn-primary-hover)}
-  #btnSave{height:32px;padding:5px 13px;font-size:12.5px;font-weight:500;border-radius:6px;
-        display:inline-flex;align-items:center;gap:4px;box-shadow:0 1px 2px rgba(0,0,0,0.08)}
+
   button.link{background:none;border:none;color:var(--accent);padding:4px 6px;height:auto}
   button.link.danger{color:var(--err)}
   .btn-theme{background:transparent;border:1px solid var(--line2);border-radius:6px;height:32px;box-sizing:border-box;
@@ -286,13 +285,13 @@
   .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:20px 0 4px}
   .subgrp:first-child{margin-top:0}
   .subgrp em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
-  .sw{display:flex;align-items:center;gap:16px;padding:11px 8px;border-radius:6px;
+  .sw{display:flex;align-items:center;gap:16px;padding:13px 8px;border-radius:6px;
       border-bottom:1px solid var(--line);transition:background .12s}
   .sw:last-child{border-bottom:none}
   .sw:hover{background:var(--panel2)}
   .sw .txt{flex:1;min-width:0}
   .sw .txt > b{font-weight:500;font-size:13.5px;display:block}
-  .sw .txt small{display:block;color:var(--dim);font-size:12px;margin-top:2px;line-height:1.6}
+  .sw .txt small{display:block;color:var(--dim2);font-size:12px;margin-top:3px;line-height:1.65}
   .sw input[type=checkbox]{flex:none}
   .sw code{background:transparent;border:none;padding:0;color:var(--accent)}
 
@@ -367,14 +366,16 @@
     :root:not([data-theme="light"]) .primary .kbd-pill{background:rgba(0,0,0,0.15)}
   }
 
-  /* 保存按钮未保存状态呼吸光 */
-  #btnSave.has-unsaved{background:var(--accent);color:#ffffff;
-       box-shadow:0 0 0 2px var(--accent-glow), 0 4px 14px rgba(217,107,39,0.3);
-       animation:pulseWarm 2.5s infinite}
-  @keyframes pulseWarm{
-    0%,100%{box-shadow:0 0 0 2px var(--accent-glow), 0 4px 14px rgba(217,107,39,0.25)}
-    50%{box-shadow:0 0 0 4px var(--accent-glow), 0 6px 18px rgba(217,107,39,0.4)}
-  }
+  /* 区块内的「保存 N 项」：只有该区块真有未保存的客户端改动时才出现。
+     页头不再挂常驻保存按钮 —— 立即生效的那一类改完就存，不需要按钮。 */
+  .save-pill{height:24px;padding:0 10px;font-size:12px;border-radius:99px;cursor:pointer;
+        background:var(--accent);border:1px solid transparent;color:#fff;font-weight:600;
+        display:inline-flex;align-items:center;margin-left:auto;box-shadow:0 2px 8px var(--accent-glow)}
+  .save-pill:hover{background:var(--accent-hover)}
+  .save-pill[hidden]{display:none}
+  .claude-toast .toast-action{background:none;border:none;color:var(--accent);font-weight:600;
+        font-size:12.5px;padding:2px 6px;cursor:pointer;border-radius:4px}
+  .claude-toast .toast-action:hover{background:var(--accent-dim)}
 
   /* 直觉一键复制组件 */
   .copy-pill{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);
@@ -382,6 +383,24 @@
        font-family:var(--mono);color:var(--dim);cursor:pointer;transition:all .18s;user-select:none}
   .copy-pill:hover{border-color:var(--accent);color:var(--fg);background:var(--panel)}
   .copy-icon{font-size:12px;opacity:0.8}
+
+  /* ── 窄屏（分屏 / 小窗）─────────────────────────────────
+     侧栏原本固定 220px 且不换列，窗口一窄就把正文挤到没有。窄屏下改成
+     顶部一条横向滚动的导航，正文占满；分组标题与端口状态在横条里没有意义，隐去。 */
+  @media (max-width: 900px){
+    header.top .inner{padding:16px}
+    header.top h1{font-size:24px}
+    header.top .sub{margin-left:0;font-size:12.5px}
+    .shell{grid-template-columns:minmax(0,1fr);gap:16px;padding:16px}
+    nav.side{position:static;top:auto;flex-direction:row;align-items:center;
+             overflow-x:auto;gap:4px;padding:6px 2px 8px;border-bottom:1px solid var(--line);
+             scrollbar-width:none}
+    nav.side::-webkit-scrollbar{display:none}
+    nav.side .grp, nav.side .side-foot{display:none}
+    nav.side a{flex:none;white-space:nowrap;padding:6px 10px;font-size:12.5px}
+    nav.side a .nav-ico{display:none}
+    nav.side a:hover{transform:none}
+  }
 </style>
 </head>
 <body>
@@ -395,34 +414,32 @@
         <line x1="3" y1="17" x2="21" y2="17"/><circle cx="7" cy="17" r="2.5"/>
       </svg>
       claude-tuner 调控台
-      <span class="slogan-tag">前缀缓存稳定化 · 动态工具精简</span>
     </h1>
-    <p class="sub">让第三方模型吃满 Prompt Cache 折扣 · 桌面端与终端共用 · 纯本地 0 依赖</p>
+    <p class="sub">前缀缓存稳定化 · 动态工具精简 —— 让第三方模型吃满 Prompt Cache 折扣，桌面端与终端共用，纯本地 0 依赖。</p>
   </div>
   <div class="act">
     <div id="msg"></div>
-    <button id="btnTheme" class="btn-theme" title="切换显示外观（浅色 / 暗色 / 跟随系统）">🌓 跟随系统</button>
-    <button id="btnSave" class="primary" title="保存当前所有设置 (快捷键: Cmd+S / Ctrl+S)"><span class="btn-save-txt">保存更改</span><kbd class="kbd-pill">⌘S</kbd></button>
+    <button id="btnTheme" class="btn-theme" title="切换显示外观（浅色 / 暗色 / 跟随系统）">跟随系统</button>
   </div>
 </div></header>
 
 <div class="shell">
   <nav class="side" id="nav">
     <div class="grp">快速上手</div>
-    <a href="#presetBar"><span class="nav-ico">⚡️</span>场景预设</a>
-    <a href="#s1"><span class="nav-ico">🔌</span>接上模型</a>
-    <a href="#s2"><span class="nav-ico">🔀</span>模型映射</a>
+    <a href="#presetBar"><span class="nav-ico">✳</span>场景预设</a>
+    <a href="#s1"><span class="nav-ico">①</span>接上模型</a>
+    <a href="#s2"><span class="nav-ico">②</span>模型映射</a>
 
     <div class="grp">核心调优</div>
-    <a href="#s3"><span class="nav-ico">💾</span>上下文缓存</a>
-    <a href="#s4"><span class="nav-ico">🛡️</span>请求稳定化</a>
-    <a href="#s5"><span class="nav-ico">✂️</span>工具精简</a>
-    <a href="#s6"><span class="nav-ico">🎛️</span>客户端偏好</a>
+    <a href="#s3"><span class="nav-ico">③</span>上下文缓存</a>
+    <a href="#s4"><span class="nav-ico">④</span>请求稳定化</a>
+    <a href="#s5"><span class="nav-ico">⑤</span>工具精简</a>
+    <a href="#s6"><span class="nav-ico">⑥</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
-    <a href="#s9"><span class="nav-ico">📈</span>用量统计</a>
-    <a href="#s7"><span class="nav-ico">⚙️</span>网关状态</a>
-    <a href="#s8"><span class="nav-ico">📦</span>版本与更新</a>
+    <a href="#s9"><span class="nav-ico">⑦</span>用量统计</a>
+    <a href="#s7"><span class="nav-ico">⑧</span>网关状态</a>
+    <a href="#s8"><span class="nav-ico">⑨</span>版本与更新</a>
 
     <div class="side-foot">
       <div class="side-foot-row">
@@ -469,27 +486,27 @@
     <!-- 一键场景预设 -->
     <div class="preset-bar" id="presetBar">
       <div class="preset-bar-head">
-        <b>⚡️ 一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
+        <b>一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
       </div>
       <div class="preset-now" id="presetNow"></div>
       <div class="preset-cards">
         <div class="preset-card" data-mode="balanced">
           <div class="preset-card-top">
-            <span class="preset-name">⚖️ 日常开发均衡档</span>
+            <span class="preset-name">日常开发均衡档</span>
             <span class="preset-badge rec">推荐</span>
           </div>
           <div class="preset-detail" data-detail="balanced"></div>
         </div>
         <div class="preset-card" data-mode="pure_code">
           <div class="preset-card-top">
-            <span class="preset-name">⚡️ 纯代码极限档</span>
+            <span class="preset-name">纯代码极限档</span>
             <span class="preset-badge hot">剥得最多</span>
           </div>
           <div class="preset-detail" data-detail="pure_code"></div>
         </div>
         <div class="preset-card" data-mode="vanilla">
           <div class="preset-card-top">
-            <span class="preset-name">🛠 零干预档</span>
+            <span class="preset-name">零干预档</span>
             <span class="preset-badge">什么都不改</span>
           </div>
           <div class="preset-detail" data-detail="vanilla"></div>
@@ -499,7 +516,8 @@
     </div>
 
     <section id="s1">
-      <div class="head"><span class="num">①</span><h2>接上模型</h2><span class="tag">必填</span></div>
+      <div class="head"><span class="num">①</span><h2>接上模型</h2><span class="tag">必填</span>
+        <button class="save-pill" data-save-section="s1" hidden></button></div>
       <div class="body">
         <p class="lead">填入 Anthropic Messages 协议接口与 API Key。支持官方 API、各类兼容中转及第三方模型直连。</p>
         <div class="row">
@@ -525,7 +543,8 @@
     </section>
 
     <section id="s2">
-      <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span></div>
+      <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span>
+        <button class="save-pill" data-save-section="s2" hidden></button></div>
       <div class="body">
         <p class="lead">左列为客户端选择器代号，右列为发给上游的真实模型名（区分大小写，同时作为客户端内的显示名称）。</p>
         <div class="row" style="margin-bottom:12px">
@@ -547,7 +566,8 @@
 
     <section id="s3">
       <div class="head"><span class="num">③</span><h2>上下文缓存</h2>
-        <span class="who">Claude 官方设置</span></div>
+        <span class="who">Claude 官方设置</span>
+        <button class="save-pill" data-save-section="s3" hidden></button></div>
       <div class="body">
         <p class="lead">控制客户端缓存保留时长与历史压缩。延长至 1 小时可显著提高连续对话命中率；按需关闭自动压缩可避免前缀频繁重建失效。</p>
         <div id="moneyBox"></div>
@@ -565,7 +585,7 @@
 
     <section id="s5">
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
-        <span class="tag">原子联动</span></div>
+        <span class="tag" id="pruneTag">原子联动</span></div>
       <div class="body">
         <p class="lead">按需精简客户端注入的外围工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
@@ -574,9 +594,10 @@
 
     <section id="s6">
       <div class="head"><span class="num">⑥</span><h2>客户端偏好</h2>
-        <span class="who">Claude 官方设置</span><span class="tag" id="clientTag"></span></div>
+        <span class="who">Claude 官方设置</span><span class="tag" id="clientTag"></span>
+        <button class="save-pill" data-save-section="s6" hidden></button></div>
       <div class="body">
-        <p class="lead">控制 Claude 桌面端的各项原生偏好（界面标签页、Git 提交签名、终端联动等）。</p>
+        <p class="lead">控制 Claude 桌面端的各项原生偏好（Git 提交签名、终端联动、随附技能与定时任务）。</p>
         <div id="prefBox"></div>
       </div>
     </section>
@@ -644,13 +665,20 @@ const api = async (path, body) => {
   return data;
 };
 let _toastTimer = null;
-function showToast(text, kind = 'ok', duration = 2400) {
+function showToast(text, kind = 'ok', duration = 2400, action = null) {
   const wrap = $('#claudeToastWrap');
   if (!wrap) return;
   wrap.innerHTML = '';
   const el = document.createElement('div');
   el.className = `claude-toast ${kind}`;
   el.innerHTML = `<span class="toast-dot"></span><span>${esc(text)}</span>`;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.onclick = () => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); action.onClick(); };
+    el.appendChild(b);
+  }
   wrap.appendChild(el);
   void el.offsetWidth;
   el.classList.add('show');
@@ -758,6 +786,10 @@ const PRUNING_GROUPS = [
     ['strip_report_findings_tools', '移除审查结论上报面板', 'code-review 一类技能把结论交回界面的通道'],
   ]],
 ];
+
+// 页面上**真有开关**的那批键：一切「几个开关」的计数都只在这份名单里数，
+// 免得又把 `enabled` / `custom_strip_tools` 算进来。
+const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, , items]) => items.map(([k]) => k));
 
 // 「随附技能与动态工作流」一个开关、两个键，两半都是**客户端自己的设置**：
 // `disableBundledSkills` 去掉那份随附技能清单（含 workflow-authoring），
@@ -925,19 +957,30 @@ function renderSwitches(d){
     }).join('') +
     `</div></details>`);
 
+  // 整组同一种生效时机，就只在组头说一次 —— 25 行各挂一枚「保存后即生效」是纯噪音。
+  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 10px">保存后即生效：下一轮请求起按新配置执行，不需要重启网关。</div>';
+
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
-  $('#ruleBox').innerHTML = RULE_GROUPS.map(([title, note, items]) =>
+  $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, note, items]) =>
     `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
     items.map(([k, label, why]) =>
-      SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`, 'now')).join('')
+      SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`, '')).join('')
   ).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = PRUNING_GROUPS.map(([title, note, items]) =>
+  $('#pruneBox').innerHTML = SAVED_NOTE + PRUNING_GROUPS.map(([title, note, items]) =>
     `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
     items.map(([k, label, why]) =>
-      SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, 'now')).join('')
+      SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, '')).join('')
   ).join('');
+
+  // 工具面的主指标：最近一次真实请求里客户端发了多少、我们剥了多少。
+  // 拿不到（还没跑过请求 / 日志被清）就保持「原子联动」，不拿开关数顶上。
+  const ts = d.tool_stats;
+  if (ts && ts.incoming){
+    const tag = $('#pruneTag');
+    if (tag) tag.textContent = `最近一次请求：剥掉 ${ts.stripped} / ${ts.incoming} 个工具`;
+  }
 
   const running = d.client.running;
   const tag = $('#clientTag');
@@ -950,11 +993,6 @@ function renderSwitches(d){
     SW('终端 Claude Code 同样走本网关',
        '终端 <code>claude</code> 命令行工具同样经本网关转发加速。',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
-    `<div class="subgrp">客户端界面标签页<em>至少需保留一个开启</em></div>` +
-    SW('Chat 标签页', '基础对话界面', `id="surfChat" ${d.client.surfaces.chatTabEnabled ? 'checked' : ''}`, 'restart') +
-    SW('Cowork 标签页', '本地代理协作模式界面', `id="surfCowork" ${d.client.surfaces.coworkTabEnabled ? 'checked' : ''}`, 'restart') +
-    SW('Code 标签页', '代码开发模式界面', `id="surfCode" ${d.client.surfaces.isClaudeCodeForDesktopEnabled ? 'checked' : ''}`, 'restart') +
-    `<div class="hint" style="margin:4px 0 4px">注意：上述三个标签页至少需保留一个开启，客户端才能正常启动。</div>` +
     `<div class="subgrp">客户端自带能力</div>` +
     SW('关闭随附技能与动态工作流',
        '移除随附技能与 Workflow 工具（两者互相指向，须同进同退）；用户自建技能不受影响。',
@@ -1021,11 +1059,13 @@ function renderPresetDetails(){
     const p = PRESETS[box.dataset.detail];
     if (!p) return;
     const tp = presetCfg(p).tool_pruning;
-    const tpKeys = Object.keys(tp);
-    const off = tpKeys.filter(k => tp[k]).map(k => presetTpLabel(k));
-    const tools = off.length
-      ? `<b title="${esc(off.join("、"))}">剥掉 ${off.length}/${tpKeys.length} 项工具</b>`
-      : `<b>工具一项不剥</b>`;
+    // 只在**页面上真有开关**的那批键里数，且只认布尔真值：默认值表里还躺着
+    // `enabled` 与 `custom_strip_tools`（空数组在 JS 里是真值），混进分母就会得到
+    // 「17/29」这种与页面上 27 个开关对不上的数。这一行说的是**开关**，不是工具。
+    const on = PRUNE_KEYS.filter(k => tp[k] === true).map(k => presetTpLabel(k));
+    const tools = on.length
+      ? `<b title="${esc(on.join("、"))}">打开 ${on.length}/${PRUNE_KEYS.length} 个开关</b>`
+      : `<b>一个开关都不打开</b>`;
     const sets = [
       p.settings.promptCacheTtl ? "缓存留 1 小时" : "缓存回官方默认",
       p.settings.promptSuggestionEnabled ? "输入联想开" : "关输入联想",
@@ -1135,8 +1175,13 @@ function renderCurrentState(){
   const bundle = $('#bundledSkills');
   const custom = (CFG && CFG.tool_pruning && CFG.tool_pruning.custom_strip_tools) || [];
 
+  // 主指标用**实际请求**里的工具数（后端按 request_id 把「发来几个」和「剥了几个」
+  // 串起来）；拿不到时才退回数开关，且说清楚数的是开关。
+  const ts = CFG && CFG.tool_stats;
   const chips = [
-    `工具开关 <b>${on('#pruneBox input[data-tp]')}/${all('#pruneBox input[data-tp]')}</b> 项在剥`,
+    ts && ts.incoming
+      ? `实际剥离 <b>${ts.stripped} / ${ts.incoming}</b> 个工具`
+      : `工具开关 <b>${on('#pruneBox input[data-tp]')}/${all('#pruneBox input[data-tp]')}</b> 项在剥`,
     bundle && bundle.checked ? '随附技能与工作流 <b>已剥离</b>' : '随附技能与工作流 <b>保留</b>',
     `前缀稳定化 <b>${on('#ruleBox input[data-rule]')}/${all('#ruleBox input[data-rule]')}</b> 条在生效`,
     money('promptCacheTtl') ? '缓存留 <b>1 小时</b>' : '缓存留 <b>官方默认</b>',
@@ -1249,7 +1294,7 @@ function watchNav(){
   const mark = () => {
     let current = sections[0];
     for (const s of sections) {
-      if (s.getBoundingClientRect().top <= 140) current = s;
+      if (s.getBoundingClientRect().top <= 160) current = s;
     }
     links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + current.id));
   };
@@ -1293,7 +1338,9 @@ document.addEventListener('input', ev => {
 window.addEventListener('keydown', ev => {
   if ((ev.metaKey || ev.ctrlKey) && ev.key === 's') {
     ev.preventDefault();
-    $('#btnSave').click();
+    const pending = [...document.querySelectorAll('.save-pill')].some(b => !b.hidden);
+    if (pending) saveClientSide();
+    else if (_autoTimer) { clearTimeout(_autoTimer); autoSaveImmediate(); }
   }
 });
 
@@ -1420,6 +1467,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: oldUp || '（未配置）',
       to: newUp || '（空）',
       ...{ when: WHEN.now[0], badge: WHEN.now[1] },
+      immediate: true,
     });
   }
 
@@ -1431,7 +1479,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: CFG.upstream?.api_key_masked ? `已配置（${CFG.upstream.api_key_masked}）` : '未配置',
       to: '已填入新密钥',
       when: '保存后需重启客户端',
-      badge: 'restart'
+      badge: 'restart',
+      section: 's1'
     });
   }
 
@@ -1444,7 +1493,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: `${(CFG.models || []).length} 条配置`,
       to: `${models.length} 条配置`,
       when: '保存后需重启客户端',
-      badge: 'restart'
+      badge: 'restart',
+      section: 's2'
     });
   }
 
@@ -1457,6 +1507,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         title: label,
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
+        immediate: true,
         ...{ when: WHEN.now[0], badge: WHEN.now[1] }
       });
     }
@@ -1474,6 +1525,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
           title: label,
           from: oldVal ? '开' : '关',
           to: newVal ? '开' : '关',
+          immediate: true,
           ...{ when: WHEN.now[0], badge: WHEN.now[1] }
         });
       }
@@ -1498,7 +1550,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
         when: k === 'promptCacheTtl' ? '保存后需重启客户端' : '保存后新会话生效',
-        badge: k === 'promptCacheTtl' ? 'restart' : 'session'
+        badge: k === 'promptCacheTtl' ? 'restart' : 'session',
+        section: 's3'
       });
     }
   });
@@ -1513,7 +1566,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
         when: '保存后新会话生效',
-        badge: 'session'
+        badge: 'session',
+        section: 's3'
       });
     }
   });
@@ -1527,7 +1581,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: oldCo ? '开' : '关',
       to: newCo ? '开' : '关',
       when: '保存后新会话生效',
-      badge: 'session'
+      badge: 'session',
+      section: 's6'
     });
   }
 
@@ -1539,30 +1594,10 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: oldCli ? '开' : '关',
       to: newCli ? '开' : '关',
       when: '保存后新会话生效',
-      badge: 'session'
+      badge: 'session',
+      section: 's6'
     });
   }
-
-  // 标签页
-  const surfDefs = [
-    ['surfChat', 'chatTabEnabled', 'Chat 标签页'],
-    ['surfCowork', 'coworkTabEnabled', 'Cowork 标签页'],
-    ['surfCode', 'isClaudeCodeForDesktopEnabled', 'Code 标签页']
-  ];
-  surfDefs.forEach(([elId, prop, title]) => {
-    const oldVal = !!(CFG.client?.surfaces && CFG.client.surfaces[prop]);
-    const el = $('#' + elId);
-    const newVal = el ? el.checked : false;
-    if (oldVal !== newVal) {
-      diffs.push({
-        title,
-        from: oldVal ? '开' : '关',
-        to: newVal ? '开' : '关',
-        when: '保存后需重启客户端',
-        badge: 'restart'
-      });
-    }
-  });
 
   // 内部偏好
   const prefDefs = [
@@ -1580,7 +1615,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
         when: '保存后需重启客户端',
-        badge: 'restart'
+        badge: 'restart',
+        section: 's6'
       });
     }
   });
@@ -1594,28 +1630,99 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       from: `${oldDays} 天`,
       to: `${newDays} 天`,
       when: '保存后下次轮转生效',
-      badge: 'gateway'
+      badge: 'gateway',
+      immediate: true
     });
   }
 
   return diffs;
 }
 
+// ── 保存：两条路 ──────────────────────────────────────────
+// **立即生效的一类**（前缀稳定化 / 工具精简 / 日志保留 / 上游地址）写的是网关自己的
+// config.json：热读 + 原子写，改完就该生效，所以不等按钮 —— 防抖 300ms 直接存，
+// 配 5 秒「撤销」。页头那颗常驻按钮因此没有存在的理由：它大多数时候无事可做。
+//
+// **客户端那几本账**（密钥、模型映射、缓存时长、客户端偏好）写的是 3P 配置或客户端
+// 设置文件：客户端开着时会被它覆盖回去，所以不能偷偷写 —— 收进所在区块标题的小按钮，
+// 没有待保存项时那个按钮根本不存在。
+let _autoTimer = null, _autoUndo = null;
+
+function immediateState(){
+  const st = collectCurrentFormState();
+  return {rules: st.rules, tool_pruning: st.tool_pruning,
+          log_retention_days: st.log_retention_days};
+}
+
+function scheduleAutoSave(){
+  if (_autoTimer) clearTimeout(_autoTimer);
+  _autoTimer = setTimeout(autoSaveImmediate, 300);
+}
+
+async function autoSaveImmediate(){
+  _autoTimer = null;
+  const before = {
+    rules: Object.fromEntries(RULES.map(([k]) => [k, !!(CFG?.rules?.[k] ?? CFG?.options?.rules_defaults?.[k])])),
+    tool_pruning: Object.fromEntries(PRUNE_KEYS.map(k =>
+      [k, !!(CFG?.tool_pruning?.[k] ?? CFG?.options?.pruning_defaults?.[k])])),
+    log_retention_days: parseInt(CFG?.gateway?.log_retention_days || 7, 10),
+  };
+  const body = immediateState();
+  const r = await api('/api/config', body);
+  if (!r.ok) { say('❌ ' + ((r.error && r.error.message) || '保存失败'), 'err'); return; }
+  CFG.rules = body.rules;
+  CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, body.tool_pruning);
+  if (CFG.gateway) CFG.gateway.log_retention_days = body.log_retention_days;
+  _autoUndo = before;
+  say('');
+  showToast('已保存，立即生效', 'ok', 5000, {
+    label: '撤销',
+    onClick: async () => {
+      const back = _autoUndo;
+      _autoUndo = null;
+      if (!back) return;
+      const rr = await api('/api/config', back);
+      if (!rr.ok) { say('❌ 撤销失败', 'err'); return; }
+      // 只把开关自身的勾选状态改回去，不碰页面上其它正在编辑的输入框
+      RULES.forEach(([k]) => {
+        const el = $(`#ruleBox input[data-rule="${k}"]`);
+        if (el) el.checked = !!back.rules[k];
+      });
+      PRUNE_KEYS.forEach(k => {
+        const el = $(`#pruneBox input[data-tp="${k}"]`);
+        if (el) el.checked = !!back.tool_pruning[k];
+      });
+      CFG.rules = back.rules;
+      CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, back.tool_pruning);
+      if (CFG.gateway) CFG.gateway.log_retention_days = back.log_retention_days;
+      checkCurrentPresetMatch();
+      updateUnsavedIndicator();
+      showToast('已撤销', 'warn', 2000);
+    }
+  });
+  checkCurrentPresetMatch();
+  updateUnsavedIndicator();
+}
+
 function updateUnsavedIndicator(){
   if (!CFG) return;
   const {models, settings, tool_pruning, rules} = collectCurrentFormState();
   const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
-  const btn = $('#btnSave');
-  if (diffs.length > 0) {
-    if (btn) btn.classList.add('has-unsaved');
-    say(`⚡️ ${diffs.length} 项修改待保存`, 'warn');
-  } else {
-    if (btn) btn.classList.remove('has-unsaved');
-    say('');
-  }
+  const pending = diffs.filter(d => !d.immediate);
+
+  // 立即生效的那一类：不等人点，直接写（连续改动由防抖合并成一次）
+  if (diffs.some(d => d.immediate)) scheduleAutoSave();
+
+  document.querySelectorAll('.save-pill').forEach(btn => {
+    const id = btn.dataset.saveSection;
+    const n = pending.filter(d => !d.section || d.section === id).length;
+    btn.hidden = n === 0;
+    btn.textContent = n ? `保存 ${n} 项` : '';
+  });
+  say(pending.length ? `⚡️ ${pending.length} 项待保存（需重启或退出客户端）` : '');
 }
 
-$('#btnSave').onclick = async () => {
+async function saveClientSide(){
   const {models, settings, tool_pruning, rules, on} = collectCurrentFormState();
   const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
 
@@ -1633,11 +1740,6 @@ $('#btnSave').onclick = async () => {
     bundled_skills: !!$('#bundledSkills')?.checked,
     cli_linked: $('#cliLinked').checked,
     scheduled_tasks: !$('#schedTasks').checked,
-    surfaces: {
-      chatTabEnabled: $('#surfChat').checked,
-      coworkTabEnabled: $('#surfCowork').checked,
-      isClaudeCodeForDesktopEnabled: $('#surfCode').checked,
-    },
     log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
@@ -1645,8 +1747,6 @@ $('#btnSave').onclick = async () => {
   if (CFG.gateway) CFG.gateway.log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
   renderStats();
   $('#apikey').value = '';
-  const btn = $('#btnSave');
-  if (btn) btn.classList.remove('has-unsaved');
   say('✅ 设置已保存', 'ok');
 
   let bodyHtml = '';
@@ -1699,7 +1799,11 @@ $('#btnSave').onclick = async () => {
   if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
   // 保存后重算：卡片从「已选 · 待保存」翻成「✓ 当前使用」—— 以刚存下的配置为准
   checkCurrentPresetMatch();
-};
+  updateUnsavedIndicator();
+}
+
+// 区块内的「保存 N 项」：提交整份表单（幂等，重复写同样的值没有副作用）
+document.querySelectorAll('.save-pill').forEach(btn => { btn.onclick = saveClientSide; });
 
 // ── 外观主题管理 ───────────────────────────────────────────
 function initTheme() {
@@ -1723,13 +1827,13 @@ function applyTheme(theme) {
   const btn = $('#btnTheme');
   if (theme === 'auto') {
     document.documentElement.removeAttribute('data-theme');
-    if (btn) { btn.textContent = '🌓 跟随系统'; btn.title = '当前跟随系统外观（点击切换为明亮）'; }
+    if (btn) { btn.textContent = '跟随系统'; btn.title = '当前跟随系统外观（点击切换为暖白）'; }
   } else if (theme === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-    if (btn) { btn.textContent = '🌙 暗色'; btn.title = '当前为 Claude 深暖炭黑（点击切换为跟随系统）'; }
+    if (btn) { btn.textContent = '暗色'; btn.title = '当前为深暖炭黑（点击切换为跟随系统）'; }
   } else {
     document.documentElement.setAttribute('data-theme', 'light');
-    if (btn) { btn.textContent = '☀️ 暖白'; btn.title = '当前为 Claude 燕麦暖白（点击切换为暗色）'; }
+    if (btn) { btn.textContent = '暖白'; btn.title = '当前为燕麦暖白（点击切换为暗色）'; }
   }
 }
 
