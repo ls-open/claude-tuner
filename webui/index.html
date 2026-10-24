@@ -1809,13 +1809,13 @@ function applyTheme(theme) {
   const btn = $('#btnTheme');
   if (theme === 'auto') {
     document.documentElement.removeAttribute('data-theme');
-    if (btn) { btn.textContent = '🌓 跟随系统'; btn.title = '当前跟随系统外观（点击切换为明亮）'; }
+    if (btn) { btn.textContent = '跟随系统'; btn.title = '当前跟随系统外观（点击切换为暖白）'; }
   } else if (theme === 'dark') {
     document.documentElement.setAttribute('data-theme', 'dark');
-    if (btn) { btn.textContent = '🌙 暗色'; btn.title = '当前为 Claude 深暖炭黑（点击切换为跟随系统）'; }
+    if (btn) { btn.textContent = '暗色'; btn.title = '当前为深暖炭黑（点击切换为跟随系统）'; }
   } else {
     document.documentElement.setAttribute('data-theme', 'light');
-    if (btn) { btn.textContent = '☀️ 暖白'; btn.title = '当前为 Claude 燕麦暖白（点击切换为暗色）'; }
+    if (btn) { btn.textContent = '暖白'; btn.title = '当前为燕麦暖白（点击切换为暗色）'; }
   }
 }
 
