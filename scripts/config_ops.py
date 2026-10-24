@@ -312,11 +312,6 @@ DEFAULT_MODEL = "deepseek-flash"
 
 # 客户端界面的三个面（Chat / Cowork / Code）。都是 3P 配置里的键，false = 关掉该面。
 # **不是默认写入的** —— 只写用户明确改过的那一个，其余保持客户端原样。
-SURFACE_KEYS = ("chatTabEnabled", "coworkTabEnabled", "isClaudeCodeForDesktopEnabled")
-SURFACE_LABELS = {"chatTabEnabled": "Chat 标签页",
-                  "coworkTabEnabled": "Cowork 标签页",
-                  "isClaudeCodeForDesktopEnabled": "Code 标签页"}
-
 # 跟随安装一起写死的 3P 字段。只写这些，其余键一律保留。
 _3P_FORCED = {
     "inferenceProvider": "gateway",
@@ -401,9 +396,6 @@ def validate_3p_config(cfg):
             if not isinstance(item, dict) or not (item.get("name") or "").strip():
                 problems.append("inferenceModels 里有条目缺 name")
                 break
-    # 客户端要求至少一个面是开的
-    if cfg.get("coworkTabEnabled") is False and cfg.get("isClaudeCodeForDesktopEnabled") is False:
-        problems.append("Code 与 Cowork 两个面都被关掉了")
     return problems
 
 

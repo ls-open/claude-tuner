@@ -200,3 +200,56 @@ def read_recent_usage(home=None):
     if key:
         _usage_cache = (key, result)
     return result
+
+
+def last_pruning(home=None, max_bytes=1024 * 1024):
+    """最近一次真实请求的工具面：客户端发了几个、我们剥了几个。
+
+    两个数字落在**同一次请求的两行**里，用 request_id 串起来 —— 请求行的 `tools`，
+    与 canonicalized 行的 `prune_tools_<N>`。只读日志尾部，倒着找第一对就返回。
+
+    **读不到就返回 None**：页面据此不显示这一项，而不是拿「打开了几个开关」冒充
+    「剥掉了几个工具」—— 那正是口径混乱的来源（65 个开关数与 88 个工具数没法比）。
+    """
+    lines = tail_lines(log_path(home), max_bytes)
+    incoming = {}
+    for line in lines:
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(event, dict):
+            continue
+        rid = event.get("request_id")
+        n = event.get("tools")
+        if rid and isinstance(n, int) and n >= 0:
+            incoming[rid] = n
+
+    for line in reversed(lines):
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(event, dict) or event.get("event") != "canonicalized":
+            continue
+        rid = event.get("request_id")
+        if not rid or rid not in incoming:
+            continue
+        stripped = 0
+        for change in event.get("changes") or []:
+            if isinstance(change, str) and change.startswith("prune_tools_"):
+                try:
+                    stripped += int(change.rsplit("_", 1)[1])
+                except ValueError:
+                    pass
+        total = incoming[rid]
+        return {"incoming": total, "stripped": stripped,
+                "kept": max(total - stripped, 0),
+                "ts": event.get("ts", ""), "request_id": rid}
+    return None
