@@ -219,18 +219,20 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_web_fetch_tools": False,       # WebFetch
     # 桌面端界面遥控：按**功能**拆成六项 —— 合成一个键的话，想清掉侧栏就得连会话管理
     # 一起清，两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    # 会话管理里性质不同的六类单独成项（默认全开）：它们不是界面遥控，而是改权限 /
-    # 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
+    # 会话管理里性质不同的几类单独成项（除起停外默认全开）：它们不是界面遥控，而是
+    # 改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 终止会话。
     "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
+    "strip_session_start_tools": False,   # 起会话 / 交接 / 列目标 / 撤回提案 / 批次标题 / 回查已链接会话（提示词整段教这套，默认保留）
     "strip_session_permission_tools": True,   # 改会话权限模式
     "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
-    "strip_session_export_tools": True,       # 导出会话、检索历史、列会话
+    "strip_session_export_tools": True,       # 导出会话、检索历史
     "strip_session_delete_tools": True,       # 删除 / 清空 / 归档 / 取消归档会话
     "strip_session_remote_tools": True,       # 向其他会话发消息、开远程控制
-    "strip_session_task_tools": True,         # 起 / 停会话内的后台任务
+    "strip_session_task_tools": True,         # 终止会话
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
     "strip_view_tools": False,            # mcp__ccd_view*（diff／文件／终端／浏览器预览面板，默认保留）
+    "strip_turn_tools": False,            # mcp__ccd_turn*（进度清单 update_plan／收尾框 wrap_up，默认保留）
     "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
     "strip_settings_tools": True,         # mcp__ccd_settings*
     "strip_directory_tools": True,        # mcp__ccd_directory*

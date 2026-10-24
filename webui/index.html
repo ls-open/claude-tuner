@@ -724,6 +724,7 @@ const PRUNING_GROUPS = [
     ['strip_sidebar_tools', '移除侧栏管理工具', '建立分区、归档、置顶等界面操作'],
     ['strip_window_tools', '移除窗口与分屏遥控', ''],
     ['strip_view_tools', '移除面板呈现（diff／文件／终端／浏览器预览）', '客户端提示词要求模型用它推送 diff／文件／终端面板并打开浏览器预览，故默认保留'],
+    ['strip_turn_tools', '移除进度清单与收尾面板', '客户端提示词要求模型用它汇报进度与收尾，剥了这两块界面就没有了，故默认保留'],
     ['strip_settings_tools', '移除界面偏好控制', ''],
     ['strip_directory_tools', '移除会话目录切换', ''],
   ]],
@@ -734,7 +735,7 @@ const PRUNING_GROUPS = [
     ['strip_session_export_tools', '移除会话导出与检索', ''],
     ['strip_session_delete_tools', '移除删除与归档会话', ''],
     ['strip_session_remote_tools', '移除跨会话远程控制', ''],
-    ['strip_session_task_tools', '移除后台任务起停', ''],
+    ['strip_session_task_tools', '移除会话终止', '停掉一个正在跑的会话'],
   ]],
   ['宿主与终端类', '操作本机编辑器、终端标签页与磁盘存储的辅助工具', [
     ['strip_host_tools', '移除外部编辑器与系统联动', '唤起外部 IDE、防休眠、清理工作树'],
@@ -749,6 +750,7 @@ const PRUNING_GROUPS = [
     ['strip_plugin_mgmt_tools', '移除插件市场与技能建议', ''],
   ]],
   ['智能体协作能力类', '多 Agent 协同、任务隔离与计划确认模式（默认保留）', [
+    ['strip_session_start_tools', '移除会话起停与交接', '起新会话、把当前任务交接出去、列可选目标、撤回自己发出的提案、给这批发出的会话打批次标题、回查已链接会话 —— 客户端提示词用整段教这套流程，剥了就是「提示词指向不存在的工具」，故整组默认保留'],
     ['strip_cross_session_tools', '移除跨会话消息工具', '与 ListAgents 配对，只剥一半会剩个用不了的'],
     ['strip_worktree_tools', '移除 Git 工作树隔离工具', ''],
     ['strip_plan_tools', '移除计划确认模式（Plan）', ''],

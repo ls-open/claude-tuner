@@ -176,6 +176,7 @@ from tool_rules import (  # noqa: E402
     active_pairs,
     category_for,
     get_stripped_tool_names,
+    ghost_tool_names,
     orphan_mentions,
     pair_is_orphaned,
     pair_paragraph_predicate,
@@ -701,8 +702,13 @@ def _guard_rule(name, fn):
     return wrapper
 
 
-def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
-    """Stabilize cache-relevant bytes without touching semantic content."""
+def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None):
+    """Stabilize cache-relevant bytes without touching semantic content.
+
+    `stripped_names`：本次请求**实际被剥**的工具名集合，由调用方在剥离之前用
+    `ghost_tool_names()` 算好传进来。不传就只认配置里的精确名 —— 走 `prepare_request`
+    剥过工具的调用方必须传，否则前缀类工具（`mcp__ccd_session*` 等）漏在探测之外。
+    """
     changed = []
     r = rules or load_rules_config()
     if tool_pruning_cfg is not None:
@@ -776,10 +782,12 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None):
 
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
-    _ghost_names = get_stripped_tool_names(tp)
     _incoming_tools = None
     if isinstance(parsed.get("tools"), list):
         _incoming_tools = {t.get("name") for t in parsed["tools"] if isinstance(t, dict) and t.get("name")}
+    # 名单必须在**剥离之前**算（见 ghost_tool_names 的说明）：走到这里 tools 已被
+    # prepare_request 删过，再按它补齐就只剩下保留的那些，前缀类工具一条都补不到。
+    _ghost_names = stripped_names if stripped_names is not None else get_stripped_tool_names(tp)
     _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
@@ -1684,8 +1692,11 @@ class Handler(BaseHTTPRequestHandler):
         rules = load_rules_config()
         tp_cfg = load_tool_pruning_config()
         try:
+            # 剥离前先记下「这一轮会剥掉哪些工具」—— prepare_request 会把它们从
+            # parsed["tools"] 里删掉，之后再也算不出来（孤儿探测就靠这份名单）。
+            ghost = ghost_tool_names(parsed.get("tools"), tp_cfg)
             stabilize_changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
-            changed = canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg)
+            changed = canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg, stripped_names=ghost)
             changed = stabilize_changed + changed
         except Exception as exc:
             # 两个稳定化函数都原地修改 parsed，失败必须回滚到原始报文：

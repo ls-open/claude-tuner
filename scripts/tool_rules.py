@@ -47,7 +47,19 @@ CATEGORY_NAMESPACES = (
     #
     # 为什么要挑：剩下那些是纯界面遥控（标章节、改标题、看用量），留着剥掉都无所谓；
     # 这几类却是改权限、改模型档位、把会话内容导出去、删会话、往别的会话发消息、
-    # 起停后台任务 —— 该不该留跟「界面遥控」不是同一个判断，不该被绑在一起。
+    # 起停会话 —— 该不该留跟「界面遥控」不是同一个判断，不该被绑在一起。
+    #
+    # 会话起停与交接是**一整条流程**，客户端提示词用整段（「Starting other sessions」）
+    # 教它：起新会话 / 把当前任务交接出去 / 列可选目标 / 撤回自己发出的提案 /
+    # 给这批发出的会话打批次标题 / 回查已链接会话。剥其中任何一个都会让那段指向
+    # 一个不存在的工具（提示词悬空），所以整组一个开关、默认保留。
+    ("strip_session_start_tools",
+     ("mcp__ccd_session__start_session",
+      "mcp__ccd_session__hand_off_to_session",
+      "mcp__ccd_session__list_start_targets",
+      "mcp__ccd_session__dismiss_task",
+      "mcp__ccd_session__mark_chapter",
+      "mcp__ccd_session_mgmt__list_sessions")),
     ("strip_session_permission_tools",
      ("mcp__ccd_session_mgmt__set_session_permission_mode",)),
     ("strip_session_model_tools",
@@ -56,8 +68,7 @@ CATEGORY_NAMESPACES = (
       "mcp__ccd_session_mgmt__set_session_fast_mode")),
     ("strip_session_export_tools",
      ("mcp__ccd_session_mgmt__export_transcript",
-      "mcp__ccd_session_mgmt__search_session_transcripts",
-      "mcp__ccd_session_mgmt__list_sessions")),
+      "mcp__ccd_session_mgmt__search_session_transcripts")),
     # 归档与取消归档是一对反向操作，同进同退（同 Enter/Exit 的道理）
     ("strip_session_delete_tools",
      ("mcp__ccd_session_mgmt__delete_session",
@@ -67,16 +78,19 @@ CATEGORY_NAMESPACES = (
     ("strip_session_remote_tools",
      ("mcp__ccd_session_mgmt__send_message",
       "mcp__ccd_session_mgmt__set_remote_control")),
+    # 只剩终止会话：起会话与撤回提案已归上面的起停组，「后台任务」那套 2.1.308 已并进
+    # 会话本身，键名沿用旧的，免得老配置里那一项失效。
     ("strip_session_task_tools",
-     ("mcp__ccd_session__spawn_task",
-      "mcp__ccd_session__dismiss_task",
-      "mcp__ccd_session_mgmt__stop_session")),
+     ("mcp__ccd_session_mgmt__stop_session",)),
     # 桌面端界面遥控：按**功能**拆成六项，不合成一个大开关 —— 否则想清掉侧栏就得
     # 连会话管理一起清，两者毫无关系。
     ("strip_session_tools", ("mcp__ccd_session", "mcp__session_info")),
     ("strip_sidebar_tools", ("mcp__ccd_sidebar",)),
     ("strip_window_tools", ("mcp__ccd_window",)),
     ("strip_view_tools", ("mcp__ccd_view",)),
+    # 任务清单与收尾面板：客户端提示词点名要求模型用它俩跟进度（update_plan 是唯一的
+    # 进度清单，wrap_up 是唯一的收尾框）。剥了界面就少两块，判为**保留**。
+    ("strip_turn_tools", ("mcp__ccd_turn",)),
     ("strip_host_tools", ("mcp__ccd_host",)),
     ("strip_settings_tools", ("mcp__ccd_settings",)),
     ("strip_directory_tools", ("mcp__ccd_directory",)),
@@ -167,6 +181,24 @@ def strip_reason(tool_name, stripped_names, cfg):
 def should_strip_tool(tool_name, stripped_names, cfg):
     """判断单个工具是否应被剥离（纯粹服从配置规则，按功能命名空间精准剥离冗余工具）。"""
     return bool(strip_reason(tool_name, stripped_names, cfg))
+
+
+def ghost_tool_names(tools, cfg):
+    """本次请求里**实际会被剥掉**的工具名 —— 孤儿探测与配对判定都按这个口径。
+
+    不能只读配置：类别表里既有精确名也有前缀（`mcp__ccd_session*` 等），而配置侧
+    只有精确名 —— 前缀类工具永远进不来，探测器对它们就是瞎的（27 个 ccd_session
+    剥了却一条都报不出）。
+
+    **必须在剥离之前调用**：`prepare_request` 会原地删掉 tools，之后再算只剩保留的
+    那些，修补等于没做（这条踩过）。
+    """
+    names = get_stripped_tool_names(cfg)
+    for t in tools if isinstance(tools, list) else ():
+        n = t.get("name") if isinstance(t, dict) else None
+        if n and should_strip_tool(n, names, cfg):
+            names.add(n)
+    return names
 
 
 # ==============================================================================
