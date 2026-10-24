@@ -383,6 +383,24 @@
        font-family:var(--mono);color:var(--dim);cursor:pointer;transition:all .18s;user-select:none}
   .copy-pill:hover{border-color:var(--accent);color:var(--fg);background:var(--panel)}
   .copy-icon{font-size:12px;opacity:0.8}
+
+  /* ── 窄屏（分屏 / 小窗）─────────────────────────────────
+     侧栏原本固定 220px 且不换列，窗口一窄就把正文挤到没有。窄屏下改成
+     顶部一条横向滚动的导航，正文占满；分组标题与端口状态在横条里没有意义，隐去。 */
+  @media (max-width: 900px){
+    header.top .inner{padding:16px}
+    header.top h1{font-size:24px}
+    header.top .sub{margin-left:0;font-size:12.5px}
+    .shell{grid-template-columns:minmax(0,1fr);gap:16px;padding:16px}
+    nav.side{position:static;top:auto;flex-direction:row;align-items:center;
+             overflow-x:auto;gap:4px;padding:6px 2px 8px;border-bottom:1px solid var(--line);
+             scrollbar-width:none}
+    nav.side::-webkit-scrollbar{display:none}
+    nav.side .grp, nav.side .side-foot{display:none}
+    nav.side a{flex:none;white-space:nowrap;padding:6px 10px;font-size:12.5px}
+    nav.side a .nav-ico{display:none}
+    nav.side a:hover{transform:none}
+  }
 </style>
 </head>
 <body>
