@@ -135,13 +135,13 @@
        background:var(--top-bg);
        backdrop-filter:saturate(1.8) blur(20px);-webkit-backdrop-filter:saturate(1.8) blur(20px);
        border-bottom:1px solid var(--line);transition:background .2s, border-color .2s}
-  header.top .inner{max-width:1200px;margin:0 auto;padding:14px 24px;display:flex;
+  header.top .inner{max-width:1200px;margin:0 auto;padding:20px 24px 18px;display:flex;
        gap:20px;align-items:center;flex-wrap:wrap}
-  header.top h1{font-family:var(--font-serif);font-size:18px;margin:0;font-weight:500;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;color:var(--fg)}
+  /* 衬线大标题是 Claude 的识别符号：小标题用衬线只是「字体选对了」，大一号才成调子 */
+  header.top h1{font-family:var(--font-serif);font-size:29px;margin:0;font-weight:500;
+       letter-spacing:-.025em;line-height:1.15;display:flex;align-items:center;gap:12px;color:var(--fg)}
   .brand-mark{color:var(--accent);flex-shrink:0;vertical-align:middle}
-  header.top .slogan-tag{font-family:var(--font-sans);font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;
-       background:var(--accent-dim);color:var(--accent);border:1px solid var(--accent-dim)}
-  header.top .sub{margin:4px 0 0 32px;font-size:12.5px;color:var(--dim);max-width:760px;line-height:1.5}
+  header.top .sub{margin:7px 0 0 38px;font-size:13px;color:var(--dim);max-width:760px;line-height:1.6}
   header.top .act{display:flex;align-items:center;gap:10px;margin-left:auto}
 
   /* ── 骨架 ───────────────────────────────────────────── */
@@ -149,14 +149,14 @@
          grid-template-columns:220px minmax(0,1fr);gap:32px;align-items:start}
 
   /* ── 侧栏（Claude Docs 风格极简导航） ─────────────────── */
-  nav.side{position:sticky;top:98px;font-size:13px;display:flex;flex-direction:column;gap:2px}
-  nav.side .grp{margin:18px 0 6px;padding:0 8px;border:none;
+  nav.side{position:sticky;top:116px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+  nav.side .grp{margin:22px 0 6px;padding:0 8px;border:none;
        font-size:11px;font-weight:700;color:var(--dim2);text-transform:uppercase;letter-spacing:0.04em}
   nav.side > .grp:first-child{margin-top:0}
   nav.side a{position:relative;display:flex;align-items:center;gap:9px;padding:7px 11px;
        border-radius:var(--radius-sm);color:var(--dim);font-weight:500;
        transition:all .15s ease;user-select:none}
-  nav.side a .nav-ico{font-size:13px;width:16px;text-align:center;flex-shrink:0;opacity:0.85;display:inline-block}
+  nav.side a .nav-ico{font-family:var(--font-serif);font-size:13px;width:16px;text-align:center;flex-shrink:0;opacity:.65;display:inline-block}
   nav.side a:hover{color:var(--fg);background:var(--panel2);transform:translateX(2px)}
   nav.side a.on{color:var(--nav-active-fg);font-weight:600;background:var(--nav-active-bg)}
   nav.side a.on .nav-ico{opacity:1}
@@ -241,9 +241,9 @@
 
   /* ── 卡片 ───────────────────────────────────────────── */
   section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-          margin-bottom:18px;overflow:hidden;scroll-margin-top:92px;
+          margin-bottom:26px;overflow:hidden;scroll-margin-top:122px;
           box-shadow:var(--card-shadow);transition:background .2s, border-color .2s}
-  .head{display:flex;align-items:center;gap:10px;padding:15px 20px;
+  .head{display:flex;align-items:center;gap:10px;padding:18px 22px;
         background:linear-gradient(180deg, var(--panel2) 0%, var(--panel) 100%);
         border-bottom:1px solid var(--line)}
   h2{font-family:var(--font-serif);font-size:15.5px;margin:0;font-weight:500;letter-spacing:-.01em;color:var(--fg)}
@@ -285,13 +285,13 @@
   .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:20px 0 4px}
   .subgrp:first-child{margin-top:0}
   .subgrp em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
-  .sw{display:flex;align-items:center;gap:16px;padding:11px 8px;border-radius:6px;
+  .sw{display:flex;align-items:center;gap:16px;padding:13px 8px;border-radius:6px;
       border-bottom:1px solid var(--line);transition:background .12s}
   .sw:last-child{border-bottom:none}
   .sw:hover{background:var(--panel2)}
   .sw .txt{flex:1;min-width:0}
   .sw .txt > b{font-weight:500;font-size:13.5px;display:block}
-  .sw .txt small{display:block;color:var(--dim);font-size:12px;margin-top:2px;line-height:1.6}
+  .sw .txt small{display:block;color:var(--dim2);font-size:12px;margin-top:3px;line-height:1.65}
   .sw input[type=checkbox]{flex:none}
   .sw code{background:transparent;border:none;padding:0;color:var(--accent)}
 
@@ -396,33 +396,32 @@
         <line x1="3" y1="17" x2="21" y2="17"/><circle cx="7" cy="17" r="2.5"/>
       </svg>
       claude-tuner 调控台
-      <span class="slogan-tag">前缀缓存稳定化 · 动态工具精简</span>
     </h1>
-    <p class="sub">让第三方模型吃满 Prompt Cache 折扣 · 桌面端与终端共用 · 纯本地 0 依赖</p>
+    <p class="sub">前缀缓存稳定化 · 动态工具精简 —— 让第三方模型吃满 Prompt Cache 折扣，桌面端与终端共用，纯本地 0 依赖。</p>
   </div>
   <div class="act">
     <div id="msg"></div>
-    <button id="btnTheme" class="btn-theme" title="切换显示外观（浅色 / 暗色 / 跟随系统）">🌓 跟随系统</button>
+    <button id="btnTheme" class="btn-theme" title="切换显示外观（浅色 / 暗色 / 跟随系统）">跟随系统</button>
   </div>
 </div></header>
 
 <div class="shell">
   <nav class="side" id="nav">
     <div class="grp">快速上手</div>
-    <a href="#presetBar"><span class="nav-ico">⚡️</span>场景预设</a>
-    <a href="#s1"><span class="nav-ico">🔌</span>接上模型</a>
-    <a href="#s2"><span class="nav-ico">🔀</span>模型映射</a>
+    <a href="#presetBar"><span class="nav-ico">✳</span>场景预设</a>
+    <a href="#s1"><span class="nav-ico">①</span>接上模型</a>
+    <a href="#s2"><span class="nav-ico">②</span>模型映射</a>
 
     <div class="grp">核心调优</div>
-    <a href="#s3"><span class="nav-ico">💾</span>上下文缓存</a>
-    <a href="#s4"><span class="nav-ico">🛡️</span>请求稳定化</a>
-    <a href="#s5"><span class="nav-ico">✂️</span>工具精简</a>
-    <a href="#s6"><span class="nav-ico">🎛️</span>客户端偏好</a>
+    <a href="#s3"><span class="nav-ico">③</span>上下文缓存</a>
+    <a href="#s4"><span class="nav-ico">④</span>请求稳定化</a>
+    <a href="#s5"><span class="nav-ico">⑤</span>工具精简</a>
+    <a href="#s6"><span class="nav-ico">⑥</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
-    <a href="#s9"><span class="nav-ico">📈</span>用量统计</a>
-    <a href="#s7"><span class="nav-ico">⚙️</span>网关状态</a>
-    <a href="#s8"><span class="nav-ico">📦</span>版本与更新</a>
+    <a href="#s9"><span class="nav-ico">⑦</span>用量统计</a>
+    <a href="#s7"><span class="nav-ico">⑧</span>网关状态</a>
+    <a href="#s8"><span class="nav-ico">⑨</span>版本与更新</a>
 
     <div class="side-foot">
       <div class="side-foot-row">
@@ -469,27 +468,27 @@
     <!-- 一键场景预设 -->
     <div class="preset-bar" id="presetBar">
       <div class="preset-bar-head">
-        <b>⚡️ 一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
+        <b>一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
       </div>
       <div class="preset-now" id="presetNow"></div>
       <div class="preset-cards">
         <div class="preset-card" data-mode="balanced">
           <div class="preset-card-top">
-            <span class="preset-name">⚖️ 日常开发均衡档</span>
+            <span class="preset-name">日常开发均衡档</span>
             <span class="preset-badge rec">推荐</span>
           </div>
           <div class="preset-detail" data-detail="balanced"></div>
         </div>
         <div class="preset-card" data-mode="pure_code">
           <div class="preset-card-top">
-            <span class="preset-name">⚡️ 纯代码极限档</span>
+            <span class="preset-name">纯代码极限档</span>
             <span class="preset-badge hot">剥得最多</span>
           </div>
           <div class="preset-detail" data-detail="pure_code"></div>
         </div>
         <div class="preset-card" data-mode="vanilla">
           <div class="preset-card-top">
-            <span class="preset-name">🛠 零干预档</span>
+            <span class="preset-name">零干预档</span>
             <span class="preset-badge">什么都不改</span>
           </div>
           <div class="preset-detail" data-detail="vanilla"></div>
@@ -1277,7 +1276,7 @@ function watchNav(){
   const mark = () => {
     let current = sections[0];
     for (const s of sections) {
-      if (s.getBoundingClientRect().top <= 140) current = s;
+      if (s.getBoundingClientRect().top <= 160) current = s;
     }
     links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + current.id));
   };
