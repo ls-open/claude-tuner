@@ -250,8 +250,9 @@
   .body{padding:20px}
 
   /* ── 表单 ───────────────────────────────────────────── */
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
-  .row > button{align-self:flex-end}
+  /* 按钮与旁边的说明文字默认**居中对齐**：同一行里的按钮高 38px、说明只有一行
+     21px，按顶对齐会让文字浮在按钮上三分之一处（看着像没对齐，也确实没对齐）。 */
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   .field{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0}
   label{font-size:12px;color:var(--dim);font-weight:500;height:20px;line-height:20px;display:flex;align-items:center;gap:6px}
   .field-tip{font-size:11px;color:var(--accent);font-weight:400}
@@ -274,6 +275,8 @@
         padding:5px 12px;font-size:12px;color:var(--dim);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
   .btn-theme:hover{color:var(--fg);border-color:var(--line);background:var(--panel2)}
   .hint{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.7}
+  .hint.ok{color:var(--ok)} .hint.warn{color:var(--warn)} .hint.err{color:var(--err)}
+  .hint code{font-family:var(--mono);font-size:11.5px;color:var(--dim2)}
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
 
   /* ── 开关行 ─────────────────────────────────────────── */
@@ -630,7 +633,7 @@
       <div class="head"><span class="num">⑨</span><h2>版本与更新</h2><span class="tag" id="verTag"></span></div>
       <div class="body">
         <div id="verBox"></div>
-        <div class="row" style="margin-top:12px">
+        <div class="row" style="margin-top:14px">
           <button id="btnCheckUpdate">检查更新</button>
           <button id="btnUpdate" class="primary" style="display:none">立即更新</button>
           <span class="hint" style="margin:0;flex:1" id="updateOut"></span>
@@ -1183,6 +1186,17 @@ function renderCurrentState(){
   }
 }
 
+// 更新检查的结果用一行文字报出来。kind 只有三种：'' / 'ok' / 'warn' / 'err'。
+// 别用 emoji 表达状态 —— 它跟正文同一个灰度，在暖白与暗色两套主题下都是糊的，
+// 而颜色是主题变量，两边都能读。
+let updateChecked = false;
+
+function updateOut(html, kind, asHtml){
+  const el = $('#updateOut');
+  if (asHtml) el.innerHTML = html; else el.textContent = html;
+  el.className = 'hint' + (kind ? ' ' + kind : '');
+}
+
 function renderVersions(d){
   const v = d.versions || {};
   $('#verBox').innerHTML = `
@@ -1196,8 +1210,11 @@ function renderVersions(d){
   tag.textContent = newer ? '客户端版本较新，建议测试' : '已验证兼容';
   tag.style.display = '';
   if (!v.source_configured) {
-    $('#updateOut').textContent = '未配置在线仓库源信息，无法直接检查更新。';
+    updateOut('这份安装没带来源信息（release.json 未填仓库），无法在线检查更新。', 'warn');
     $('#btnCheckUpdate').disabled = true;
+  } else if (!updateChecked) {
+    // 检查之前先把这一行填上：右边空着会让「检查更新」看起来像孤零零漂在那里。
+    updateOut(`从公开仓库 <code>${esc(v.repo)}</code> 检查是否有新版本。`, '', true);
   }
 }
 
@@ -1369,34 +1386,36 @@ $('#btnTest').onclick = async () => {
 };
 
 $('#btnCheckUpdate').onclick = async () => {
-  $('#updateOut').textContent = '正在检查更新……';
+  updateOut('正在检查更新……');
   $('#btnUpdate').style.display = 'none';
   try {
     const r = await api('/api/update-check');
-    if (r.error) { $('#updateOut').textContent = '⚠️ ' + r.error; return; }
+    updateChecked = true;
+    if (r.error) { updateOut(r.error, 'err'); return; }
     if (r.update_available) {
-      $('#updateOut').textContent = `发现新版本 ${r.remote}（当前运行版本 ${r.local}）`;
+      updateOut(`发现新版本 <b>${esc(r.remote)}</b>（当前 ${esc(r.local || '未知')}）`, 'warn', true);
       $('#btnUpdate').style.display = '';
     } else {
-      $('#updateOut').textContent = `当前已是最新版本（${r.local || '未知'}）`;
+      // 报远端版本而不是本地版本：本地版本上面那张卡片已经写着，这里再报一遍等于没说。
+      updateOut(`已是最新版本（远端 ${esc(r.remote || '未知')}）`, 'ok', true);
     }
     if (r.client_newer_than_tested) {
-      $('#updateOut').textContent += '　⚠️ 客户端版本较新，建议测试验证。';
+      updateOut($('#updateOut').innerHTML + '　客户端版本较新，建议先测试验证。', 'warn', true);
     }
-  } catch (e) { $('#updateOut').textContent = '⚠️ ' + e.message; }
+  } catch (e) { updateOut(e.message, 'err'); }
 };
 
 $('#btnUpdate').onclick = async () => {
-  $('#updateOut').textContent = '正在下载并应用更新……';
+  updateOut('正在下载并应用更新……');
   $('#btnUpdate').disabled = true;
   const r = await api('/api/update', {});
   if (!r.ok) {
-    $('#updateOut').textContent = '❌ ' + esc(r.error) +
-      ((r.detail || []).length ? '（' + (r.detail || []).map(esc).join('；') + '）' : '');
+    updateOut((r.error || '更新失败') +
+      ((r.detail || []).length ? '（' + (r.detail || []).join('；') + '）' : ''), 'err');
     $('#btnUpdate').disabled = false;
     return;
   }
-  $('#updateOut').innerHTML = `✅ 已成功更新至 ${esc(r.version)}，网关正在自动重启……`;
+  updateOut(`已成功更新至 ${r.version}，网关正在自动重启……`, 'ok');
   setTimeout(() => location.reload(), 4000);
 };
 
