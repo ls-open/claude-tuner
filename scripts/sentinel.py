@@ -17,7 +17,8 @@
 发过至少一条消息（探针请求不抓）。
 
 用法：
-    python3 claude-tuner/scripts/sentinel.py audit [--model <模型>] [--session <会话>]
+    python3 claude-tuner/scripts/sentinel.py capture on|off|status   # 抓包开关
+    python3 claude-tuner/scripts/sentinel.py audit [--model <模型>] [--session <会话>] [--last]
     python3 claude-tuner/scripts/sentinel.py list
     python3 claude-tuner/scripts/sentinel.py compare <旧抓包> <新抓包>   # 客户端这次动了什么
 """
@@ -43,6 +44,7 @@ CAPTURE_DIR = os.path.join(BASE_DIR, "captures")
 GLOBAL_NAME = "latest_raw_inbound.json"
 PER_MODEL_PREFIX = "latest_raw_inbound_"
 MAX_COMPARE_DIFF_LINES = 200   # compare 的逐行差异上限：够看清改了哪几句，又不至于刷屏
+MAX_TOOL_DIFF_LINES = 24       # 单个工具定义的差异行上限：工具说明动辄几十行，别刷屏
 
 # 清洗后不该再出现的易变痕迹：命中即说明存在未被规则吸收的注入面
 VOLATILE_PATTERNS = {
@@ -88,22 +90,29 @@ def _session_dir():
 def _norm_session(value):
     """把 --session 的取值归一成归档文件名（不含 .json）。
 
-    接受会话短键（`06aed897`）、完整 uuid（`06aed897-3c5c-…`）、以及子代理后缀
-    （`06aed897_subagent`）—— 与 `--model` 允许写 `<模型>_subagent` 是同一套约定。
+    接受会话短键（`06aed897`）、完整 uuid（`06aed897-3c5c-…`）、以及子代理/CoWork后缀
+    （`06aed897_subagent` / `06aed897_cowork` / `06aed897_cowork_subagent`）—— 与 `--model` 允许写 `<模型>_subagent` / `<模型>_cowork` 是同一套约定。
     """
     v = str(value).strip()
-    suffix = "_subagent" if v.endswith("_subagent") else ""
+    suffix = ""
+    for s in ("_cowork_subagent", "_subagent", "_cowork"):
+        if v.endswith(s):
+            suffix = s
+            break
     core = v[: -len(suffix)] if suffix else v
     return core.split("-")[0][: gateway.SESSION_KEY_LEN] + suffix
 
 
-def _resolve_current(model=None, session=None):
+def _resolve_current(model=None, session=None, last=False):
     """定位「当前」抓包文件，返回绝对路径；找不到返回 None。
 
     未显式指定 --model 时的自动选择顺序：
       1. 全局快照 latest_raw_inbound.json；
       2. 若不存在，而按模型的抓包恰好只有一个，自动采用；
       3. 若有多个，列出候选并要求显式指定 —— 绝不猜测。
+
+    `--last` 走的是另一条轴：取**最近改动的那份会话归档**。全局快照是「最后写者赢」，
+    多对话并存时它未必是你刚跟版的那个；会话归档按 mtime 取最新，答的是「我刚才那条」。
     """
     if session:
         p = os.path.join(_session_dir(), _norm_session(session) + ".json")
@@ -114,14 +123,19 @@ def _resolve_current(model=None, session=None):
         p = os.path.join(CAPTURE_DIR, PER_MODEL_PREFIX + safe + ".json")
         return p if os.path.exists(p) else None
 
+    if last:
+        sessions = sorted(glob.glob(os.path.join(_session_dir(), "*.json")), key=_mtime_key, reverse=True)
+        if sessions:
+            return sessions[0]
+
     global_path = os.path.join(CAPTURE_DIR, GLOBAL_NAME)
     if os.path.exists(global_path):
         return global_path
 
-    # 排除 `_subagent.json` 子代理抓包，仅在主会话模型抓包间做自动单选（需审子代理时可显式传 --model <name>_subagent）
+    # 排除 `_subagent.json`、`_cowork.json` 与 `_cowork_subagent.json` 特殊形态抓包，仅在主会话模型抓包间做自动单选（需审子代理或CoWork时可显式传对应后缀）
     per_model = sorted(
         p for p in glob.glob(os.path.join(CAPTURE_DIR, PER_MODEL_PREFIX + "*.json"))
-        if not p.endswith("_subagent.json")
+        if not (p.endswith("_subagent.json") or p.endswith("_cowork.json") or p.endswith("_cowork_subagent.json"))
     )
     if len(per_model) == 1:
         return per_model[0]
@@ -196,6 +210,19 @@ def extract_client_version(payload):
     """从计费头里取客户端版本（清洗前读，清洗后这行就被剥掉了）。"""
     for text in extract_system_texts(payload):
         m = re.search(r"cc_version=([0-9A-Za-z.\-]+)", text)
+        if m:
+            return m.group(1)
+    return "(未标注)"
+
+
+def extract_client_entrypoint(payload):
+    """从计费头里取客户端入口面（local-agent / claude-desktop-3p / …）。
+
+    入口面决定报文的形态：终端面与桌面面的工具集、system 提示词本就不一样，
+    跨面比较出来的差异多半是「面差异」而不是「版本差异」。
+    """
+    for text in extract_system_texts(payload):
+        m = re.search(r"cc_entrypoint=([0-9A-Za-z.\-]+)", text)
         if m:
             return m.group(1)
     return "(未标注)"
@@ -288,14 +315,36 @@ def _audit_system(clean):
     return len(hits)
 
 
+REMINDER_SPAN = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
+
+
+def _in_reminder_container(text, pos):
+    """命中位置是否落在 `<system-reminder>` 容器内。"""
+    for m in REMINDER_SPAN.finditer(text):
+        if m.start() <= pos < m.end():
+            return True
+    return False
+
+
 def _audit_message_injections(clean):
     """messages 面：user 与 system 消息的独立文本块里是否还残留客户端注入标记。
 
     **注入实际落在这一面**（gitStatus 提醒走 user 消息进来；15KB 环境/模型宣称/日期/token 计数走
     `role:system` 消息进来），只扫顶层 system 会给出「全部 0 残留」的假保险。
     只认独立的 text 块：工具输出（tool_result）与助手回复里的同样字样是**引用**。
+
+    **命中分两档**（判据只有一条：它落在哪种块里）：
+
+    · **注入级**：`role:system` 消息（客户端的环境块/模型宣称/token 计数就装在这里，
+      与网关 `map_request_texts` 的 legacy 判定同一套），或 user 消息里带
+      `<system-reminder>` 容器的块（gitStatus 提醒走这条）—— **计入结论**；
+    · **存疑级**：user 消息里的裸形态 —— 用户正文里恰好写了同样的字样（讨论这个仓库时
+      随手一提就命中），**不计结论**。
+
+    裸形态不等于安全：客户端若把注入挪进正文且不再带容器，这一档会降级 —— 所以存疑项照样
+    全量打印，结论区也会点名要人复核，而不是静悄悄给一个 ✅。
     """
-    hits = []
+    injected, suspect = [], []
     print()
     print("─" * 78)
     print("③ messages 面（user / system 消息的纯文本块）")
@@ -304,6 +353,7 @@ def _audit_message_injections(clean):
     for msg in clean.get("messages") or []:
         if not isinstance(msg, dict) or msg.get("role") not in ("user", "system"):
             continue
+        role = msg.get("role")
         content = msg.get("content")
         blocks = content if isinstance(content, list) else [{"type": "text", "text": content}]
         for blk in blocks:
@@ -316,15 +366,27 @@ def _audit_message_injections(clean):
                 continue
             scanned += 1
             for label, pattern in INJECTION_MARKERS.items():
-                found = list(re.finditer(pattern, text))
-                if found:
-                    hits.append((label, found))
-                    print("  ⚠️ %s：%d 处" % (label, len(found)))
-                    for m in found[:5]:
-                        print("       %s" % _snippet(text, m.start(), m.end()))
-    if not hits:
+                for m in re.finditer(pattern, text):
+                    is_injection = (role == "system") or _in_reminder_container(text, m.start())
+                    (injected if is_injection else suspect).append((label, text, m))
+    if injected:
+        print("  ⚠️ 注入残留（计入结论）：%d 处" % len(injected))
+        for label, text, m in injected[:8]:
+            print("     · %s：%s" % (label, _snippet(text, m.start(), m.end())))
+        if len(injected) > 8:
+            print("     …（其余 %d 处省略）" % (len(injected) - 8))
+    if suspect:
+        print("  ℹ️ 疑似正文引用（不计结论）：%d 处" % len(suspect))
+        for label, text, m in suspect[:8]:
+            print("     · %s：%s" % (label, _snippet(text, m.start(), m.end())))
+        if len(suspect) > 8:
+            print("     …（其余 %d 处省略）" % (len(suspect) - 8))
+    if not injected and not suspect:
         print("  ✅ 扫描 %d 个文本块，无注入残留" % scanned)
-    return len(hits)
+    elif not injected:
+        print("  ✅ 扫描 %d 个文本块，注入面无残留（下列 %d 处落在用户正文里，人工扫一眼即可）"
+              % (scanned, len(suspect)))
+    return len(injected), len(suspect)
 
 
 def _has_identifier(text, token):
@@ -356,7 +418,8 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         if found:
             hits.append((name, sorted(found)))
     missing = tool_rules.missing_pair_paragraphs(
-        "\n".join(extract_system_texts(raw)), cfg, stripped_names)
+        "\n".join(extract_system_texts(raw)), cfg, stripped_names,
+        incoming_tools=extract_tool_names(raw))
     print()
     print("─" * 78)
     print("④ 提示词 / 工具搭配")
@@ -378,8 +441,8 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     return hits, len(missing)
 
 
-def cmd_audit(model, session=None):
-    cur = _resolve_current(model, session)
+def cmd_audit(model, session=None, last=False):
+    cur = _resolve_current(model, session, last=last)
     if not cur:
         _die_no_capture(model, session)
 
@@ -395,12 +458,15 @@ def cmd_audit(model, session=None):
     print("  会话归档：%s" % (
         "sessions/%s.json%s" % (key, "" if os.path.isfile(os.path.join(_session_dir(), key + ".json"))
                                 else "（已过期或被清理）") if key else "无（该请求没有会话 id）"))
-    print("  客户端  ：cc_version=%s" % extract_client_version(raw))
+    print("  客户端  ：cc_version=%s  entrypoint=%s"
+          % (extract_client_version(raw), extract_client_entrypoint(raw)))
     print("  模型    ：%s" % (raw.get("model") or "(未标注)"))
     print("  system  ：%d 块 / %d 字节（清洗前）" % (
         len(extract_system_texts(raw)), sum(len(x) for x in extract_system_texts(raw))))
 
-    findings = _audit_tools(raw, clean) + _audit_system(clean) + _audit_message_injections(clean)
+    findings = _audit_tools(raw, clean) + _audit_system(clean)
+    injected, suspect = _audit_message_injections(clean)
+    findings += injected
     _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean)
     findings += pair_findings
 
@@ -414,9 +480,12 @@ def cmd_audit(model, session=None):
         print("  ⚠️ 发现 %d 处待处理的注入面 —— 按上面各条的说明处理：工具没开关的补进类别表"
               "（默认开=剥、默认关=留），配对段落失配的改 PROMPT_PAIRS 的锚点。" % findings)
         print("     处理完重跑本命令确认转为 ✅。")
+    if suspect:
+        print("  ℹ️ 另有 %d 处形似注入但落在**用户正文**里（不计结论）：若你确认客户端把注入"
+              "挪进了正文且不再带容器，这里会降级 —— 人工扫一眼再收工。" % suspect)
     print()
     print("  提示：确认无误后可关闭抓包以恢复零 I/O 开销：")
-    print("        ~/.claude-tuner/config.json → \"capture_raw_inbound\": false")
+    print("        python3 claude-tuner/scripts/sentinel.py capture off")
 
 
 def cmd_list():
@@ -448,6 +517,7 @@ def cmd_list():
         print("  --session 取值示例：")
         for f in sessions[:3]:
             print("    --session %s" % os.path.basename(f)[:-len(".json")])
+        print("  想省掉认键这一步：audit --last（取最近改动的会话归档）")
 
 
 def _resolve_key(key):
@@ -464,6 +534,16 @@ def _resolve_key(key):
 def _tool_map(payload):
     return {t["name"]: t for t in (payload.get("tools") or [])
             if isinstance(t, dict) and t.get("name")}
+
+
+def _tool_def_diff(old_tool, new_tool, limit=MAX_TOOL_DIFF_LINES):
+    """两个工具定义的逐行差异（排序键的 JSON 缩进形态，人能直接读）。
+
+    compare 的立身之本是「客户端这次到底动了什么」—— 只报一个工具名等于没答，
+    逼着审的人再手写一段脚本去看。
+    """
+    dump = lambda t: json.dumps(t, sort_keys=True, ensure_ascii=False, indent=2).splitlines()
+    return list(difflib.unified_diff(dump(old_tool), dump(new_tool), lineterm="", n=1))[:limit]
 
 
 def _diff_captures(old, new):
@@ -485,7 +565,7 @@ def _diff_captures(old, new):
     }
 
 
-def cmd_compare(key_a, key_b):
+def cmd_compare(key_a, key_b, allow_cross_surface=False):
     """两份抓包对一遍：客户端这次升级动了什么。
 
     跟版时最想先知道的就是这个：客户端这次到底动了哪几句。
@@ -497,19 +577,39 @@ def cmd_compare(key_a, key_b):
         sys.exit(1)
     old, new = _load(pa), _load(pb)
     d = _diff_captures(old, new)
+    ep_old, ep_new = extract_client_entrypoint(old), extract_client_entrypoint(new)
     print("=" * 78)
     print("版本哨兵 · 两份抓包对比")
     print("=" * 78)
-    for tag, path, p in (("旧", pa, old), ("新", pb, new)):
-        print("  %s：cc_version=%-14s 工具 %2d 个 · system %d 字节   %s" % (
-            tag, extract_client_version(p), len(_tool_map(p)),
+    for tag, path, p, ep in (("旧", pa, old, ep_old), ("新", pb, new, ep_new)):
+        print("  %s：cc_version=%-14s entrypoint=%-20s 工具 %2d 个 · system %d 字节   %s" % (
+            tag, extract_client_version(p), ep, len(_tool_map(p)),
             sum(len(x) for x in extract_system_texts(p)), os.path.basename(path)))
+
+    if (ep_old != ep_new) and "(未标注)" not in (ep_old, ep_new):
+        print()
+        if allow_cross_surface:
+            print("  ℹ️ 客户端面不同（%s → %s）—— 已用 --allow-cross-surface 承认这是有意跨面比较。"
+                  % (ep_old, ep_new))
+        else:
+            print("  ⚠️ 客户端面不同（%s → %s）：两个面的工具集与 system 提示词本就不一样，"
+                  % (ep_old, ep_new))
+            print("     下面的「新增 / 移除」多半是**面差异**而不是版本差异。")
+            print("     跟版要比同一个面（两面各挑一份），确属有意跨面比就加 --allow-cross-surface。")
 
     print()
     print("① 工具面")
     for label, key in (("新增", "added"), ("移除", "removed"), ("定义有变", "changed")):
         items = d["tools"][key]
         print("  %s：%s" % (label, "、".join(items) if items else "无"))
+    if d["tools"]["changed"]:
+        ta, tb = _tool_map(old), _tool_map(new)
+        print()
+        print("  定义有变的工具（逐行差异）：")
+        for name in d["tools"]["changed"]:
+            print("    · %s" % name)
+            for line in _tool_def_diff(ta[name], tb[name]):
+                print("      %s" % line[:200])
 
     print()
     print("② system 提示词面")
@@ -553,6 +653,43 @@ def _die_no_capture(model, session=None):
     sys.exit(1)
 
 
+def cmd_capture(action="status"):
+    """开 / 关入口报文抓包（写 ~/.claude-tuner/config.json，保留权限位）。
+
+    抓包开关是维护者动作（配置台上的采集开关是刻意不做的），所以给它一个 CLI 入口：
+    跟版流程第一步不必再手改 JSON。
+    """
+    import common
+    path = os.path.join(BASE_DIR, "config.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except FileNotFoundError:
+        print("❌ 找不到配置文件：%s（先跑 claude-tuner/scripts/manager.py ensure 把网关装好）" % path)
+        sys.exit(1)
+    except json.JSONDecodeError as exc:
+        print("❌ 配置文件不是合法 JSON：%s（%s）" % (path, exc))
+        sys.exit(1)
+
+    if action == "status":
+        state = bool(cfg.get("capture_raw_inbound"))
+        print("抓包：%s（%s）" % ("开着" if state else "关着", path))
+        return
+
+    want = (action == "on")
+    if bool(cfg.get("capture_raw_inbound")) == want:
+        print("抓包本来就%s着，未改动：%s" % ("开" if want else "关", path))
+    else:
+        cfg["capture_raw_inbound"] = want
+        common.atomic_write_json(path, cfg)
+        print("抓包已%s：%s" % ("开" if want else "关", path))
+    print("  开关由网关按 mtime 热读，改完不用重启网关。")
+    if want:
+        print("  现在去客户端发一条消息（探针请求不会被抓），再跑 sentinel.py audit --last。")
+    else:
+        print("  入口报文恢复零 I/O。")
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="客户端注入面覆盖自检",
@@ -562,20 +699,29 @@ def main():
     p = sub.add_parser("audit", help="抓一份报文后运行：自检注入面是否已被规则吸收")
     p.add_argument("--model", help="按模型区分（见 list）")
     p.add_argument("--session", help="按会话区分（见 list；接受短键、完整 uuid、或 <键>_subagent）")
+    p.add_argument("--last", action="store_true",
+                   help="取最近改动的会话归档（多对话并存时最省事，免去认会话键）")
 
     sub.add_parser("list", help="列出可用抓包")
 
     pc = sub.add_parser("compare", help="两份抓包对比：客户端这次升级动了什么")
     pc.add_argument("old", help="旧抓包（会话键 / 模型键 / 文件路径，见 list）")
     pc.add_argument("new", help="新抓包（同上）")
+    pc.add_argument("--allow-cross-surface", action="store_true",
+                    help="承认这是跨客户端面的比较（默认会告警：面差异不是版本差异）")
+
+    pcap = sub.add_parser("capture", help="开关入口报文抓包（写 ~/.claude-tuner/config.json）")
+    pcap.add_argument("action", nargs="?", choices=["on", "off", "status"], default="status")
 
     args = ap.parse_args()
     if args.cmd == "audit":
-        cmd_audit(args.model, args.session)
+        cmd_audit(args.model, args.session, last=args.last)
     elif args.cmd == "list":
         cmd_list()
     elif args.cmd == "compare":
-        cmd_compare(args.old, args.new)
+        cmd_compare(args.old, args.new, allow_cross_surface=args.allow_cross_surface)
+    elif args.cmd == "capture":
+        cmd_capture(args.action)
     else:
         ap.print_help()
 

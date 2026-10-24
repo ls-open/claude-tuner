@@ -219,18 +219,20 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_web_fetch_tools": False,       # WebFetch
     # 桌面端界面遥控：按**功能**拆成六项 —— 合成一个键的话，想清掉侧栏就得连会话管理
     # 一起清，两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    # 会话管理里性质不同的六类单独成项（默认全开）：它们不是界面遥控，而是改权限 /
-    # 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 起停后台任务。
+    # 会话管理里性质不同的几类单独成项（除起停外默认全开）：它们不是界面遥控，而是
+    # 改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 终止会话。
     "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
+    "strip_session_start_tools": False,   # 起会话 / 交接 / 列目标 / 撤回提案 / 批次标题 / 回查已链接会话（提示词整段教这套，默认保留）
     "strip_session_permission_tools": True,   # 改会话权限模式
     "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
-    "strip_session_export_tools": True,       # 导出会话、检索历史、列会话
+    "strip_session_export_tools": True,       # 导出会话、检索历史
     "strip_session_delete_tools": True,       # 删除 / 清空 / 归档 / 取消归档会话
     "strip_session_remote_tools": True,       # 向其他会话发消息、开远程控制
-    "strip_session_task_tools": True,         # 起 / 停会话内的后台任务
+    "strip_session_task_tools": True,         # 终止会话
     "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
     "strip_window_tools": True,           # mcp__ccd_window*
     "strip_view_tools": False,            # mcp__ccd_view*（diff／文件／终端／浏览器预览面板，默认保留）
+    "strip_turn_tools": False,            # mcp__ccd_turn*（进度清单 update_plan／收尾框 wrap_up，默认保留）
     "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
     "strip_settings_tools": True,         # mcp__ccd_settings*
     "strip_directory_tools": True,        # mcp__ccd_directory*
@@ -337,8 +339,10 @@ def ensure_config_initialized(config_path=None):
 # 上游客户端标识（本插件唯一一处定义，gateway / manager 共用）：
 # - 对所有上游恒定显式发送自有 User-Agent（避免漏出 Python-urllib 默认指纹触发 Cloudflare 1010 拦截）；
 # - 仅对 OpenCode 上游附带 x-opencode-session 以协助路由与提示词缓存。
-# - 版本号代表上游可见的客户端身份（与清单文件无关），改动可能触发路由/缓存分桶重置，仅在需变更身份时手动提升。
-CLIENT_UA = "claude-tuner/0.2.0"
+# - 斜杠后是**身份代号**（generation），不是发版号：它回答「这条流量属于哪种实现形态」，
+#   只在改变我们**发出去的形态**（协议构造、转译方式）时才提升。发版号见 release.json，
+#   只出现在日志与配置页 —— 每版必变的数字放进请求头，等于每次升级都付一次缓存冷启动。
+CLIENT_UA = "claude-tuner/1"
 
 
 def is_opencode_upstream(url):
@@ -451,7 +455,7 @@ def release_info():
 
 def plugin_version():
     """本插件的版本号。刻意不写进 plugin.json —— 那份清单是给客户端读的，
-    版本号在里面不起开关作用（见 DECISIONS #9）；这里用它只为「装的是哪一版」。"""
+    版本号在里面不起开关作用；这里用它只为「装的是哪一版」。"""
     return release_info()["version"]
 
 
