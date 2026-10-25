@@ -51,9 +51,6 @@ def get_3p_config_dir():
     custom = os.environ.get("CLAUDE_TUNER_3P_DIR")
     if custom:
         return os.path.expanduser(custom)
-    glob_pattern = os.environ.get("CLAUDE_TUNER_3P_CONFIG_GLOB")
-    if glob_pattern:
-        return os.path.dirname(os.path.expanduser(glob_pattern))
     return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
 
 
@@ -240,7 +237,6 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_terminal_tools": False,        # 桌面右侧终端面板读取工具 (mcp__terminal__*)
     "strip_notebook_tools": True,         # 剥离 Jupyter Notebook 单元格编辑工具 (NotebookEdit)
     "strip_design_sync_tools": True,      # 剥离 DesignSync (3P模式下无法官方认证)
-    "strip_plugin_mgmt_tools": True,      # 剥离插件市场管理与技能建议死重 (mcp__plugins__*, mcp__skills__*)
     "custom_strip_tools": [],             # 自定义额外剥离工具名列表
     # 以下几项默认**关**：删掉的是真本事（跨会话协作 / 工作树隔离 / 计划模式），
     # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
@@ -261,6 +257,49 @@ DEFAULT_PORT = 8789
 DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
 DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案
 DEFAULT_LOG_RETENTION_DAYS = 7
+LOG_RETENTION_MIN_DAYS = 1
+LOG_RETENTION_MAX_DAYS = 365
+
+
+def clamp_retention_days(value):
+    """把 `log_retention_days` 钳进 [1, 365]；非数字一律回落默认值。
+
+    网关、manager、配置台三处都要用同一个口径 —— 各写一份时最容易出的偏差是
+    「网关钳上界、manager 只钳下界」，于是用户填 9999 后两份清理按不同天数删归档。
+    """
+    try:
+        return max(LOG_RETENTION_MIN_DAYS, min(LOG_RETENTION_MAX_DAYS, int(value)))
+    except (TypeError, ValueError):
+        return DEFAULT_LOG_RETENTION_DAYS
+
+
+def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
+    """清理 `log_dir` 下超过保留天数的历史归档日志。
+
+    覆盖 `gateway*` 与 `manager*` 两类归档：网关与 manager 都会定期清理同一批文件，
+    两次实现各写一套过滤规则时，「谁先跑谁删得更狠」就成了随机结果。
+    """
+    try:
+        if not os.path.isdir(log_dir):
+            return
+        now = time.time()
+        max_age = clamp_retention_days(retention_days) * 86400
+        for fname in os.listdir(log_dir):
+            # 活跃主日志由写入方自己轮转，这里不碰
+            if fname in ("gateway.log", "manager.log"):
+                continue
+            if not (fname.startswith("gateway") or fname.startswith("manager")):
+                continue
+            fpath = os.path.join(log_dir, fname)
+            try:
+                if os.path.islink(fpath):
+                    continue
+                if os.path.isfile(fpath) and now - os.path.getmtime(fpath) > max_age:
+                    os.remove(fpath)
+            except OSError:
+                pass
+    except Exception:
+        pass
 
 # 默认配置文件完整脚手架模板
 DEFAULT_CONFIG = {

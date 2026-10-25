@@ -29,11 +29,13 @@ if SCRIPT_DIR not in sys.path:
 
 import config_ops  # noqa: E402
 from common import (  # noqa: E402
+    DEFAULT_LOG_RETENTION_DAYS,
     DEFAULT_PORT,
     DEFAULT_PROBE_TIMEOUT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
     atomic_write_json,
+    clamp_retention_days,
     normalize_upstream,
     upstream_client_headers,
 )
@@ -77,10 +79,10 @@ def query_value(query, key):
 
 def token_from(headers, query):
     """token 来源优先级：头 > cookie > query。"""
-    direct = headers.get("X-Claude-Tuner-Token") or headers.get("x-claude-tuner-token")
+    direct = headers.get("X-Claude-Tuner-Token")
     if direct:
         return direct.strip()
-    cookie = headers.get("Cookie") or headers.get("cookie") or ""
+    cookie = headers.get("Cookie") or ""
     for part in cookie.split(";"):
         name, _, value = part.strip().partition("=")
         if name == COOKIE_NAME:
@@ -214,10 +216,11 @@ def read_config_payload(handler):
                     "one_m": bool(m.get("prefer1m", m.get("supports1m", False)))}
                    for m in (three_p.get("inferenceModels") or []) if isinstance(m, dict)],
         "gateway": {
-            "port": _port(handler),
+            "port": _port(),
             "upstream_url": upstream,
             "default_model": bridge_cfg.get("default_model", ""),
-            "log_retention_days": int(bridge_cfg.get("log_retention_days", 7)),
+            "log_retention_days": clamp_retention_days(
+                bridge_cfg.get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)),
             "unknown_model_fallback": bridge_cfg.get("unknown_model_fallback", True) is not False,
         },
         "three_p": {
@@ -261,7 +264,7 @@ def read_config_payload(handler):
     }
 
 
-def _port(handler):
+def _port():
     """当前网关端口：端口是 manager 独占决策，这里只从 config.json 读结果。"""
     port = _read(bridge_path()).get("gateway_port")
     return port if isinstance(port, int) and port > 0 else DEFAULT_PORT
@@ -270,17 +273,17 @@ def _port(handler):
 _write_lock = threading.Lock()
 
 
-def apply_patch(handler, patch):
+def apply_patch(patch):
     """把前端交上来的补丁落盘，返回 (响应体, 需要重启什么)。
 
     整段读-改-写必须在锁内：配置是「读整份、改几项、写回整份」，两个标签页同时保存时
     没有锁就会互相覆盖 —— 后写的把先写的那几项一起抹掉，而两边都提示「已保存」。
     """
     with _write_lock:
-        return _apply_patch_unlocked(handler, patch)
+        return _apply_patch_unlocked(patch)
 
 
-def _apply_patch_unlocked(handler, patch):
+def _apply_patch_unlocked(patch):
     paths = _paths()
     effects = {"restart_gateway": False, "restart_client": False, "restart_session": False}
     notes = []
@@ -337,7 +340,7 @@ def _apply_patch_unlocked(handler, patch):
         bridge["unknown_model_fallback"] = bool(patch["unknown_model_fallback"])
     if "log_retention_days" in patch:
         try:
-            days = max(1, min(365, int(patch["log_retention_days"])))
+            days = clamp_retention_days(patch["log_retention_days"])
             if bridge.get("log_retention_days") != days:
                 bridge["log_retention_days"] = days
                 notes.append("日志保留天数已设为 %d 天" % days)
@@ -371,7 +374,7 @@ def _apply_patch_unlocked(handler, patch):
     if linked is not None:
         if linked:
             settings_patch["env"] = config_ops.cli_env(
-                "http://127.0.0.1:%d" % _port(handler), three_p.get("inferenceGatewayApiKey", ""),
+                "http://127.0.0.1:%d" % _port(), three_p.get("inferenceGatewayApiKey", ""),
                 _primary_model(three_p))
         else:
             claude_settings, changed = config_ops.merge_settings(
@@ -499,7 +502,7 @@ def restart_gateway():
 
 def config_url():
     """给用户打开的配置台地址（含 token）。安装脚本靠它拿到那条链接。"""
-    return "http://127.0.0.1:%d/?token=%s" % (_port(None), ensure_token())
+    return "http://127.0.0.1:%d/?token=%s" % (_port(), ensure_token())
 
 
 def main(argv=None):
@@ -575,7 +578,7 @@ p{margin:0 0 12px;color:#8b94a7}b{color:#e8ebf0}</style>
 之后直接访问 <code>127.0.0.1:%d</code> 就行。</p>
 <pre>python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url</pre>
 <p>看到这一页通常说明：换了浏览器、清了 Cookie，或者距上次打开已超过一年。</p>"""
-                                    % _port(handler))
+                                    % _port())
             return True
         handler._send_html(200, load_html())
         return True
@@ -619,7 +622,7 @@ def handle_post(handler, query, body):
         return True
 
     if path == "/api/config":
-        handler._send_json(200, apply_patch(handler, body or {}))
+        handler._send_json(200, apply_patch(body or {}))
         return True
 
     if path == "/api/test-upstream":

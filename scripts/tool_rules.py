@@ -94,7 +94,6 @@ CATEGORY_NAMESPACES = (
     ("strip_host_tools", ("mcp__ccd_host",)),
     ("strip_settings_tools", ("mcp__ccd_settings",)),
     ("strip_directory_tools", ("mcp__ccd_directory",)),
-    ("strip_plugin_mgmt_tools", ("mcp__plugins", "mcp__skills")),
     ("strip_pr_ci_tools", ("mcp__ccd_pr",)),
     ("strip_terminal_tools", ("mcp__terminal",)),
 )
@@ -137,6 +136,32 @@ def get_stripped_tool_names(cfg):
         if isinstance(ct, str) and ct:
             strip_set.add(ct)
     return strip_set
+
+
+# CoWork 面：kind 由网关按计费头与 `mcp__cowork__*` 工具判定（gateway.classify_kind）。
+COWORK_KINDS = ("cowork", "cowork_subagent")
+
+# CoWork 面**整面不剥工具**：这是策略，不是开关。该面的工具集与 Code 面几乎不重叠
+# （浏览器 / 交付物 / 工作区 / 技能商店各一套命名空间），逐个判定「是死重还是本事」
+# 的维护成本高于省下的体积，而工具剥离对前缀恒定零贡献 —— 摘掉不影响缓存命中。
+SKIP_COWORK_PRUNING = True
+
+
+def pruning_cfg_for_surface(cfg, kind):
+    """按客户端面给出**实际生效**的剥离配置。
+
+    CoWork 面整面不剥（`SKIP_COWORK_PRUNING`）：返回一份 `enabled=False` 的副本，
+    于是 `strip_reason` / `active_pairs` / 孤儿与配对探测全部自动跟着走 —— 判一遍面
+    就够，不必让每个下游函数各学一个新参数（漏判一处就会让提示词段落与工具表脱节）。
+
+    恒定名单 `ALWAYS_STRIPPED` 不受影响：它与任何开关无关，始终剥。
+    """
+    if kind not in COWORK_KINDS or not SKIP_COWORK_PRUNING:
+        return cfg
+    scoped = dict(cfg)
+    scoped["enabled"] = False
+    scoped["custom_strip_tools"] = []
+    return scoped
 
 
 def category_for(tool_name):

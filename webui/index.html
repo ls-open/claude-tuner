@@ -469,7 +469,7 @@
           <div class="step-num">3</div>
           <div class="step-txt">
             <b>保存并重启</b>
-            <small>点击右上角「保存更改」，然后<b>完全退出并重开 Claude</b> 即可生效！</small>
+            <small>点区块标题上的「保存 N 项」，然后<b>完全退出并重开 Claude</b> 即可生效！</small>
           </div>
         </div>
       </div>
@@ -767,7 +767,6 @@ const PRUNING_GROUPS = [
     ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', ''],
     ['strip_notebook_tools', '移除 Notebook 编辑工具', ''],
     ['strip_design_sync_tools', '移除 DesignSync 设计稿同步', ''],
-    ['strip_plugin_mgmt_tools', '移除插件市场与技能建议', ''],
   ]],
   ['智能体协作能力类', '多 Agent 协同、任务隔离与计划确认模式（默认保留）', [
     ['strip_session_start_tools', '移除会话起停与交接', '起新会话、把当前任务交接出去、列可选目标、撤回自己发出的提案、给这批发出的会话打批次标题、回查已链接会话 —— 客户端提示词用整段教这套流程，剥了就是「提示词指向不存在的工具」，故整组默认保留'],
@@ -826,7 +825,6 @@ const PRESETS = {
       strip_session_export_tools: false, strip_session_delete_tools: false,
       strip_session_remote_tools: false, strip_session_task_tools: false,
       strip_pr_ci_tools: false, strip_notebook_tools: false, strip_design_sync_tools: false,
-      strip_plugin_mgmt_tools: false,
     },
     bundle: false,
     settings: { promptCacheTtl: false, promptSuggestionEnabled: true, autoCompactEnabled: true }
@@ -1028,7 +1026,7 @@ function applyPreset(mode){
   if (comp) comp.checked = !p.settings.autoCompactEnabled;
 
   checkCurrentPresetMatch();
-  say(`已应用「${p.name}」推荐配置，点击右上角【保存更改】即可生效！`, 'ok');
+  say(`已应用「${p.name}」推荐配置，点各区块标题上的「保存 N 项」即可生效！`, 'ok');
 }
 
 // ── 预设卡片上的明细：从 PRESETS 数据现算，不手写 ───────────
@@ -1132,7 +1130,7 @@ function checkCurrentPresetMatch(){
       const pending = hasPendingChanges();
       markPresetCards(mode, pending ? 'pending' : 'active');
       $('#presetHead').textContent = pending
-        ? '已套用「' + p.name + '」（尚未保存，点右上角【保存更改】生效）'
+        ? '已套用「' + p.name + '」（尚未保存，点区块标题上的「保存 N 项」生效）'
         : '已生效「' + p.name + '」';
       // 卡片已把这档的明细写清楚了；「当前配置」那行只在没有预设匹配时才现身，免得同屏说两遍
       $('#presetNow').style.display = 'none';

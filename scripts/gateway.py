@@ -22,6 +22,8 @@ sys.dont_write_bytecode = True
 
 from common import (
     DEFAULT_LOG_RETENTION_DAYS,
+    clamp_retention_days,
+    purge_old_logs,
     DEFAULT_PORT,
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
@@ -180,6 +182,7 @@ from tool_rules import (  # noqa: E402
     orphan_mentions,
     pair_is_orphaned,
     pair_paragraph_predicate,
+    pruning_cfg_for_surface,
     should_strip_tool,
     strip_reason,
     tp_flag as _tp_flag,
@@ -269,20 +272,14 @@ def log_retention_days():
 
     刻意不放进 `rules` —— 它是运行期清理参数，不是前缀清洗规则（配置台也写在顶层）。
     """
-    try:
-        return max(1, min(365, int(_read_config().get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS))))
-    except (TypeError, ValueError):
-        return DEFAULT_LOG_RETENTION_DAYS
+    return clamp_retention_days(_read_config().get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS))
 
 
 def cleanup_runtime():
     """启动期清理超期历史日志，保持日志目录整洁。"""
     log_dir = os.path.join(BASE_DIR, "logs")
     os.makedirs(log_dir, exist_ok=True)
-    try:
-        purge_old_logs(log_dir, log_retention_days())
-    except Exception:
-        pass
+    purge_old_logs(log_dir, log_retention_days())
 
 
 def load_default_model():
@@ -317,6 +314,7 @@ def map_model(model):
     stripped = re.sub(r"\[.*?\]$", "", raw).strip()
     clean = stripped.lower()
     mapped = _models.get(clean) or _models.get(raw.lower()) or ""
+    known = bool(mapped)
     if not mapped:
         fallback = load_default_model()
         if (clean.startswith("claude-") and fallback
@@ -330,9 +328,9 @@ def map_model(model):
             return fallback
         mapped = stripped
     # 白名单校验：用户在 3P 配置中声明的有效别名均属于合法支持模型；
-    # 仅当模型完全未知且未在 3P 配置中声明时才记录警告，彻底避免自定义别名刷屏 WARN。
-    valid_ids = frozenset(k.lower() for k in _models.keys())
-    if not valid_ids:
+    # 仅当模型完全陌生且未在 3P 配置中声明时才记录警告，彻底避免自定义别名刷屏 WARN。
+    # 「声明过没有」就是上面那次查表的结果 —— 单列一份键集只等于再算一遍同一个答案。
+    if not _models:
         # 读不到 3P 配置时没有任何可比对的名单，逐请求告警会刷爆日志，进程内只提示一次。
         if not _warned_models_empty:
             _warned_models_empty = True
@@ -340,7 +338,7 @@ def map_model(model):
                 "event": "models_config_empty",
                 "hint": "未读到 3P 配置的模型列表，模型名将原样透传给上游",
             })
-    elif clean not in valid_ids and raw.lower() not in valid_ids:
+    elif not known:
         log_event({
             "event": "unsupported_model_id",
             "requested": raw,
@@ -354,44 +352,13 @@ _LOG_LOCK = threading.Lock()
 _req_ctx = threading.local()   # 当前线程正在处理的请求 id，见 log_event
 
 
-def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
-    """扫描日志目录，清理超过 retention_days 天的历史日志，保持 logs 目录整洁。"""
-    try:
-        if not os.path.isdir(log_dir):
-            return
-        now = time.time()
-        max_age = max(1, int(retention_days)) * 86400
-        for fname in os.listdir(log_dir):
-            # 保护活跃主日志，不直接删除
-            if fname in ("gateway.log", "manager.log"):
-                continue
-            if not (fname.startswith("gateway") or fname.startswith("manager")):
-                continue
-            fpath = os.path.join(log_dir, fname)
-            try:
-                if os.path.islink(fpath):
-                    continue
-                if os.path.isfile(fpath):
-                    mtime = os.path.getmtime(fpath)
-                    if now - mtime > max_age:
-                        os.remove(fpath)
-            except OSError:
-                pass
-    except Exception:
-        pass
-
-
 def check_log_rotation():
     """定期按生命周期清理过期的历史归档日志（默认 7 天）。"""
     global _LOG_EVENT_COUNT
     _LOG_EVENT_COUNT += 1
     if _LOG_EVENT_COUNT % 50 != 0:
         return
-    log_dir = os.path.join(BASE_DIR, "logs")
-    try:
-        purge_old_logs(log_dir, log_retention_days())
-    except Exception:
-        pass
+    purge_old_logs(os.path.join(BASE_DIR, "logs"), log_retention_days())
 
 
 def log_event(event, req_id=None):
@@ -702,12 +669,16 @@ def _guard_rule(name, fn):
     return wrapper
 
 
-def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None):
+def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None, incoming_tools=None):
     """Stabilize cache-relevant bytes without touching semantic content.
 
     `stripped_names`：本次请求**实际被剥**的工具名集合，由调用方在剥离之前用
     `ghost_tool_names()` 算好传进来。不传就只认配置里的精确名 —— 走 `prepare_request`
     剥过工具的调用方必须传，否则前缀类工具（`mcp__ccd_session*` 等）漏在探测之外。
+
+    `incoming_tools`：客户端**原始发来**的工具名集合，同样由调用方在剥离前记好。
+    `prepare_request` 是原地改 `parsed["tools"]` 的，所以到这里再算命中的只会是「剥剩的
+    那些」—— 于是「这对配对的工具客户端发过没有」永远答否，段落永远不剥、失配也永远不报。
     """
     changed = []
     r = rules or load_rules_config()
@@ -776,14 +747,16 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None)
         # user/assistant 的裸句更可能是正常讨论，不截。
         sys_n, msg_n = map_request_texts(
             parsed, _guard_rule("strip_git_status",
-                                lambda t, legacy: strip_git_status_text(t, legacy_truncate=legacy)))
+                                lambda t, legacy: strip_git_status_text(t)))
         changed.extend(["strip_git_status_system"] * sys_n)
         changed.extend(["strip_git_status_msg"] * msg_n)
 
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
-    _incoming_tools = None
-    if isinstance(parsed.get("tools"), list):
+    # 优先用调用方在剥离前记下的那份；没传才退回「当前 tools」——
+    # 直接调用本函数（不经 prepare_request）时两者本来就是同一份。
+    _incoming_tools = incoming_tools
+    if _incoming_tools is None and isinstance(parsed.get("tools"), list):
         _incoming_tools = {t.get("name") for t in parsed["tools"] if isinstance(t, dict) and t.get("name")}
     # 名单必须在**剥离之前**算（见 ghost_tool_names 的说明）：走到这里 tools 已被
     # prepare_request 删过，再按它补齐就只剩下保留的那些，前缀类工具一条都补不到。
@@ -871,23 +844,16 @@ def _strip_leading_reminder(text, keyword):
     return re.sub(r"<system-reminder>\s*</system-reminder>\s*", "", text)
 
 
-def strip_git_status_text(text, legacy_truncate=False):
-    """剥离动态注入的 gitStatus 块；legacy_truncate=True 时额外对旧版非标签形态自 marker 起截断（仅用于 system 角色）。"""
+def strip_git_status_text(text):
+    """剥离动态注入的 gitStatus 块 —— **只认 `<system-reminder>` 包裹形态**。
+
+    旧版「裸句自 marker 起截断」的兜底已删：实测语料里裸形态 0 处，真实注入全部带容器；
+    而那条兜底只在 system 角色上生效，恰恰是注入从不出现的那个面。
+    """
     if not isinstance(text, str):
         return text, False
     orig = text
-    # 1. 彻底整块抹除以 <system-reminder> 包装的 # gitStatus
     text = _strip_leading_reminder(text, "gitStatus")
-    # 2. 兼容旧版 marker 截断（若存在非 system-reminder 包装形式）
-    if legacy_truncate:
-        for marker in (
-            "gitStatus: This is the git status at the start of the conversation.",
-            "This is the git status at the start of the conversation.",
-        ):
-            idx = text.find(marker)
-            if idx != -1:
-                text = text[:idx].rstrip()
-                break
     return text, (text != orig)
 
 
@@ -998,6 +964,15 @@ def clean_text_for_fp(text):
     return re.sub(r'<system-reminder>[\s\S]*?</system-reminder>\s*', '', text).strip()
 
 
+# kind → 归档后缀。会话归档键与「按模型最新快照」文件名**共用同一份**：
+# 分开写时新增一个 kind 要改两处，漏一处就是「会话归档叫 A、快照叫 B」。
+KIND_SUFFIX = {
+    "subagent": "_subagent",
+    "cowork": "_cowork",
+    "cowork_subagent": "_cowork_subagent",
+}
+
+
 def session_capture_key(parsed, kind=None):
     """本次请求在会话归档里的键；取不到会话 id 时返回 None。
 
@@ -1008,14 +983,7 @@ def session_capture_key(parsed, kind=None):
     if not sid:
         return None
     k = kind or classify_kind(parsed)
-    if k == "cowork_subagent":
-        suffix = "_cowork_subagent"
-    elif k == "subagent":
-        suffix = "_subagent"
-    elif k == "cowork":
-        suffix = "_cowork"
-    else:
-        suffix = ""
+    suffix = KIND_SUFFIX.get(k, "")
     return sid[:SESSION_KEY_LEN] + suffix
 
 
@@ -1193,6 +1161,29 @@ def parse_transcript_data(tpath):
         return index
 
 
+def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cfg=None):
+    """按生产顺序跑一遍稳定化，返回 changed 列表（原地修改 parsed）。
+
+    顺序是这里定的，别在别处复刻：
+    1. 按客户端面定型剥离口径（CoWork 面整面不剥）
+    2. **剥离之前**记下会被剥的工具名与客户端原始工具名 —— 剥完就再也算不出来
+    3. prepare_request 剥工具、排 tool_result、回填 thinking
+    4. canonicalize 清洗易变前缀；配对段落用它需要的那两份名单
+
+    第 2 步是这套配合的关键：第 4 步判断「这段该不该删」靠的是「客户端发过哪些工具」，
+    拿剥剩的清单去问，答案永远是「没发过」。
+    """
+    tp_cfg = pruning_cfg_for_surface(
+        tool_pruning_cfg if tool_pruning_cfg is not None else load_tool_pruning_config(), kind)
+    incoming = {t.get("name") for t in parsed.get("tools") or []
+                if isinstance(t, dict) and t.get("name")}
+    ghost = ghost_tool_names(parsed.get("tools"), tp_cfg)
+    changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
+    changed += canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg,
+                            stripped_names=ghost, incoming_tools=incoming)
+    return changed
+
+
 def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=None):
     """主请求前置稳定化预处理：
     1. 稳定工具顺序 + 模块化工具裁剪 (Tool Pruning)
@@ -1204,6 +1195,8 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
 
     # 1. 模块化动态工具精简（剥掉桌面端强制注入、多数场景用不到的那几类）
     #    完全保留客户端原生注册的工具物理顺序与 Schema 参数顺序，不做任何人为重排
+    #    剥离口径由调用方按客户端面定型后传进来（见 `_stabilize`）—— 这里不再判面，
+    #    免得同一个判断在两处各写一遍、只对其中一条调用路径生效。
     tools = parsed.get("tools")
     if isinstance(tools, list):
         if tool_pruning_cfg is not None:
@@ -1533,12 +1526,7 @@ class Handler(BaseHTTPRequestHandler):
             capture_dir = os.path.join(BASE_DIR, "captures")
             os.makedirs(capture_dir, exist_ok=True)
             model_raw = str(parsed.get("model") or "unknown").replace("/", "_").replace(":", "_")
-            suffix_map = {
-                "subagent": "_subagent",
-                "cowork": "_cowork",
-                "cowork_subagent": "_cowork_subagent",
-            }
-            suffix = suffix_map.get(kind, "")
+            suffix = KIND_SUFFIX.get(kind, "")
             # 1. 统一保存该模型的最新专属快照 (子代理保存为 _subagent.json 或 _cowork_subagent.json，CoWork 保存为 _cowork.json)
             model_path = os.path.join(capture_dir, f"latest_raw_inbound_{model_raw}{suffix}.json")
             with open(model_path, "w", encoding="utf-8") as fh:
@@ -1690,14 +1678,8 @@ class Handler(BaseHTTPRequestHandler):
         此时才整轮回滚到原始字节再转发。
         """
         rules = load_rules_config()
-        tp_cfg = load_tool_pruning_config()
         try:
-            # 剥离前先记下「这一轮会剥掉哪些工具」—— prepare_request 会把它们从
-            # parsed["tools"] 里删掉，之后再也算不出来（孤儿探测就靠这份名单）。
-            ghost = ghost_tool_names(parsed.get("tools"), tp_cfg)
-            stabilize_changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
-            changed = canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg, stripped_names=ghost)
-            changed = stabilize_changed + changed
+            changed = stabilize_request(parsed, session_id, kind=kind, rules=rules)
         except Exception as exc:
             # 两个稳定化函数都原地修改 parsed，失败必须回滚到原始报文：
             # 转发半成品会让同一段对话在不同轮次发出不同字节。
