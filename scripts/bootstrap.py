@@ -57,31 +57,29 @@ def log(msg=""):
 # ==============================================================================
 
 def read_json(path):
-    """读 JSON；不存在或损坏返回 (None, False)。第二个返回值表示「文件存在」。"""
+    """读 JSON；不存在或损坏一律返回 None（调用方只看内容，不区分这两种情况）。"""
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh), True
-    except FileNotFoundError:
-        return None, False
+            return json.load(fh)
     except Exception:
-        return None, True
+        return None
 
 
 def gather_state(paths=None):
     """把 plan() 需要的全部现状读进来（不改任何东西）。"""
     paths = paths or config_ops.platform_paths()
-    bridge_cfg, _ = read_json(os.path.join(paths["bridge_home"], "config.json"))
+    bridge_cfg = read_json(os.path.join(paths["bridge_home"], "config.json"))
     bridge_cfg = bridge_cfg if isinstance(bridge_cfg, dict) else {}
 
     # 「当前生效的是哪一份」只认 common 的那一个入口，别在这里再写一遍判断
     three_p_path = find_active_3p_config_path()
-    meta, _ = read_json(os.path.join(paths["config_library"], "_meta.json"))
-    three_p, _ = read_json(three_p_path) if three_p_path else (None, False)
-    desktop_1p, _ = read_json(paths["desktop_config_1p"])
-    desktop_3p, _ = read_json(paths["desktop_config_3p"])
-    dev_1p, _ = read_json(paths["developer_settings_1p"])
-    dev_3p, _ = read_json(paths["developer_settings_3p"])
-    claude_settings, _ = read_json(paths["claude_settings"])
+    meta = read_json(os.path.join(paths["config_library"], "_meta.json"))
+    three_p = read_json(three_p_path) if three_p_path else None
+    desktop_1p = read_json(paths["desktop_config_1p"])
+    desktop_3p = read_json(paths["desktop_config_3p"])
+    dev_1p = read_json(paths["developer_settings_1p"])
+    dev_3p = read_json(paths["developer_settings_3p"])
+    claude_settings = read_json(paths["claude_settings"])
 
     return {
         "paths": paths,
@@ -259,7 +257,7 @@ def apply(actions, dry_run=False):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             if act["kind"] == "ensure_bridge_config":
                 ensure_config_initialized(path)
-                on_disk, _ = read_json(path)
+                on_disk = read_json(path)
                 base = on_disk if isinstance(on_disk, dict) else {}
                 base.update(act["data"])
                 atomic_write_json(path, base, indent=1)
@@ -267,7 +265,7 @@ def apply(actions, dry_run=False):
                 atomic_write_json(path, act["data"])
             done += 1
             # 写后复读：防半截写。3P 那份还要过一遍客户端会认的必备字段。
-            written, _ = read_json(path)
+            written = read_json(path)
             if written is None:
                 problems.append("%s 写入后无法解析" % path)
             elif isinstance(act["data"], dict) and "inferenceProvider" in act["data"]:

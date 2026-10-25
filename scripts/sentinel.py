@@ -95,7 +95,7 @@ def _norm_session(value):
     """
     v = str(value).strip()
     suffix = ""
-    for s in ("_cowork_subagent", "_subagent", "_cowork"):
+    for s in sorted(gateway.KIND_SUFFIX.values(), key=len, reverse=True):
         if v.endswith(s):
             suffix = s
             break
@@ -135,7 +135,7 @@ def _resolve_current(model=None, session=None, last=False):
     # 排除 `_subagent.json`、`_cowork.json` 与 `_cowork_subagent.json` 特殊形态抓包，仅在主会话模型抓包间做自动单选（需审子代理或CoWork时可显式传对应后缀）
     per_model = sorted(
         p for p in glob.glob(os.path.join(CAPTURE_DIR, PER_MODEL_PREFIX + "*.json"))
-        if not (p.endswith("_subagent.json") or p.endswith("_cowork.json") or p.endswith("_cowork_subagent.json"))
+        if not any(p.endswith(s + ".json") for s in gateway.KIND_SUFFIX.values())
     )
     if len(per_model) == 1:
         return per_model[0]
@@ -196,13 +196,18 @@ def extract_tool_names(payload):
     return [t["name"] for t in tools if isinstance(t, dict) and t.get("name")]
 
 
-def cleaned_copy(payload):
-    """跑一遍线上的 canonicalize()，返回清洗后的副本（不改动原对象）。"""
+def cleaned_copy(payload, tp_cfg=None):
+    """跑一遍**生产那条路**（`gateway.stabilize_request`），返回清洗后的副本。
+
+    不能只调 `canonicalize`：生产是「先剥工具、再清洗」两步，剥完 `tools` 就少了，
+    配对段落的判定依赖剥离前那份工具名。只调一步时哨兵看到的字节与真发出去的不是同一份
+    —— 段落该删没删这种故障会被它报成 ✅（铁律 6）。
+    """
     p = copy.deepcopy(payload)
     try:
-        gateway.canonicalize(p)
+        gateway.stabilize_request(p, None, kind=gateway.classify_kind(p), tool_pruning_cfg=tp_cfg)
     except Exception as exc:  # 清洗器本身出问题时不应阻断哨兵
-        print("  ⚠️ canonicalize() 执行异常: %s" % exc, file=sys.stderr)
+        print("  ⚠️ stabilize_request() 执行异常: %s" % exc, file=sys.stderr)
     return p
 
 
@@ -252,17 +257,18 @@ def unknown_tools(names, cfg):
             and n not in tool_rules.PROTECTED_TOOLS]
 
 
-def _audit_tools(raw, clean):
+def _audit_tools(raw, tp_cfg, surface_skipped=False):
     """工具面：剥离多少、保留哪些；只把类别表外的工具列为待判定。
 
     待判定的判据是「我们有没有为它定过开关」，不是「它有没有被剥」——
-    判为保留也是判定，见 `unknown_tools`。
+    判为保留也是判定，见 `unknown_tools`。只看原文（`raw`）：剥离是配置算出来的，
+    清洗后的副本对「剥了哪些」没有增量信息。
     """
-    cfg = gateway.load_tool_pruning_config()
+    cfg = tp_cfg
     stripped = gateway.get_stripped_tool_names(cfg)
     names = extract_tool_names(raw)
     kept = [n for n in names if not gateway.should_strip_tool(n, stripped, cfg)]
-    pending = unknown_tools(names, cfg)
+    pending = [] if surface_skipped else unknown_tools(names, cfg)
 
     print()
     print("─" * 78)
@@ -270,7 +276,11 @@ def _audit_tools(raw, clean):
     print("─" * 78)
     print("  %d 个工具 → 剥离 %d，保留 %d" % (len(names), len(names) - len(kept), len(kept)))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
-    if pending:
+    if surface_skipped:
+        print("  ℹ️ 该客户端面整面不剥工具（`tool_rules.SKIP_COWORK_PRUNING`）：")
+        print("     体积由该面自己承担，换掉的是「每个命名空间逐个判定」的维护成本；")
+        print("     工具剥离对前缀恒定零贡献，所以缓存侧没有损失。")
+    elif pending:
         mcp_ns, native = {}, []
         for n in pending:
             if n.startswith("mcp__") and "__" in n[6:]:
@@ -431,7 +441,8 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         print("     → 工具没了、说明还在，模型会被引到一个不存在的工具上。改 tool_rules.PROMPT_PAIRS")
         print("       里这条的 anchor 即可（只取段首一小截，段落后面怎么改都还认得出）。")
     if not hits and not missing:
-        print("  ✅ 被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone))
+        print("  ✅ %s" % ("没有工具被剥（该面整面不剥），提示词与工具表不会脱节" if not gone
+                          else "被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone)))
     if hits:
         print("  ℹ️ 以下工具已被剥掉，但正文仍在引用：")
         for name, tokens in hits:
@@ -447,7 +458,11 @@ def cmd_audit(model, session=None, last=False):
         _die_no_capture(model, session)
 
     raw = _load(cur)
-    clean = cleaned_copy(raw)
+    # 剥离口径走生产同一个函数（`_stabilize` 里那次调用的入口）：CoWork 面整面不剥。
+    base_cfg = gateway.load_tool_pruning_config()
+    tp_cfg = gateway.pruning_cfg_for_surface(base_cfg, gateway.classify_kind(raw))
+    surface_skipped = tp_cfg is not base_cfg
+    clean = cleaned_copy(raw, tp_cfg=tp_cfg)
     print("=" * 78)
     print("版本哨兵 · 注入面覆盖自检")
     print("=" * 78)
@@ -464,10 +479,10 @@ def cmd_audit(model, session=None, last=False):
     print("  system  ：%d 块 / %d 字节（清洗前）" % (
         len(extract_system_texts(raw)), sum(len(x) for x in extract_system_texts(raw))))
 
-    findings = _audit_tools(raw, clean) + _audit_system(clean)
+    findings = _audit_tools(raw, tp_cfg, surface_skipped=surface_skipped) + _audit_system(clean)
     injected, suspect = _audit_message_injections(clean)
     findings += injected
-    _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean)
+    _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
     findings += pair_findings
 
     print()

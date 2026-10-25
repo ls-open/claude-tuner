@@ -15,13 +15,16 @@ import urllib.request
 sys.dont_write_bytecode = True
 
 from common import (
+    DEFAULT_LOG_RETENTION_DAYS,
     DEFAULT_PORT,
     THREEP_CONFIG_GLOB,
     atomic_write_json,
     canonical_local_url,
+    clamp_retention_days,
     ensure_config_initialized,
     find_active_3p_config_path,
     normalize_upstream,
+    purge_old_logs,
 )
 
 BASE = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
@@ -452,41 +455,6 @@ def status():
             print("started:   %.3f" % started)
 
 
-def purge_old_manager_logs(log_dir, retention_days=None):
-    try:
-        if not os.path.isdir(log_dir):
-            return
-        if retention_days is None:
-            retention_days = 7
-            try:
-                cfg_path = os.path.join(BASE, "config.json")
-                if os.path.exists(cfg_path):
-                    with open(cfg_path, "r", encoding="utf-8") as fh:
-                        c = json.load(fh)
-                        if isinstance(c, dict) and "log_retention_days" in c:
-                            retention_days = int(c["log_retention_days"])
-            except Exception:
-                pass
-        now = time.time()
-        max_age = max(1, int(retention_days)) * 86400
-        for fname in os.listdir(log_dir):
-            if fname in ("manager.log", "gateway.log"):
-                continue
-            if not (fname.startswith("manager") or fname.startswith("gateway")):
-                continue
-            fpath = os.path.join(log_dir, fname)
-            try:
-                if os.path.islink(fpath):
-                    continue
-                if os.path.isfile(fpath):
-                    if now - os.path.getmtime(fpath) > max_age:
-                        os.remove(fpath)
-            except OSError:
-                pass
-    except Exception:
-        pass
-
-
 def log_msg(*args):
     """统一日志记录：在 --quiet 模式下完全静默 stdout 并自然写入当天日志文件。"""
     msg = " ".join(str(a) for a in args)
@@ -495,7 +463,8 @@ def log_msg(*args):
     try:
         log_dir = os.path.join(BASE, "logs")
         os.makedirs(log_dir, exist_ok=True)
-        purge_old_manager_logs(log_dir)
+        purge_old_logs(log_dir, clamp_retention_days(
+            load_config().get("log_retention_days", DEFAULT_LOG_RETENTION_DAYS)))
         today_str = time.strftime("%Y-%m-%d")
         day_log = os.path.join(log_dir, f"manager.{today_str}.log")
         with open(day_log, "a", encoding="utf-8") as fh:
@@ -531,15 +500,11 @@ def main():
             stop_all()
             start()
         elif cmd == "ensure":
-            try:
-                check_runtime_dir()
-                sync()
-                if not gateway_alive():
-                    spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
-            except Exception as exc:
-                log_msg("ensure warning (suppressed):", exc)
-                sys.exit(0)
-        elif cmd in ("sync", "sync-3p"):
+            check_runtime_dir()
+            sync()
+            if not gateway_alive():
+                spawn(GATEWAY, "gateway", GATEWAY_PID, resolve_port())
+        elif cmd == "sync":
             sync()
         else:
             status()
