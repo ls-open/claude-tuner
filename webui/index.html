@@ -279,7 +279,22 @@
   .hint code{font-family:var(--mono);font-size:11.5px;color:var(--dim2)}
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
 
-  /* ── 开关行 ─────────────────────────────────────────── */
+  /* ── 开关行与功能大卡片 ───────────────────────────────── */
+  .group-card{border:1px solid var(--line);border-radius:8px;margin-bottom:18px;background:var(--panel);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02)}
+  .group-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--panel2);border-bottom:1px solid var(--line);user-select:none}
+  .group-info{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .group-title{font-size:14.5px;font-weight:600;color:var(--fg);letter-spacing:-.01em}
+  .group-desc{font-size:12px;color:var(--dim2);font-weight:400}
+  .group-master{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer;margin-left:auto;padding:3px 8px;border-radius:4px;border:1px solid var(--line2);background:var(--panel);transition:all .15s}
+  .group-master:hover{color:var(--fg);border-color:var(--line);background:var(--panel2)}
+  .group-master input[type=checkbox]{margin:0;cursor:pointer}
+  .group-body{padding:2px 8px}
+  .group-body .sw:last-child{border-bottom:none}
+
+  /* 核心防呆警示徽章：平时开启隐藏，关了才弹出 */
+  .badge-core-warn{display:none;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:var(--warn-dim);color:var(--warn);border:1px solid rgba(217,119,6,0.3);margin-left:10px;vertical-align:middle}
+  .badge-core-warn.show{display:inline-flex}
+
   .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:20px 0 4px}
   .subgrp:first-child{margin-top:0}
   .subgrp em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
@@ -413,7 +428,6 @@
       </svg>
       claude-tuner 调控台
     </h1>
-    <p class="sub">前缀缓存稳定化 · 动态工具精简 —— 让第三方模型吃满 Prompt Cache 折扣，桌面端与终端共用，纯本地 0 依赖。</p>
   </div>
   <div class="act">
     <div id="msg"></div>
@@ -424,7 +438,6 @@
 <div class="shell">
   <nav class="side" id="nav">
     <div class="grp">快速上手</div>
-    <a href="#presetBar"><span class="nav-ico">✳</span>场景预设</a>
     <a href="#s1"><span class="nav-ico">①</span>接上模型</a>
     <a href="#s2"><span class="nav-ico">②</span>模型映射</a>
 
@@ -473,38 +486,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 一键场景预设 -->
-    <div class="preset-bar" id="presetBar">
-      <div class="preset-bar-head">
-        <b>一键场景预设 <span id="presetHead">点任一档位把下方开关按档配好，也可逐项自己调</span></b>
-      </div>
-      <div class="preset-now" id="presetNow"></div>
-      <div class="preset-cards">
-        <div class="preset-card" data-mode="balanced">
-          <div class="preset-card-top">
-            <span class="preset-name">日常开发均衡档</span>
-            <span class="preset-badge rec">推荐</span>
-          </div>
-          <div class="preset-detail" data-detail="balanced"></div>
-        </div>
-        <div class="preset-card" data-mode="pure_code">
-          <div class="preset-card-top">
-            <span class="preset-name">纯代码极限档</span>
-            <span class="preset-badge hot">剥得最多</span>
-          </div>
-          <div class="preset-detail" data-detail="pure_code"></div>
-        </div>
-        <div class="preset-card" data-mode="vanilla">
-          <div class="preset-card-top">
-            <span class="preset-name">零干预档</span>
-            <span class="preset-badge">什么都不改</span>
-          </div>
-          <div class="preset-detail" data-detail="vanilla"></div>
-        </div>
-      </div>
-      <div class="hint" style="margin:12px 2px 0">档位 = 一键把下面这几十项按某一套配好；你完全可以不用档位，自己逐项调 —— 两者等价。</div>
     </div>
 
     <section id="s1">
@@ -568,18 +549,19 @@
 
     <section id="s4">
       <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
-        <span class="tag">逐条可关</span></div>
+        <button class="save-pill" data-save-section="s4" hidden></button></div>
       <div class="body">
-        <p class="lead">发往模型前的请求优化与提示词防抖通道，逐条可控，最大化命中 Prompt 缓存并消除误拒答。</p>
+        <p class="lead">发往模型前的请求优化与前缀清洗通道，最大化命中 Prompt 缓存并消除误拒答。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
 
     <section id="s5">
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
-        <span class="tag" id="pruneTag">原子联动</span></div>
+        <span class="tag" id="pruneTag" style="display:none"></span>
+        <button class="save-pill" data-save-section="s5" hidden></button></div>
       <div class="body">
-        <p class="lead">按需精简客户端注入的外围工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
+        <p class="lead">按需精简客户端注入的外围辅助工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -717,64 +699,64 @@ const ADVANCED = [
 ];
 
 const RULE_GROUPS = [
-  ['请求通道与协议干预', '传输与消息结构优化，探针秒回、补齐思维链、规范混合消息（不改动正文）', [
-    ['probe_interception', '连通性探针本地秒回', '心跳不上云、不扣费'],
-    ['strip_billing_header', '过滤客户端计费版本头', ''],
-    ['restore_thinking', '自动回填思维链（Thinking）', '历史里缺了思考块会击穿前缀缓存'],
-    ['split_mixed_user_messages', '拆分「工具结果 + 文本」混在同一条里的消息', '客户端启动 Skill 时会这么发；部分上游要求紧跟工具调用的必须是纯工具结果'],
-    ['tool_block_ordering', '并发工具返回的块按 id 定序', '并发返回顺序不定 —— 乱序可能让上游报 400，也会击穿前缀缓存；只重排、不删内容'],
+  ['⚡ 传输通道优化与数据对齐', '探针秒回、补齐思维链与并发定序（不改动正文）', [
+    ['probe_interception', '拦截连接探针本地秒回（不扣费）', ''],
+    ['strip_billing_header', '过滤客户端版本与计费标记', ''],
+    ['restore_thinking', '自动回填历史思考过程（Thinking）', ''],
+    ['split_mixed_user_messages', '规范化工具混合返回格式', ''],
+    ['tool_block_ordering', '并发工具返回结果自动排序', ''],
   ]],
-  ['系统提示词防抖', '消除时间、Git 与额度等动态变动对前缀字节的扰动，最大化命中低价缓存', [
-    ['strip_date', '抹平动态时间戳', ''],
-    ['strip_git_status', '固定 Git 状态快照', ''],
-    ['strip_model_declarations', '移除官方模型自称声明', '客户端自动注入的“你由 Claude 模型驱动”这类句子'],
-    ['strip_total_tokens_tag', '移除剩余额度计数行', '这个数字每轮都在变，留着必击穿前缀缓存'],
+  ['🛡️ 前缀动态噪声清洗（保缓存核心）', '消除时间戳、Git 快照与额度等变动扰动', [
+    ['strip_date', '移除动态日期与时间戳', ''],
+    ['strip_git_status', '移除 Git 代码变动快照', ''],
+    ['strip_model_declarations', '移除“由 Claude 驱动”等官方自称', ''],
+    ['strip_total_tokens_tag', '移除剩余额度与 Token 计数', ''],
   ]],
-  ['纯指令修剪', '剥离客户端写死的免责防御与道德说教段落（只认整段、按空行边界）', [
-    ['strip_security_guidelines', '移除安全攻防限制指令', '本地运维脚本不再被误判成攻击而拒答'],
-    ['strip_pronoun_guidelines', '移除人称代词道德指引', 'they/them 那类强制中立表述'],
-    ['strip_caution_guidelines', '移除高危操作二次确认指引', '减少正常编码时的反复确认'],
+  ['✂️ 系统防御指令精简（减少误拒答）', '精简客户端免责防御与道德指令', [
+    ['strip_security_guidelines', '移除过度安全防御指令（减少误拒答）', ''],
+    ['strip_pronoun_guidelines', '移除人称代词（they/them）中立指引', ''],
+    ['strip_caution_guidelines', '移除高危操作过度确认指引', ''],
   ]],
 ];
 
 const RULES = RULE_GROUPS.flatMap(g => g[2]);
 
 const PRUNING_GROUPS = [
-  ['桌面界面遥控类', '控制桌面端窗口、侧栏与分屏等本地 UI 辅助工具（剥除不影响编码能力）', [
-    ['strip_sidebar_tools', '移除侧栏管理工具', '建立分区、归档、置顶等界面操作'],
-    ['strip_window_tools', '移除窗口与分屏遥控', ''],
-    ['strip_view_tools', '移除面板呈现（diff／文件／终端／浏览器预览）', '客户端提示词要求模型用它推送 diff／文件／终端面板并打开浏览器预览，故默认保留'],
-    ['strip_turn_tools', '移除进度清单与收尾面板', '客户端提示词要求模型用它汇报进度与收尾，剥了这两块界面就没有了，故默认保留'],
-    ['strip_settings_tools', '移除界面偏好控制', ''],
-    ['strip_directory_tools', '移除会话目录切换', ''],
+  ['🖥️ 桌面端界面与排版辅助', '操控桌面端窗口、侧栏与分屏等本地 UI 辅助工具', [
+    ['strip_sidebar_tools', '移除桌面侧栏分组与置顶操作', ''],
+    ['strip_window_tools', '移除桌面窗口与分屏布局控制', ''],
+    ['strip_view_tools', '移除辅助面板弹窗（Diff/预览等）', ''],
+    ['strip_turn_tools', '移除实时任务进度条与收尾卡片', ''],
+    ['strip_settings_tools', '移除桌面端偏好设置控制', ''],
+    ['strip_directory_tools', '移除切换项目工作目录能力', ''],
   ]],
-  ['会话管理类', '历史会话的查询、切换、导出与归档等独立管理工具', [
-    ['strip_session_tools', '移除会话界面遥控', '标记章节、改标题与输出样式等'],
-    ['strip_session_permission_tools', '移除会话权限模式切换', '会动到你的安全设置'],
-    ['strip_session_model_tools', '移除模型与档位切换', '与花费直接相关'],
-    ['strip_session_export_tools', '移除会话导出与检索', ''],
-    ['strip_session_delete_tools', '移除删除与归档会话', ''],
-    ['strip_session_remote_tools', '移除跨会话远程控制', ''],
-    ['strip_session_task_tools', '移除会话终止', '停掉一个正在跑的会话'],
+  ['💬 会话生命周期与控制', '会话命名、权限切换、模型档位与历史会话维护', [
+    ['strip_session_tools', '移除修改会话标题与章节标记', ''],
+    ['strip_session_permission_tools', '移除自动切换会话权限模式', ''],
+    ['strip_session_model_tools', '移除自动切换模型与思考强度', ''],
+    ['strip_session_export_tools', '移除导出与检索历史会话', ''],
+    ['strip_session_delete_tools', '移除清理与归档历史会话', ''],
+    ['strip_session_remote_tools', '移除桌面远程控制模式', ''],
+    ['strip_session_task_tools', '移除强行中断其他会话能力', ''],
   ]],
-  ['宿主与终端类', '操作本机编辑器、终端标签页与磁盘存储的辅助工具', [
-    ['strip_host_tools', '移除外部编辑器与系统联动', '唤起外部 IDE、防休眠、清理工作树'],
-    ['strip_terminal_tools', '移除侧边终端控制工具', '在本机登录 Shell 里跑命令（带你自己的 alias 与凭据）'],
+  ['💻 本机系统与桌面终端联动', '外部编辑器唤起、防休眠与侧边终端', [
+    ['strip_host_tools', '移除打开外部编辑器与系统防休眠', ''],
+    ['strip_terminal_tools', '移除桌面端内置终端面板', ''],
   ]],
-  ['联网与扩展集成类', '外部联网搜索、网页抓取与三方扩展集成工具（剥除时配套提示词同步清理）', [
-    ['strip_web_search_tools', '移除网页搜索（WebSearch）', '服务端工具：真去搜的是上游，第三方多数没实现它'],
-    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', '同样在服务端执行；需登录或内网地址的页面拿不到'],
-    ['strip_pr_ci_tools', '移除 PR 关联与 CI 监控', ''],
-    ['strip_notebook_tools', '移除 Notebook 编辑工具', ''],
+  ['🌐 外部网络与生态扩展', '联网搜索、抓取网页与三方扩展集成', [
+    ['strip_web_search_tools', '移除网页搜索（WebSearch）', ''],
+    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', ''],
+    ['strip_pr_ci_tools', '移除 GitHub PR 关联与 CI 监控', ''],
+    ['strip_notebook_tools', '移除 Jupyter Notebook 编辑工具', ''],
     ['strip_design_sync_tools', '移除 DesignSync 设计稿同步', ''],
   ]],
-  ['智能体协作能力类', '多 Agent 协同、任务隔离与计划确认模式（默认保留）', [
-    ['strip_session_start_tools', '移除会话起停与交接', '起新会话、把当前任务交接出去、列可选目标、撤回自己发出的提案、给这批发出的会话打批次标题、回查已链接会话 —— 客户端提示词用整段教这套流程，剥了就是「提示词指向不存在的工具」，故整组默认保留'],
-    ['strip_cross_session_tools', '移除跨会话消息工具', '与 ListAgents 配对，只剥一半会剩个用不了的'],
-    ['strip_worktree_tools', '移除 Git 工作树隔离工具', ''],
-    ['strip_plan_tools', '移除计划确认模式（Plan）', ''],
-    ['strip_task_stop_tools', '移除终止后台任务能力', ''],
-    ['strip_report_findings_tools', '移除审查结论上报面板', 'code-review 一类技能把结论交回界面的通道'],
+  ['🤖 多智能体协同与高级流程', '多 Agent 协同、任务隔离与计划确认模式', [
+    ['strip_session_start_tools', '移除派生新会话与任务交接', ''],
+    ['strip_cross_session_tools', '移除多智能体跨会话通信（SendMessage）', ''],
+    ['strip_worktree_tools', '移除 Git 工作树隔离环境（Worktree）', ''],
+    ['strip_plan_tools', '移除编码前计划确认模式（Plan Mode）', ''],
+    ['strip_task_stop_tools', '移除终止后台子任务能力（TaskStop）', ''],
+    ['strip_report_findings_tools', '移除代码审查报告卡片（ReportFindings）', ''],
   ]],
 ];
 
@@ -782,74 +764,30 @@ const PRUNING_GROUPS = [
 // 免得又把 `enabled` / `custom_strip_tools` 算进来。
 const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, , items]) => items.map(([k]) => k));
 
-// 「随附技能与动态工作流」一个开关、两个键，两半都是**客户端自己的设置**：
-// `disableBundledSkills` 去掉那份随附技能清单（含 workflow-authoring），
-// `enableWorkflows` 去掉 Workflow 工具本身 —— 工具说明指着那条技能，只关一个就是
-// 半截引用，所以两者同进同退。
-// 它住在客户端偏好区，跟「关闭客户端定时任务」同一处、同一套写法（见 renderSwitches）。
-
-// ── 场景预设定义 ───────────────────────────────────────────
-// `settings` 里写的是**设置本身的值**，不是复选框状态 —— 复选框全是「关闭某某」的反向开关，
-// 所以 applyPreset 里那两处取反是必需的。写反了不会报错，只会安静地把开关翻到反面，
-// 正好与「推荐」的意图相反。加开关时对着 applyPreset 逐条核一遍。
-const PRESETS = {
-  balanced: {
-    name: '日常开发均衡档',
-    // 与出厂默认逐项一致：一个字都不用写，改默认值它就跟着变。
-    rules: {},
-    tool_pruning: {},
-    bundle: false,
-    settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
-  },
-  pure_code: {
-    name: '纯代码极限档',
-    rules: { strip_security_guidelines: true, strip_pronoun_guidelines: true, strip_caution_guidelines: true },
-    tool_pruning: {
-      strip_view_tools: true, strip_host_tools: true, strip_terminal_tools: true,
-      strip_web_search_tools: true, strip_web_fetch_tools: true,
-    },
-    bundle: true,
-    settings: { promptCacheTtl: true, promptSuggestionEnabled: false, autoCompactEnabled: false }
-  },
-  vanilla: {
-    name: '零干预档',
-    rules: {
-      probe_interception: false, strip_billing_header: false, restore_thinking: false,
-      split_mixed_user_messages: false, strip_date: false, strip_git_status: false,
-      strip_model_declarations: false, strip_total_tokens_tag: false, tool_block_ordering: false,
-    },
-    tool_pruning: {
-      strip_sidebar_tools: false, strip_window_tools: false, strip_settings_tools: false,
-      strip_directory_tools: false, strip_session_tools: false, strip_host_tools: false,
-      strip_session_permission_tools: false, strip_session_model_tools: false,
-      strip_session_export_tools: false, strip_session_delete_tools: false,
-      strip_session_remote_tools: false, strip_session_task_tools: false,
-      strip_pr_ci_tools: false, strip_notebook_tools: false, strip_design_sync_tools: false,
-    },
-    bundle: false,
-    settings: { promptCacheTtl: false, promptSuggestionEnabled: true, autoCompactEnabled: true }
-  }
-};
-
-// 每档只写**与默认值不同的那几项**，其余一律取后端下发的默认值 ——
-// 默认值只在 common.DEFAULT_* 定义一处，新增开关时不必回头改这里。
-function presetCfg(p){
-  const opts = (CFG && CFG.options) || {};
-  return {
-    rules: Object.assign({}, opts.rules_defaults || {}, p.rules),
-    tool_pruning: Object.assign({}, opts.pruning_defaults || {}, p.tool_pruning),
-  };
-}
-
 const WHEN = {
   now:     ['保存后即生效', 'gateway'],
   session: ['保存后新会话生效', 'session'],
   restart: ['保存后需重启客户端', 'restart'],
 };
-const SW = (label, why, attr, when) => {
+
+const CORE_CACHE_RULES = new Set([
+  'strip_date',
+  'strip_git_status',
+  'restore_thinking',
+  'strip_total_tokens_tag',
+  'probe_interception',
+]);
+
+const SW = (label, why, attr, when, key, isChecked) => {
   const w = WHEN[when];
-  return `<div class="sw"><div class="txt"><b>${label}${w
-      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}</b>${why ? `<small>${why}</small>` : ''}</div>
+  const isCore = CORE_CACHE_RULES.has(key);
+  const showWarn = isCore && (isChecked === false);
+  const warnBadge = isCore
+    ? `<span class="badge-core-warn${showWarn ? ' show' : ''}" data-core-warn="${key}">⚠️ 建议开启 · 关闭会导致缓存击穿</span>`
+    : '';
+
+  return `<div class="sw" data-sw-key="${key || ''}"><div class="txt"><b>${label}${w
+      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}${warnBadge}</b>${why ? `<small>${why}</small>` : ''}</div>
    <input type="checkbox" ${attr}></div>`;
 };
 
@@ -946,24 +884,56 @@ function renderSwitches(d){
     `</div></details>`);
 
   // 整组同一种生效时机，就只在组头说一次 —— 25 行各挂一枚「保存后即生效」是纯噪音。
-  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 10px">保存后即生效：下一轮请求起按新配置执行，不需要重启网关。</div>';
+  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存后即生效：下一轮请求起按新配置执行，不需要重启网关。</div>';
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
   $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, note, items]) =>
-    `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
-    items.map(([k, label, why]) =>
-      SW(label, why, `data-rule="${k}" ${(rules[k] ?? rdefs[k]) ? 'checked' : ''}`, '')).join('')
+    `<div class="group-card">
+      <div class="group-header">
+        <div class="group-info">
+          <span class="group-title">${esc(title)}</span>
+          ${note ? `<span class="group-desc">${esc(note)}</span>` : ''}
+        </div>
+      </div>
+      <div class="group-body">
+        ${items.map(([k, label, why]) => {
+          const checked = !!(rules[k] ?? rdefs[k]);
+          return SW(label, why, `data-rule="${k}" ${checked ? 'checked' : ''}`, '', k, checked);
+        }).join('')}
+      </div>
+    </div>`
   ).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = SAVED_NOTE + PRUNING_GROUPS.map(([title, note, items]) =>
-    `<div class="subgrp">${esc(title)}${note ? `<em>${esc(note)}</em>` : ''}</div>` +
-    items.map(([k, label, why]) =>
-      SW(label, why, `data-tp="${k}" ${(tp[k] ?? defs[k]) ? 'checked' : ''}`, '')).join('')
-  ).join('');
+  $('#pruneBox').innerHTML = SAVED_NOTE + PRUNING_GROUPS.map(([title, note, items], gIdx) => {
+    const total = items.length;
+    const checkedCount = items.filter(([k]) => !!(tp[k] ?? defs[k])).length;
+    const allChecked = checkedCount === total && total > 0;
+    const isIndeterminate = checkedCount > 0 && checkedCount < total;
+
+    return `<div class="group-card" data-gidx="${gIdx}">
+      <div class="group-header">
+        <div class="group-info">
+          <span class="group-title">${esc(title)}</span>
+          ${note ? `<span class="group-desc">${esc(note)}</span>` : ''}
+        </div>
+        <label class="group-master" title="一键开启或关闭整组精简">
+          <input type="checkbox" class="master-tp-chk" data-gidx="${gIdx}" ${allChecked ? 'checked' : ''} ${isIndeterminate ? 'data-indeterminate="1"' : ''}>
+          <span>一键精简整组</span>
+        </label>
+      </div>
+      <div class="group-body">
+        ${items.map(([k, label, why]) => {
+          const checked = !!(tp[k] ?? defs[k]);
+          return SW(label, why, `data-tp="${k}" ${checked ? 'checked' : ''}`, '', k, checked);
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  bindGroupMasterEvents();
 
   // 工具面的主指标：最近一次真实请求里客户端发了多少、我们剥了多少。
-  // 拿不到（还没跑过请求 / 日志被清）就保持「原子联动」，不拿开关数顶上。
   const ts = d.tool_stats;
   if (ts && ts.incoming){
     const tag = $('#pruneTag');
@@ -975,213 +945,70 @@ function renderSwitches(d){
   tag.textContent = running ? '客户端正在运行' : '';
   tag.style.display = running ? '' : 'none';
   $('#prefBox').innerHTML =
-    SW('Git 提交不带 Claude 联署签名',
-       '勾选后不在 git commit 中追加 Co-Authored-By: Claude 签名行。',
+    SW('Git 提交不带 Claude 联署签名', '',
        `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'session') +
-    SW('终端 Claude Code 同样走本网关',
-       '终端 <code>claude</code> 命令行工具同样经本网关转发加速。',
+    SW('终端 Claude Code 同样走本网关', '',
        `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
     `<div class="subgrp">客户端自带能力</div>` +
-    SW('关闭随附技能与动态工作流',
-       '移除随附技能与 Workflow 工具（两者互相指向，须同进同退）；用户自建技能不受影响。',
+    SW('关闭客户端自带默认技能与工作流', '',
        `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
-    SW('关闭客户端定时任务（Scheduled Tasks）',
-       '隐藏定时任务页面并移除定时任务工具（已有任务保留但不执行）。',
+    SW('关闭客户端定时任务（Scheduled Tasks）', '',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart');
-
-  checkCurrentPresetMatch();
 }
 
-// ── 场景预设交互 ───────────────────────────────────────────
-function applyPreset(mode){
-  // 卡片标记与那句提示**不在这里写** —— 由 checkCurrentPresetMatch 统一按勾选结果决定。
-  // 这里各写一遍会立刻对不上：它只知道「你点了哪张卡」，不知道点完之后开关到底成了什么，
-  // 于是标记和提示会各自说谎（而且 suggested 那圈边框清不掉，两种标记会叠在同一张卡上）。
-  const p = PRESETS[mode];
-  const cfg = presetCfg(p);
-  if (!p) return;
+// ── 分类总开关与防呆提醒联动 ─────────────────────────────────
+function bindGroupMasterEvents() {
+  document.querySelectorAll('.group-card[data-gidx]').forEach(card => {
+    const master = card.querySelector('.master-tp-chk');
+    if (master && master.dataset.indeterminate === '1') {
+      master.indeterminate = true;
+    }
 
-  // 1. 规则开关
-  Object.entries(cfg.rules).forEach(([k, v]) => {
-    const el = $(`#ruleBox input[data-rule="${k}"]`);
-    if (el) el.checked = v;
-  });
-
-  // 2. 工具精简
-  Object.entries(cfg.tool_pruning).forEach(([k, v]) => {
-    const el = $(`#pruneBox input[data-tp="${k}"]`);
-    if (el) el.checked = v;
-  });
-
-  // 3. 随附技能与动态工作流（一个开关、两个客户端设置键）
-  const bundle = $('#bundledSkills');
-  if (bundle) bundle.checked = p.bundle;
-
-  // 4. Money
-  const ttl = $(`#moneyBox input[data-key="promptCacheTtl"]`);
-  if (ttl) ttl.checked = p.settings.promptCacheTtl;
-  const sug = $(`#moneyBox input[data-key="promptSuggestionEnabled"]`);
-  if (sug) sug.checked = !p.settings.promptSuggestionEnabled;
-  const comp = $(`#moneyBox input[data-key="autoCompactEnabled"]`);
-  if (comp) comp.checked = !p.settings.autoCompactEnabled;
-
-  checkCurrentPresetMatch();
-  say(`已应用「${p.name}」推荐配置，点各区块标题上的「保存 N 项」即可生效！`, 'ok');
-}
-
-// ── 预设卡片上的明细：从 PRESETS 数据现算，不手写 ───────────
-// 手写的那份一定会跟数据漂移。这里直接读同一份数据，写不到就不会出现 ——
-// 加开关时也不必记得回来改文案。
-function presetTpLabel(key){
-  for (const [, , items] of PRUNING_GROUPS){
-    const hit = items.find(([k]) => k === key);
-    // 标签形如「移除侧栏管理工具」/「移除 PR 关联与 CI 监控」—— 去掉动词与尾部的「工具」，
-    // 剩下的才是能在卡片上并排罗列的名字（不清掉会变成「侧栏管理工具、窗口与分屏遥控、…」这种长度不齐）
-    if (hit) return hit[1].replace(/^移除\s*/, "").replace(/工具$/, "");
-  }
-  return key;
-}
-
-function renderPresetDetails(){
-  document.querySelectorAll("[data-detail]").forEach(box => {
-    const p = PRESETS[box.dataset.detail];
-    if (!p) return;
-    const tp = presetCfg(p).tool_pruning;
-    // 只在**页面上真有开关**的那批键里数，且只认布尔真值：默认值表里还躺着
-    // `enabled` 与 `custom_strip_tools`（空数组在 JS 里是真值），混进分母就会得到
-    // 「17/29」这种与页面上 27 个开关对不上的数。这一行说的是**开关**，不是工具。
-    const on = PRUNE_KEYS.filter(k => tp[k] === true).map(k => presetTpLabel(k));
-    const tools = on.length
-      ? `<b title="${esc(on.join("、"))}">打开 ${on.length}/${PRUNE_KEYS.length} 个开关</b>`
-      : `<b>一个开关都不打开</b>`;
-    const sets = [
-      p.settings.promptCacheTtl ? "缓存留 1 小时" : "缓存回官方默认",
-      p.settings.promptSuggestionEnabled ? "输入联想开" : "关输入联想",
-      p.settings.autoCompactEnabled ? "自动压缩开" : "关自动压缩",
-      p.bundle ? "随附技能与工作流剥离" : "随附技能与工作流保留",
-    ].join(" · ");
-    box.innerHTML = `<div>${tools} · ${sets}</div>`;
+    if (master) {
+      master.onchange = () => {
+        const targetState = master.checked;
+        master.indeterminate = false;
+        delete master.dataset.indeterminate;
+        card.querySelectorAll('input[data-tp]').forEach(sub => {
+          if (sub.checked !== targetState) {
+            sub.checked = targetState;
+            sub.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+      };
+    }
   });
 }
 
-// 「当前有没有自己改过」得拿**安装默认**当基准 —— 它不出现在卡片上，但只有比过它才知道
-// 底下这套开关是「原封不动的默认值」还是「用户自己调的」。少了这一步，两者都会被算成
-// 「不匹配任何档位」，而它们该说的话完全不同（一个说「建议从这档开始」，一个说「这是你的自定义」）。
-function atInstallDefaults(){
-  const rdefs = (CFG && CFG.options && CFG.options.rules_defaults) || {};
-  const tdefs = (CFG && CFG.options && CFG.options.pruning_defaults) || {};
-  for (const [k, v] of Object.entries(rdefs)) {
-    const el = $(`#ruleBox input[data-rule="${k}"]`);
-    if (el && el.checked !== !!v) return false;
+function updateGroupMaster(inputEl) {
+  const card = inputEl.closest('.group-card[data-gidx]');
+  if (!card) return;
+  const master = card.querySelector('.master-tp-chk');
+  if (!master) return;
+  const childBoxes = Array.from(card.querySelectorAll('input[data-tp]'));
+  const total = childBoxes.length;
+  const checkedCount = childBoxes.filter(b => b.checked).length;
+
+  if (checkedCount === total && total > 0) {
+    master.checked = true;
+    master.indeterminate = false;
+    delete master.dataset.indeterminate;
+  } else if (checkedCount === 0) {
+    master.checked = false;
+    master.indeterminate = false;
+    delete master.dataset.indeterminate;
+  } else {
+    master.checked = false;
+    master.indeterminate = true;
+    master.dataset.indeterminate = '1';
   }
-  for (const [k, v] of Object.entries(tdefs)) {
-    // 不是每个默认键都有对应的勾选框（如 strip_session_* 由各自的组管）
-    const el = $(`#pruneBox input[data-tp="${k}"]`);
-    if (el && el.checked !== !!v) return false;
-  }
-  // 随附技能与工作流：安装时不写那两个键，所以开关应当是关的（保留）
-  const bundle = $('#bundledSkills');
-  if (bundle && bundle.checked) return false;
-  // 三个省钱开关：安装时缓存 1h、关联想、关自动压缩 —— 三个框都该是勾上的
-  for (const k of ['promptCacheTtl', 'promptSuggestionEnabled', 'autoCompactEnabled']) {
-    const el = $(`#moneyBox input[data-key="${k}"]`);
-    if (el && !el.checked) return false;
-  }
-  return true;
 }
 
-function markPresetCards(mode, state){
-  // 只有一个标记了：正好等于某一档 → 挂标记。state 区分「已生效」(active) 与
-  // 「已选未保存」(pending)。不等于任何档时传 null，全部清掉。
-  document.querySelectorAll('.preset-card').forEach(c => {
-    const on = c.dataset.mode === mode;
-    c.classList.toggle('active', on && state === 'active');
-    c.classList.toggle('pending', on && state === 'pending');
-  });
-}
-
-// 表单与**已保存配置**有没有差异 —— 复用保存那条路径的同一份判据，
-// 别再单独写一套「脏没脏」的逻辑（两套迟早对不上）。
+// 表单与**已保存配置**有没有差异 —— 复用保存那条路径的同一份判据
 function hasPendingChanges(){
   if (!CFG) return false;
   const {models, settings, tool_pruning, rules} = collectCurrentFormState();
   return computePendingDiffs(models, settings, tool_pruning, rules).length > 0;
-}
-
-function checkCurrentPresetMatch(){
-  for (const [mode, p] of Object.entries(PRESETS)) {
-    const cfg = presetCfg(p);
-    let match = true;
-    for (const [k, v] of Object.entries(cfg.rules)) {
-      const el = $(`#ruleBox input[data-rule="${k}"]`);
-      if (el && el.checked !== v) { match = false; break; }
-    }
-    if (!match) continue;
-    for (const [k, v] of Object.entries(cfg.tool_pruning)) {
-      const el = $(`#pruneBox input[data-tp="${k}"]`);
-      if (el && el.checked !== v) { match = false; break; }
-    }
-    if (!match) continue;
-    {
-      const el = $('#bundledSkills');
-      if (el && el.checked !== p.bundle) { match = false; continue; }
-    }
-    if (match) {
-      const pending = hasPendingChanges();
-      markPresetCards(mode, pending ? 'pending' : 'active');
-      $('#presetHead').textContent = pending
-        ? '已套用「' + p.name + '」（尚未保存，点区块标题上的「保存 N 项」生效）'
-        : '已生效「' + p.name + '」';
-      // 卡片已把这档的明细写清楚了；「当前配置」那行只在没有预设匹配时才现身，免得同屏说两遍
-      $('#presetNow').style.display = 'none';
-      return;
-    }
-  }
-  // 不匹配任何档位时**不给任何卡片挂标记**，只陈述事实。
-  //
-  // 不匹配任何档位时**不给任何卡片挂标记**：页面能给的最有用的东西是**当前到底是什么**，
-  // 那由下面那行事实去说；替用户贴「建议起点」或「你的自定义」都是替他下结论。
-  markPresetCards(null);
-  $('#presetHead').textContent = atInstallDefaults()
-    ? '未套用任何档位 —— 下方开关就是安装时的默认值'
-    : '未套用任何档位 —— 下方开关就是当前生效的设置';
-  $('#presetNow').style.display = '';
-  renderCurrentState();
-}
-
-// 「当前配置」那一行：把 30 多个开关的现状压成一句人能读的话。
-//
-// 加它的原因：档位卡片回答的是「你离哪个预设近」，可从没回答过「你现在到底是什么」——
-// 用户看了半天卡片，仍然不知道自己的配置长什么样。而且这句话必须**从同一份 DOM 现算**，
-// 不能另写一份：卡片是按勾选状态判断的，事实行若是从别处取数，两者迟早对不上。
-function renderCurrentState(){
-  const box = $('#presetNow');
-  if (!box) return;
-  const on = sel => [...document.querySelectorAll(sel)].filter(e => e.checked).length;
-  const all = sel => document.querySelectorAll(sel).length;
-  const money = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return !!(el && el.checked); };
-  const bundle = $('#bundledSkills');
-  const custom = (CFG && CFG.tool_pruning && CFG.tool_pruning.custom_strip_tools) || [];
-
-  // 主指标用**实际请求**里的工具数（后端按 request_id 把「发来几个」和「剥了几个」
-  // 串起来）；拿不到时才退回数开关，且说清楚数的是开关。
-  const ts = CFG && CFG.tool_stats;
-  const chips = [
-    ts && ts.incoming
-      ? `实际剥离 <b>${ts.stripped} / ${ts.incoming}</b> 个工具`
-      : `工具开关 <b>${on('#pruneBox input[data-tp]')}/${all('#pruneBox input[data-tp]')}</b> 项在剥`,
-    bundle && bundle.checked ? '随附技能与工作流 <b>已剥离</b>' : '随附技能与工作流 <b>保留</b>',
-    `前缀稳定化 <b>${on('#ruleBox input[data-rule]')}/${all('#ruleBox input[data-rule]')}</b> 条在生效`,
-    money('promptCacheTtl') ? '缓存留 <b>1 小时</b>' : '缓存留 <b>官方默认</b>',
-    money('promptSuggestionEnabled') ? '输入联想 <b>关</b>' : '输入联想 <b>开</b>',
-    money('autoCompactEnabled') ? '自动压缩 <b>关</b>' : '自动压缩 <b>开</b>',
-  ];
-  box.innerHTML = `<span class="now-lead">当前配置</span>` +
-    chips.map(t => `<span class="now-chip">${t}</span>`).join('');
-  if (custom.length){
-    box.insertAdjacentHTML('beforeend',
-      `<span class="now-chip">自定义剥离清单 <b>${custom.length}</b> 项</span>`);
-  }
 }
 
 // 更新检查的结果用一行文字报出来。kind 只有三种：'' / 'ok' / 'warn' / 'err'。
@@ -1323,12 +1150,25 @@ if (copyBtn) {
   };
 }
 
-document.querySelectorAll('.preset-card').forEach(card => {
-  card.onclick = () => applyPreset(card.dataset.mode);
-});
+document.addEventListener('change', ev => {
+  const t = ev.target;
+  if (t && t.type === 'checkbox') {
+    // 1. 核心保缓存防呆提醒联动
+    const ruleKey = t.dataset.rule;
+    if (ruleKey && CORE_CACHE_RULES.has(ruleKey)) {
+      const badge = document.querySelector(`[data-core-warn="${ruleKey}"]`);
+      if (badge) {
+        if (t.checked) badge.classList.remove('show');
+        else badge.classList.add('show');
+      }
+    }
 
-document.addEventListener('change', () => {
-  checkCurrentPresetMatch();
+    // 2. 工具精简子开关联动分类总开关
+    if (t.hasAttribute('data-tp')) {
+      updateGroupMaster(t);
+    }
+  }
+
   updateUnsavedIndicator();
 });
 document.addEventListener('input', ev => {
@@ -1699,12 +1539,10 @@ async function autoSaveImmediate(){
       CFG.rules = back.rules;
       CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, back.tool_pruning);
       if (CFG.gateway) CFG.gateway.log_retention_days = back.log_retention_days;
-      checkCurrentPresetMatch();
       updateUnsavedIndicator();
       showToast('已撤销', 'warn', 2000);
     }
   });
-  checkCurrentPresetMatch();
   updateUnsavedIndicator();
 }
 
@@ -1801,8 +1639,6 @@ async function saveClientSide(){
   tell(bodyHtml);
   const fresh = await api('/api/config');
   if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
-  // 保存后重算：卡片从「已选 · 待保存」翻成「✓ 当前使用」—— 以刚存下的配置为准
-  checkCurrentPresetMatch();
   updateUnsavedIndicator();
 }
 
@@ -1854,7 +1690,6 @@ function applyTheme(theme) {
   onPresetChange(false);
   renderStatus(CFG); renderModels(CFG); renderSwitches(CFG);
   renderGateway(CFG); renderVersions(CFG);
-  renderPresetDetails();
   guardClientRunningSwitches();
   watchNav();
   say('');
