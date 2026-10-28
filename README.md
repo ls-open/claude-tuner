@@ -50,8 +50,6 @@
 
 ## 🖥️ 核心特性
 
-![claude-tuner 配置台](assets/webui.png)
-
 - ⚡️ **极致的前缀缓存稳定化 (Prefix Stabilization)**  
   物理剥离动态日期、Git 状态快照、模型版本宣称与计费头；对并发工具块进行对称规范化排序；从本地会话记录自动回填被裁剪的思维链（Thinking Restoration）。
 - ✂️ **智能工具裁剪与提示词联动 (Surgical Tool Pruning)**  
