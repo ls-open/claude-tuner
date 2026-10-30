@@ -44,7 +44,6 @@
     --nav-active-fg:#141413;
     --card-shadow:0 1px 3px rgba(0,0,0,0.03), 0 6px 18px rgba(0,0,0,0.02);
     --hero-bg:linear-gradient(135deg, rgba(217, 107, 39, 0.07) 0%, #FFFFFF 60%);
-    --preset-bar-bg:linear-gradient(180deg, #FFFFFF 0%, #FAF9F5 100%);
     --radius:12px; --radius-sm:8px;
     --font-serif:Georgia, "Times New Roman", "Songti SC", "Source Han Serif SC", "Noto Serif CJK SC", serif;
     --font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -83,7 +82,6 @@
       --nav-active-fg:#FAF9F5;
       --card-shadow:0 4px 20px rgba(0,0,0,0.35);
       --hero-bg:linear-gradient(135deg, rgba(229, 142, 60, 0.12) 0%, #21211F 60%);
-      --preset-bar-bg:linear-gradient(180deg, #242421 0%, #21211F 100%);
     }
   }
 
@@ -118,7 +116,6 @@
     --nav-active-fg:#FAF9F5;
     --card-shadow:0 4px 20px rgba(0,0,0,0.35);
     --hero-bg:linear-gradient(135deg, rgba(229, 142, 60, 0.12) 0%, #21211F 60%);
-    --preset-bar-bg:linear-gradient(180deg, #242421 0%, #21211F 100%);
   }
 
   *{box-sizing:border-box}
@@ -173,47 +170,6 @@
   .pill.ok::before{background:var(--ok);box-shadow:0 0 6px var(--ok)}
   .pill.warn{color:var(--warn);border-color:rgba(180,83,9,0.25);background:var(--warn-dim)}
   .pill.warn::before{background:var(--warn)}
-
-  /* ── 一键场景预设 ───────────────────────────────────── */
-  .preset-bar{background:var(--preset-bar-bg);
-       border:1px solid var(--line2);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px;
-       box-shadow:var(--card-shadow);scroll-margin-top:92px}
-  .preset-bar-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px}
-  .preset-bar-head b{font-family:var(--font-serif);font-size:15px;font-weight:600;display:flex;align-items:center;gap:8px;color:var(--fg)}
-  .preset-bar-head span{font-family:var(--font-sans);font-size:12px;color:var(--dim);font-weight:400}
-  .preset-now{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-4px 0 14px}
-  .preset-now .now-lead{font-size:11.5px;color:var(--dim2);margin-right:2px}
-  .preset-now .now-chip{font-size:11px;color:var(--dim);background:var(--panel2);
-       border:1px solid var(--line);border-radius:99px;padding:2px 9px;white-space:nowrap}
-  .preset-now .now-chip b{color:var(--fg);font-weight:600}
-  .preset-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
-  @media (min-width: 920px){
-    .preset-cards{grid-template-columns:repeat(3, 1fr)}
-  }
-  .preset-card{background:var(--panel);
-       border:1px solid var(--line2);border-radius:var(--radius-sm);
-       padding:15px;cursor:pointer;transition:all .2s cubic-bezier(0.16, 1, 0.3, 1);position:relative;
-       display:flex;flex-direction:column;box-shadow:var(--card-shadow)}
-  .preset-card:hover{border-color:var(--line2);background:var(--panel);transform:translateY(-1px);box-shadow:0 4px 14px rgba(0,0,0,0.06)}
-  .preset-card.active{border-color:var(--accent);background:var(--panel);
-       box-shadow:0 0 0 1px var(--accent), 0 4px 16px var(--accent-glow)}
-  .preset-card.active::after{content:"✓ 当前使用";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
-       padding:1px 7px;border-radius:99px;background:var(--accent);color:#ffffff;box-shadow:0 2px 8px var(--accent-glow)}
-  .preset-card-top{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin-bottom:6px}
-  .preset-name{font-family:var(--font-serif);font-size:14px;font-weight:600;color:var(--fg);white-space:nowrap}
-  .preset-card.active .preset-name{color:var(--accent)}
-  /* 已点选、但还没保存：与「✓ 当前使用」区分开 —— 点了不等于生效 */
-  .preset-card.pending{border-color:var(--warn);
-       box-shadow:0 0 0 1px var(--warn), 0 4px 16px rgba(251,191,36,0.16)}
-  .preset-card.pending::after{content:"已选 · 待保存";position:absolute;top:-9px;right:12px;font-size:10px;font-weight:600;
-       padding:1px 7px;border-radius:99px;background:var(--warn);color:#1a1a1a;box-shadow:0 2px 8px rgba(251,191,36,0.35)}
-  .preset-card.pending .preset-name{color:var(--warn)}
-  .preset-badge{font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim2);white-space:nowrap;flex:none}
-  .preset-badge.rec{background:var(--ok-dim);color:var(--ok);border-color:rgba(21,128,61,0.25)}
-  .preset-badge.hot{background:var(--accent-dim);color:var(--accent);border-color:rgba(217,107,39,0.25)}
-  .preset-detail{font-size:11px;color:var(--dim2);line-height:1.5;margin-top:auto;padding-top:8px;
-       border-top:1px dashed var(--line);word-break:break-word}
-  .preset-detail b{color:var(--dim);font-weight:600}
 
   /* ── 新手极速引导 ───────────────────────────────────── */
   .onboard-hero{background:var(--hero-bg);
@@ -862,7 +818,7 @@ function addModelRow(d, name, label, oneM){
 
 function renderSwitches(d){
   $('#moneyBox').innerHTML = MONEY.map(([k, label, why]) =>
-    SW(label, why, `data-key="${k}"`, 'session')).join('');
+    SW(label, why, `data-key="${k}"`, k === 'promptCacheTtl' ? 'restart' : 'session')).join('');
   const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
   check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
   check('promptSuggestionEnabled', d.settings.promptSuggestionEnabled === false);
