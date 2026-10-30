@@ -1,15 +1,15 @@
 # claude-tuner
 
 <p align="center">
-  <strong>专为 Claude Code 与 Claude 桌面端打造的高性能本地优化网关</strong>
+  <strong>专为 Claude Code 与 Claude 桌面端打造的本地优化网关</strong>
   <br />
-  前缀缓存稳定化 · 动态工具与提示词联动裁剪 · 本地可视化调控台 · 纯标准库零依赖
+  前缀缓存稳定化 · 分组工具裁剪与提示词联动 · 本地可视化调控台 · 纯标准库零依赖
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-48BB78?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-blue?style=flat-square" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/Cache%20Hit%20Rate-99%25%2B-brightgreen?style=flat-square" alt="99%+ Cache Hit">
+  <img src="https://img.shields.io/badge/Cache%20Hit-99.5%25-brightgreen?style=flat-square" alt="99.5% Cache Hit">
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey?style=flat-square&logo=apple" alt="macOS">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
@@ -33,10 +33,10 @@ Claude Code 与 Claude 桌面端（3P 模式）默认只认官方模型名称。
 
 | 指标 | 结果 |
 | :--- | :--- |
-| 缓存命中率 | **99% 以上**（本机 7 天、11,155 次请求） |
+| 缓存命中率 | **99.5%**（本机 7 天、11,155 次请求） |
 | 输入成本 | 每百万 Token 约 **¥0.02 – 0.03** |
 
-> 价格按 deepseek-v4-flash 官方定价估算；命中率随会话节奏浮动，99% 以上是实测区间，不是固定值。
+> 命中率按 Token 计：缓存读取 ÷（缓存读取 + 未命中输入），不含输出。这是链路观测值，不是对照实验算出的提升幅度；价格按 deepseek-v4-flash 官方定价估算。
 
 ---
 
@@ -136,7 +136,7 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 
 ### 真实用量透视
 
-直接解析上游原生返回的 `usage` 数据，清晰展示缓存命中率、命中/未命中的 Token 分类、以及工具裁剪节省的定义数量，提供客观、无修饰的用量反馈。
+直接解析上游原生返回的 `usage` 数据，展示缓存读取与未命中 Token 的占比、以及工具裁剪剥掉的定义数量；全部取自上游返回值，不做估算。
 
 ---
 
@@ -158,7 +158,15 @@ claude -p "只回复两个字：成功"
 <details>
 <summary><strong>Q: 裁剪冗余工具是否会影响代码编写与文件读写？</strong></summary>
 
-**绝对不会**。核心编程工具（`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash` 等）均被收录于底层保护名单中，任何开关组合都无法剥离。可被裁剪的只是联网、桌面界面、会话管理、多智能体协同等外围工具。
+不会。核心编程工具（`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash` 等）均被收录于底层保护名单中，任何开关组合都无法剥离。可被裁剪的只是联网、桌面界面、会话管理、多智能体协同等外围工具。
+</details>
+
+<details>
+<summary><strong>Q: 为什么工具裁剪是分组静态开关，而不是按任务动态选择？</strong></summary>
+
+`tools` 位于请求最前面，属于缓存前缀的一部分。按任务每轮动态增删，等于每轮换一次前缀，缓存几乎每轮都要重建。分组开关只在改配置时影响一次，之后前缀稳定下来就能持续命中。
+
+代价是少了按任务粒度做工具检索的灵活性——那一层 Anthropic 官方的 Tool Search 做得更细。这里选择的是先把缓存稳住，把两者拆成两件事做。
 </details>
 
 <details>
