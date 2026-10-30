@@ -257,6 +257,11 @@ def unknown_tools(names, cfg):
             and n not in tool_rules.PROTECTED_TOOLS]
 
 
+def _pruning_switch_keys():
+    """配置页上每一个精简开关的键 —— 类别表就是这份名单的唯一来源。"""
+    return {key for key, _ in tool_rules.CATEGORY_NAMESPACES} | set(tool_rules.CATEGORY_NAMES)
+
+
 def _audit_tools(raw, tp_cfg, surface_skipped=False):
     """工具面：剥离多少、保留哪些；只把类别表外的工具列为待判定。
 
@@ -298,6 +303,16 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
         print("       两种都算判过了：表里有了就不再报，也不必每次跟版重判一遍。")
     else:
         print("  ✅ 类别表已覆盖本次出现的全部工具")
+        # 开着、却一个工具都管不到的开关：不是故障（规则本身是好的，只是这一版客户端
+        # 不再发那些工具），但它此刻**什么都不做**。静默无用比报出来更糟 —— 用户会以为
+        # 那一项正在生效。关着的开关不列：它本来就没打算动任何东西。
+        idle = sorted(k for k in _pruning_switch_keys()
+                      if tool_rules.tp_flag(cfg, k)
+                      and not any(tool_rules.category_for(n) == k for n in names))
+        if idle:
+            print("  ℹ️ %d 个开关开着、但本次请求里没有它名下的工具（此刻不做事，非故障）：" % len(idle))
+            print("     %s" % ", ".join(idle))
+            print("     → 客户端不再发这些工具后可考虑删掉该开关；若只面向新客户端则纯属死重。")
     print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
     return len(pending)
 
