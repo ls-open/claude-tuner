@@ -9,7 +9,6 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-48BB78?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-blue?style=flat-square" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/Cache%20Hit-99.5%25-brightgreen?style=flat-square" alt="99.5% Cache Hit">
   <img src="https://img.shields.io/badge/Platform-macOS-lightgrey?style=flat-square&logo=apple" alt="macOS">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
@@ -48,6 +47,8 @@ Claude Code 与 Claude 桌面端（3P 模式）默认只认官方模型名称。
   清理动态日期、Git 快照、模型宣称与计费头；回填被裁剪的思维链；稳定并发工具块的顺序。
 - ✂️ **工具裁剪与提示词联动**  
   按组剥离低频工具，并同步移除 System Prompt 里对应的说明段落；核心编程工具受硬编码保护。
+- 🔍 **客户端升级跟版自检（抓包分析）**  
+  客户端升级后抓一份真实请求，自动核对注入面是否已被现有规则吸收：工具面、System 面、消息面、提示词与工具搭配四面各查一遍，还能和旧版抓包对比，看这次升级到底改了什么。
 - 🚀 **探针本地秒回**  
   `max_tokens <= 1` 的连通性探针在本地直接返回，不发往上游、不计费。
 - 🎨 **本地配置台**  
@@ -140,6 +141,25 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 
 ---
 
+## 🔍 跟版自检（抓包分析）
+
+客户端一升级，注入的提示词与工具表都可能变。升级后按这三步自查一次即可：
+
+```bash
+python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture on   # 打开抓包
+#   去客户端发一条消息（探针请求不会被抓）
+python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py audit --last # 四面自检
+python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture off  # 收工关掉
+```
+
+结论全绿即表示这次升级已被现有规则完全吸收，无需动作；有命中会直接指出该补哪条规则。
+想跟版对比，`sentinel.py compare <旧抓包> <新抓包>` 会列出工具定义与 System 提示词的具体差异。
+
+抓的是**客户端发来的原始报文**，平时开关是关的；打开后归档到 `~/.claude-tuner/captures/`
+（最多保留最近 20 个会话），用完记得关掉。
+
+---
+
 ## 💻 终端 Claude Code 联动
 
 安装时默认已打通终端环境。终端中的 `claude` 命令行工具将自动走本地网关转发，共享前缀优化规则与上游模型配置：
@@ -166,7 +186,17 @@ claude -p "只回复两个字：成功"
 
 `tools` 位于请求最前面，属于缓存前缀的一部分。按任务每轮动态增删，等于每轮换一次前缀，缓存几乎每轮都要重建。分组开关只在改配置时影响一次，之后前缀稳定下来就能持续命中。
 
-代价是少了按任务粒度做工具检索的灵活性——那一层 Anthropic 官方的 Tool Search 做得更细。这里选择的是先把缓存稳住，把两者拆成两件事做。
+代价是少了按任务粒度做工具检索的灵活性。
+</details>
+
+<details>
+<summary><strong>Q: 能开客户端的 Tool Search（`toolSearchEnabled`）吗？</strong></summary>
+
+**不能。** Tool Search 是客户端的一次性省 Token 手段：它不再把全部工具说明一次发给模型，
+而是先发一个检索入口，模型要用哪个工具再去取哪个。
+
+代价是工具表逐轮变化 —— 而 `tools` 在请求最前面，属于缓存前缀。前缀每轮变一次，缓存就
+每轮重建，本项目做的事全部作废。两者只能选一个，这里选缓存：工具一律静态分组裁剪。
 </details>
 
 <details>

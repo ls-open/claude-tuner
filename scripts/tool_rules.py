@@ -106,7 +106,6 @@ CATEGORY_NAMES = {
     "strip_web_search_tools": ("WebSearch", "web_search"),
     "strip_web_fetch_tools": ("WebFetch", "web_fetch", "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
-    "strip_design_sync_tools": ("DesignSync", "design_sync"),
     # 以下按**真实耦合**分组，不是按「感觉像一类」——
     # 真配对的一起进出（ListAgents 存在的意义就是找出能 SendMessage 的对象；
     # Enter/Exit、EnterPlanMode/ExitPlanMode 各自成对）。

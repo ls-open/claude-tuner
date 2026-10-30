@@ -235,7 +235,6 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_pr_ci_tools": True,            # 剥离 GitHub PR 关联与 CI 监控自动化 (mcp__ccd_pr__*)
     "strip_terminal_tools": False,        # 桌面右侧终端面板读取工具 (mcp__terminal__*)
     "strip_notebook_tools": True,         # 剥离 Jupyter Notebook 单元格编辑工具 (NotebookEdit)
-    "strip_design_sync_tools": True,      # 剥离 DesignSync (3P模式下无法官方认证)
     "custom_strip_tools": [],             # 自定义额外剥离工具名列表
     # 以下几项默认**关**：删掉的是真本事（跨会话协作 / 工作树隔离 / 计划模式），
     # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
@@ -332,7 +331,9 @@ def ensure_config_initialized(config_path=None):
     """自动初始化或补全 ~/.claude-tuner/config.json 配置文件。
 
     1. 若文件不存在：自动生成包含 rules / tool_pruning 的脚手架配置；
-    2. 若文件已存在：只补缺失的顶级节点与子配置项，不删任何已有键、不改任何已有值。
+    2. 若文件已存在：只补缺失的顶级节点与子配置项，不改任何已有值；
+       同时**剔除已退役的开关键** —— 默认值表是这两张表的唯一 schema，表里没有的键
+       不可能有实现，留着就是一项「写着开着、实际什么都不做」的幽灵开关。
     """
     base_dir = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
     path = config_path or os.path.join(base_dir, "config.json")
@@ -365,6 +366,17 @@ def ensure_config_initialized(config_path=None):
             for rk, rv in DEFAULT_RULES.items():
                 if rk not in cfg["rules"]:
                     cfg["rules"][rk] = rv
+                    updated = True
+
+        # 剔除已退役的开关键：默认值表里没有的键在代码里不可能有读取点，留着只会让
+        # 配置显示「某项开着」而报文没变（同一形态踩过两次：strip_plugin_mgmt_tools、
+        # strip_design_sync_tools）。只动这两张表，别的节点一概不碰。
+        for section, defaults in (("tool_pruning", DEFAULT_TOOL_PRUNING_CONFIG),
+                                  ("rules", DEFAULT_RULES)):
+            current = cfg.get(section)
+            if isinstance(current, dict):
+                for retired in [k for k in current if k not in defaults]:
+                    del current[retired]
                     updated = True
 
         if updated:
