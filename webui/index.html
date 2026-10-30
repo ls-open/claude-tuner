@@ -1039,7 +1039,7 @@ async function renderStats(){
   const t = d.tokens;
   const pct = (d.hit_rate*100).toFixed(1);
   const cards = [
-    `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>已统计 ${num(d.requests)} 次真实请求</small></div>`,
+    `<div class="k ${d.hit_rate>=0.8?'ok':''}"><b>${pct}%</b><small>Prompt 缓存命中率<br>按 Token 计 · ${num(d.requests)} 次请求</small></div>`,
     `<div class="k ok"><b title="${num(t.cache_read)}">${fmtTokens(t.cache_read)}</b><small>命中缓存的输入 Token<br>上游按缓存优惠价计费</small></div>`,
     `<div class="k"><b title="${num(t.input + t.cache_creation)}">${fmtTokens(t.input + t.cache_creation)}</b><small>未命中缓存的输入 Token<br>上游按标准原价计费部分</small></div>`,
     `<div class="k"><b title="${num(t.output)}">${fmtTokens(t.output)}</b><small>生成的输出 Token</small></div>`,
