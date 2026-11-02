@@ -38,6 +38,7 @@ CONFIG = os.path.join(BASE, "config.json")
 PORT_PREFERRED = int(os.environ.get("CLAUDE_TUNER_PORT", str(DEFAULT_PORT)))
 PORT_SCAN_LIMIT = 20   # 最多向上扫描 20 个端口（8789~8808）
 QUIET = False          # main() 按 --quiet 覆盖；模块级留默认值，否则 log_msg 在 main 之外一调就 NameError
+MAX_STDOUT_LOG_BYTES = 32 * 1024 * 1024   # stdout 副本（gateway.out.log）单份上限，启动时轮转
 
 
 def find_free_port(preferred=PORT_PREFERRED, limit=PORT_SCAN_LIMIT):
@@ -325,6 +326,21 @@ def _sync_locked():
     return upstream
 
 
+def rotate_stdout_log(log_path, limit=MAX_STDOUT_LOG_BYTES):
+    """返回 stdout 副本的路径，超过上限就先把旧的那份挪成 `.1`。
+
+    这份文件只在进程活着时增长（每行日志都在里面抄一份），按自然日滚动的日文件
+    管不到它 —— 不轮转就是永久增长。留一代 `.1` 够接住上一次崩溃的 traceback，
+    它也被保留期清理覆盖（文件名以 gateway 开头）。
+    """
+    try:
+        if os.path.getsize(log_path) > limit:
+            os.replace(log_path, log_path + ".1")
+    except OSError:
+        pass   # 不存在／没权限就照常追加，这里不该拦住启动
+    return log_path
+
+
 def _spawn_unlocked(script, name, pid_file, port=None):
     # 存活与否只认 HTTP 探活：pid 文件在这里没有发言权（pid 会被系统回收复用，
     # 而「端口上有没有人能应答」才是客户端真实的体验）。
@@ -335,7 +351,7 @@ def _spawn_unlocked(script, name, pid_file, port=None):
     if port:
         env["CLAUDE_TUNER_PORT"] = str(port)
     log_path = os.path.join(BASE, "logs", name + ".out.log")
-    with open(log_path, "a", encoding="utf-8") as log:
+    with open(rotate_stdout_log(log_path), "a", encoding="utf-8") as log:
         kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL,
                   "env": env, "start_new_session": True}
         proc = subprocess.Popen(

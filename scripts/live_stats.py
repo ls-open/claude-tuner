@@ -25,9 +25,13 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 # 历史日志也一起读：日志按自然日滚动归档，活跃日志连同各归档文件一起汇总，
-# 确保统计区间覆盖配置的全部保留天数（默认 7 天）。
+# 覆盖的区间以返回的 window 为准（撞上 MAX_EVENTS 时只覆盖最近这几天）。
 TAIL_BYTES = 6 * 1024 * 1024      # 单份最多读这么多
-MAX_EVENTS = 20000                # 单次汇总最多统计的事件行数上限（防异常大的日志）
+# 单次汇总的事件行数上限。撞上限时丢的是**最老**的那一段，所以必须从最新的一份
+# 往回读（否则十几份历史归档先把额度吃光，数字就停在最老那天）。
+# 它只是防跑飞的闸门，不是取样策略：额度必须明显高于「保留天数 × 单日事件量」，
+# 否则统计窗口会静默短于保留期。重度使用约 5 千事件／天，7 天 ≈ 3.5 万。
+MAX_EVENTS = 40000
 
 # 按「文件 + mtime + 大小」缓存汇总结果。读十兆日志要一两百毫秒，
 # 而页面每次打开都会拉这个接口 —— 缓存让重复打开瞬时完成。
@@ -157,7 +161,10 @@ def summarize(lines):
         requests += 1
         for k in total:
             total[k] += usage[k]
-        last = {"usage": usage, "ts": event.get("ts", ""), "model": event.get("model_mapped", "")}
+        # 按 ts 取「最近一次」，不依赖行的先后 —— 调用方可能从新往旧喂行
+        candidate = {"usage": usage, "ts": event.get("ts", ""), "model": event.get("model_mapped", "")}
+        if last is None or candidate["ts"] >= last["ts"]:
+            last = candidate
 
     billed_input = total["input"] + total["cache_read"] + total["cache_creation"]
     hit_rate = (total["cache_read"] / billed_input) if billed_input else 0.0
@@ -193,10 +200,19 @@ def read_recent_usage(home=None):
     if key and _usage_cache[0] == key:
         return _usage_cache[1]
     lines = []
-    for p in paths:
-        lines.extend(tail_lines(p))
+    used = 0
+    events = 0
+    # 从最新的一份往回读：撞 MAX_EVENTS 上限时，被丢的是最老那段，最新数据一定进得来。
+    for p in reversed(paths):
+        chunk = tail_lines(p)
+        lines.extend(chunk)
+        used += 1
+        # 每个事件就是一行 JSON，按行数估额度即可，不必先解析一遍
+        events += sum(1 for ln in chunk if ln.startswith("{"))
+        if events >= MAX_EVENTS:
+            break
     result = summarize(lines)
-    result["log_files"] = len(paths)
+    result["log_files"] = used      # 实际读进来的份数，不是目录里的份数
     if key:
         _usage_cache = (key, result)
     return result
