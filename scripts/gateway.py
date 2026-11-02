@@ -277,9 +277,8 @@ def log_retention_days():
 
 def cleanup_runtime():
     """启动期清理超期历史日志，保持日志目录整洁。"""
-    log_dir = os.path.join(BASE_DIR, "logs")
-    os.makedirs(log_dir, exist_ok=True)
-    purge_old_logs(log_dir, log_retention_days())
+    os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
+    purge_logs_quietly()
 
 
 def load_default_model():
@@ -350,6 +349,26 @@ def map_model(model):
 _LOG_EVENT_COUNT = 0
 _LOG_LOCK = threading.Lock()
 _req_ctx = threading.local()   # 当前线程正在处理的请求 id，见 log_event
+_purge_error_memo = [None]     # 上一次清理失败的报错，相同的不重复刷屏
+
+
+def purge_logs_quietly():
+    """清一次超期归档：出错既不连累调用方，也不许静默。
+
+    启动期与「每 50 条日志」两处都走这一个入口 —— 各写一份时，迟早有一处忘了兜异常：
+    启动那处忘了，网关直接起不来；写日志那处忘了，整条日志链断掉。
+
+    `purge_old_logs` 只吞文件系统错误，逻辑错误会抛上来；这里接住并落一条事件，
+    同一条错误只报一次（每个请求都会走到，不节流会把日志刷满）。
+    """
+    try:
+        purge_old_logs(os.path.join(BASE_DIR, "logs"), log_retention_days())
+        _purge_error_memo[0] = None
+    except Exception as exc:
+        if _purge_error_memo[0] != repr(exc):
+            _purge_error_memo[0] = repr(exc)
+            log_event({"event": "log_purge_failed", "error": repr(exc),
+                       "note": "日志清理抛异常，超期归档不会被淘汰"})
 
 
 def check_log_rotation():
@@ -358,7 +377,7 @@ def check_log_rotation():
     _LOG_EVENT_COUNT += 1
     if _LOG_EVENT_COUNT % 50 != 0:
         return
-    purge_old_logs(os.path.join(BASE_DIR, "logs"), log_retention_days())
+    purge_logs_quietly()
 
 
 def log_event(event, req_id=None):

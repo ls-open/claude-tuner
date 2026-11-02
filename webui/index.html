@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>claude-tuner 调控台 · Claude 本地优化网关</title>
+<title>claude-tuner 配置台 · Claude 本地优化网关</title>
 <script>
   (function(){
     try {
@@ -28,13 +28,20 @@
     --accent:#D96B27;           /* Claude 标志性陶土暖橙 */
     --accent-hover:#C15328;
     --accent-dim:rgba(217, 107, 39, 0.1);
+    --accent-line:rgba(217, 107, 39, 0.25);
     --accent-glow:rgba(217, 107, 39, 0.2);
     --ok:#15803d;
     --ok-dim:rgba(21, 128, 61, 0.09);
+    --ok-line:rgba(21, 128, 61, 0.25);       /* 与 --ok 同色的描边，徽标／提示框用 */
     --warn:#b45309;
     --warn-dim:rgba(180, 83, 9, 0.09);
+    --warn-line:rgba(180, 83, 9, 0.25);
     --err:#b91c1c;
     --err-dim:rgba(185, 28, 28, 0.09);
+    --err-line:rgba(185, 28, 28, 0.25);
+    /* toast 底在任何主题下都是深色，圆点固定用亮色值，不跟随上面三项 */
+    --toast-ok:#22c55e; --toast-warn:#f59e0b; --toast-err:#ef4444;
+    --toast-bg:#141413; --toast-fg:#FAF9F5; --toast-line:rgba(255, 255, 255, 0.12);
     --btn-primary-bg:#141413;
     --btn-primary-fg:#FAF9F5;
     --btn-primary-hover:#2B2A27;
@@ -66,13 +73,17 @@
       --accent:#E58E3C;         /* 暗色下的温暖琥珀金 */
       --accent-hover:#F2A359;
       --accent-dim:rgba(229, 142, 60, 0.15);
+      --accent-line:rgba(229, 142, 60, 0.32);
       --accent-glow:rgba(229, 142, 60, 0.25);
       --ok:#4ade80;
       --ok-dim:rgba(74, 222, 128, 0.15);
+      --ok-line:rgba(74, 222, 128, 0.32);
       --warn:#fbbf24;
       --warn-dim:rgba(251, 191, 36, 0.15);
+      --warn-line:rgba(251, 191, 36, 0.32);
       --err:#f87171;
       --err-dim:rgba(248, 113, 113, 0.15);
+      --err-line:rgba(248, 113, 113, 0.32);
       --btn-primary-bg:#FAF9F5;
       --btn-primary-fg:#141413;
       --btn-primary-hover:#FFFFFF;
@@ -81,6 +92,7 @@
       --nav-active-bg:rgba(255, 255, 255, 0.08);
       --nav-active-fg:#FAF9F5;
       --card-shadow:0 4px 20px rgba(0,0,0,0.35);
+      --toast-bg:#252422; --toast-line:rgba(255, 255, 255, 0.16);
       --hero-bg:linear-gradient(135deg, rgba(229, 142, 60, 0.12) 0%, #21211F 60%);
     }
   }
@@ -166,9 +178,9 @@
         background:var(--panel);color:var(--dim);display:inline-flex;align-items:center;gap:7px;
         box-shadow:0 1px 2px rgba(0,0,0,0.02)}
   .pill::before{content:"";width:6px;height:6px;border-radius:99px;background:var(--dim2)}
-  .pill.ok{color:var(--ok);border-color:rgba(21,128,61,0.25);background:var(--ok-dim)}
+  .pill.ok{color:var(--ok);border-color:var(--ok-line);background:var(--ok-dim)}
   .pill.ok::before{background:var(--ok);box-shadow:0 0 6px var(--ok)}
-  .pill.warn{color:var(--warn);border-color:rgba(180,83,9,0.25);background:var(--warn-dim)}
+  .pill.warn{color:var(--warn);border-color:var(--warn-line);background:var(--warn-dim)}
   .pill.warn::before{background:var(--warn)}
 
   /* ── 新手极速引导 ───────────────────────────────────── */
@@ -233,6 +245,28 @@
   .hint{font-size:12.5px;color:var(--dim);margin-top:8px;line-height:1.7}
   .hint.ok{color:var(--ok)} .hint.warn{color:var(--warn)} .hint.err{color:var(--err)}
   .hint code{font-family:var(--mono);font-size:11.5px;color:var(--dim2)}
+
+  /* 结论型提示条：说清「刚才那次操作发生了什么」。
+     与 .hint（跟在字段后面的灰色说明）分工不同 —— 不要用行内样式临时造第三种。 */
+  .banner{margin-top:14px;padding:12px;border-radius:var(--radius-sm);font-size:12.5px;
+          line-height:1.6;background:var(--panel2);border:1px solid var(--line);color:var(--dim)}
+  .banner b{color:var(--fg);font-weight:600}
+  .banner.warn{background:var(--warn-dim);border-color:var(--warn-line);color:var(--warn)}
+  .banner.info{background:var(--accent-dim);border-color:var(--accent-line);color:var(--accent)}
+  .banner.ok{background:var(--ok-dim);border-color:var(--ok-line);color:var(--ok)}
+  .banner.warn b,.banner.info b,.banner.ok b{color:inherit}
+
+  /* 保存结果弹窗：标题 + 「改了什么」清单 */
+  .dlg-title{font-size:16px;font-weight:700;margin-bottom:8px;color:var(--ok)}
+  .dlg-sub{font-size:13px;color:var(--dim);margin-bottom:12px}
+  .diff-list{background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius-sm);
+             padding:8px 12px;max-height:220px;overflow-y:auto;font-size:12.5px;line-height:1.7}
+  .diff-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;
+            border-bottom:1px solid var(--line)}
+  .diff-row:last-child{border-bottom:none}
+  .diff-key{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px}
+  .diff-val{color:var(--dim)}
+  .diff-to{color:var(--fg);font-weight:600}
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
 
   /* ── 开关行与功能大卡片 ───────────────────────────────── */
@@ -248,7 +282,7 @@
   .group-body .sw:last-child{border-bottom:none}
 
   /* 核心防呆警示徽章：平时开启隐藏，关了才弹出 */
-  .badge-core-warn{display:none;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:var(--warn-dim);color:var(--warn);border:1px solid rgba(217,119,6,0.3);margin-left:10px;vertical-align:middle}
+  .badge-core-warn{display:none;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn-line);margin-left:10px;vertical-align:middle}
   .badge-core-warn.show{display:inline-flex}
 
   .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:20px 0 4px}
@@ -287,10 +321,10 @@
   .when{font-size:10.5px;font-weight:400;padding:2px 8px;border-radius:99px;
        margin-left:8px;vertical-align:1px;white-space:nowrap;
        border:1px solid var(--line2);color:var(--dim2)}
-  .when.gateway{border-color:rgba(21,128,61,0.25);color:var(--ok);background:var(--ok-dim)}
-  .when.restart{border-color:rgba(180,83,9,0.25);color:var(--warn);background:var(--warn-dim)}
-  .when.session{border-color:rgba(217,107,39,0.25);color:var(--accent);background:var(--accent-dim)}
-  .badge.auto{border-color:rgba(180,83,9,0.25);color:var(--warn)}
+  .when.gateway{border-color:var(--ok-line);color:var(--ok);background:var(--ok-dim)}
+  .when.restart{border-color:var(--warn-line);color:var(--warn);background:var(--warn-dim)}
+  .when.session{border-color:var(--accent-line);color:var(--accent);background:var(--accent-dim)}
+  .badge.auto{border-color:var(--warn-line);color:var(--warn)}
 
   /* ── 战绩卡片 ───────────────────────────────────────── */
   .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
@@ -312,21 +346,18 @@
   /* ── Claude 悬浮 Toast 与 Kbd 徽标 ────────────────────────── */
   .claude-toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;
        pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:8px}
-  .claude-toast{background:#141413;color:#FAF9F5;border:1px solid rgba(255,255,255,0.12);
+  .claude-toast{background:var(--toast-bg);color:var(--toast-fg);border:1px solid var(--toast-line);
        box-shadow:0 8px 30px rgba(0,0,0,0.25);border-radius:9999px;padding:8px 18px;
        font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:8px;
        opacity:0;transform:translateY(-8px) scale(0.96);
        transition:opacity .22s cubic-bezier(0.16, 1, 0.3, 1), transform .22s cubic-bezier(0.16, 1, 0.3, 1);
        pointer-events:auto}
-  :root[data-theme="dark"] .claude-toast{background:#252422;border-color:rgba(255,255,255,0.16)}
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]) .claude-toast{background:#252422;border-color:rgba(255,255,255,0.16)}
-  }
   .claude-toast.show{opacity:1;transform:translateY(0) scale(1)}
   .claude-toast .toast-dot{width:7px;height:7px;border-radius:50%;background:var(--accent)}
-  .claude-toast.ok .toast-dot{background:#22c55e}
-  .claude-toast.warn .toast-dot{background:#f59e0b}
-  .claude-toast.err .toast-dot{background:#ef4444}
+  /* 圆点用固定的亮色：toast 底在浅色主题下也是深色，套 --ok / --warn 会暗到看不见 */
+  .claude-toast.ok .toast-dot{background:var(--toast-ok)}
+  .claude-toast.warn .toast-dot{background:var(--toast-warn)}
+  .claude-toast.err .toast-dot{background:var(--toast-err)}
 
   .kbd-pill{display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-family:var(--mono);
        background:rgba(255,255,255,0.18);color:inherit;border-radius:4px;margin-left:6px;font-weight:600;line-height:1.2}
@@ -382,7 +413,7 @@
         <line x1="3" y1="12" x2="21" y2="12"/><circle cx="16" cy="12" r="2.5"/>
         <line x1="3" y1="17" x2="21" y2="17"/><circle cx="7" cy="17" r="2.5"/>
       </svg>
-      claude-tuner 调控台
+      claude-tuner 配置台
     </h1>
   </div>
   <div class="act">
@@ -404,9 +435,9 @@
     <a href="#s6"><span class="nav-ico">⑥</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
-    <a href="#s9"><span class="nav-ico">⑦</span>用量统计</a>
-    <a href="#s7"><span class="nav-ico">⑧</span>网关状态</a>
-    <a href="#s8"><span class="nav-ico">⑨</span>版本与更新</a>
+    <a href="#s7"><span class="nav-ico">⑦</span>用量统计</a>
+    <a href="#s8"><span class="nav-ico">⑧</span>网关状态</a>
+    <a href="#s9"><span class="nav-ico">⑨</span>版本与更新</a>
   </nav>
 
   <main>
@@ -487,7 +518,7 @@
           <th style="width:40px"></th></tr></thead>
           <tbody id="models"></tbody>
         </table>
-        <div class="hint" style="margin-top:10px">
+        <div class="hint">
           注：客户端选择器直接读取此表；<b>1M</b> 列仅控制客户端内部窗口计算（修改后需完全退出并重启 Claude）。
         </div>
       </div>
@@ -532,7 +563,7 @@
       </div>
     </section>
 
-    <section id="s9">
+    <section id="s7">
       <div class="head"><span class="num">⑦</span><h2>用量统计</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
       <div class="body">
         <p class="lead">缓存命中率越高，实际费用越省、首字响应越快。</p>
@@ -540,7 +571,7 @@
       </div>
     </section>
 
-    <section id="s7">
+    <section id="s8">
       <div class="head"><span class="num">⑧</span><h2>网关状态</h2><span class="tag" id="gwTag"></span></div>
       <div class="body">
         <div class="row">
@@ -567,7 +598,7 @@
       </div>
     </section>
 
-    <section id="s8">
+    <section id="s9">
       <div class="head"><span class="num">⑨</span><h2>版本与更新</h2><span class="tag" id="verTag"></span></div>
       <div class="body">
         <div id="verBox"></div>
@@ -1048,7 +1079,7 @@ async function renderStats(){
   const files = d.log_files || 0;
   // 只报事实：起止时刻与读了几份日志都由数据本身决定，不再写「近 N 天」——
   // 那个 N 是保留期配置，数据远没有那么多天的时候它就是一句假话。
-  const span = `<div class="hint" style="margin-top:10px">
+  const span = `<div class="hint">
       数据统计范围：${fmt(w.from)} → ${fmt(w.to)}（${files} 份日志） · 含所有会话与子代理<br>
       与终端 <b>stats.py</b> 的口径不同：那份是「当前会话主对话」的逐轮命中，这份是日志窗口内的全部请求
     </div>`;
@@ -1546,24 +1577,21 @@ async function saveClientSide(){
   $('#apikey').value = '';
   say('✅ 设置已保存', 'ok');
 
-  let bodyHtml = '';
+  let bodyHtml = `<div class="dlg-title">✅ 配置保存成功</div>`;
   if (diffs.length > 0) {
     bodyHtml += `
-      <div style="font-size:16px;font-weight:700;margin-bottom:8px;color:var(--ok)">✅ 配置保存成功</div>
-      <div style="font-size:13px;color:var(--dim);margin-bottom:12px">本次共保存 <b>${diffs.length}</b> 处改动：</div>
-      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--line2);border-radius:8px;padding:8px 12px;max-height:220px;overflow-y:auto;font-size:12.5px;line-height:1.7">
+      <div class="dlg-sub">本次共保存 <b>${diffs.length}</b> 处改动：</div>
+      <div class="diff-list">
         ${diffs.map(d => `
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px">
-              <b>${esc(d.title)}</b>：<span style="color:var(--dim)">${esc(d.from)}</span> ➔ <span style="color:var(--fg);font-weight:600">${esc(d.to)}</span>
+          <div class="diff-row">
+            <span class="diff-key">
+              <b>${esc(d.title)}</b>：<span class="diff-val">${esc(d.from)}</span> ➔ <span class="diff-to">${esc(d.to)}</span>
             </span>
-            <span class="when ${d.badge}" style="margin:0;flex-shrink:0">${esc(d.when)}</span>
+            <span class="when ${d.badge}" style="flex-shrink:0">${esc(d.when)}</span>
           </div>`).join('')}
       </div>`;
   } else {
-    bodyHtml += `
-      <div style="font-size:16px;font-weight:700;margin-bottom:8px;color:var(--ok)">✅ 配置保存成功</div>
-      <div style="font-size:13px;color:var(--dim);margin-bottom:12px">当前各项配置与运行状态完全一致，未发生任何实质变动。</div>`;
+    bodyHtml += `<div class="dlg-sub">当前各项配置与运行状态完全一致，未发生任何实质变动。</div>`;
   }
 
   // 生效指引判定
@@ -1572,17 +1600,17 @@ async function saveClientSide(){
 
   if (hasRestart) {
     bodyHtml += `
-      <div style="margin-top:14px;padding:12px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;font-size:12.5px;color:var(--warn);line-height:1.6">
+      <div class="banner warn">
         <b>⚠️ 需重启生效：</b>本次改动包含模型映射、密钥或客户端底层偏好，必须<b>完全退出并重新打开 Claude</b>（菜单「退出」，非关闭窗口）方可生效。
       </div>`;
   } else if (hasSession) {
     bodyHtml += `
-      <div style="margin-top:14px;padding:12px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.3);border-radius:8px;font-size:12.5px;color:var(--accent-hover);line-height:1.6">
+      <div class="banner info">
         <b>💡 新会话生效：</b>本次改动已写入，新开一个对话窗口即可应用新配置。
       </div>`;
   } else if (diffs.length > 0) {
     bodyHtml += `
-      <div style="margin-top:14px;padding:12px;background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.3);border-radius:8px;font-size:12.5px;color:var(--ok);line-height:1.6">
+      <div class="banner ok">
         <b>⚡️ 立即热生效：</b>改动已由常驻网关自动热加载，<b>下一轮对话直接生效</b>，无需重启 Claude 客户端！
       </div>`;
   }

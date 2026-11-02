@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import time
 
 
 BACKUP_KEEP_FILES = 20   # ~/.claude-tuner/backups/3p/ 里保留多少份单文件备份
@@ -296,7 +297,9 @@ def purge_old_logs(log_dir, retention_days=DEFAULT_LOG_RETENTION_DAYS):
                     os.remove(fpath)
             except OSError:
                 pass
-    except Exception:
+    # 只吞文件系统错误：清理逻辑自身的错（未定义名、类型错）必须抛出来，
+    # 否则「归档永远不删」会静默几个月 —— 本函数就被 `except Exception` 吞过一次 NameError。
+    except OSError:
         pass
 
 # 默认配置文件完整脚手架模板
