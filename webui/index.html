@@ -840,7 +840,10 @@ function addModelRow(d, name, label, oneM){
     <td data-slot="model"></td>
     <td style="text-align:center"><input type="checkbox" data-role="one-m"></td>
     <td><button class="link danger" title="删除这一行">✕</button></td>`;
-  tr.querySelector('button').onclick = () => tr.remove();
+  tr.querySelector('button').onclick = () => {
+    tr.remove();
+    updateUnsavedIndicator();
+  };
   $('#models').appendChild(tr);
   fillModelCell(tr.querySelector('[data-slot=model]'), label);
   tr.querySelector('[data-role=one-m]').checked = oneM !== false;
@@ -1119,7 +1122,10 @@ function watchNav(){
 
 // ── 交互事件绑定 ───────────────────────────────────────────
 $('#preset').onchange = () => onPresetChange(true);
-$('#btnAdd').onclick = () => addModelRow(CFG, CFG.options.client_models[0], '', true);
+$('#btnAdd').onclick = () => {
+  addModelRow(CFG, CFG.options.client_models[0], '', true);
+  updateUnsavedIndicator();
+};
 $('#btnDismissOnboard').onclick = () => { $('#onboardHero').style.display = 'none'; };
 
 const copyBtn = $('#btnCopyGw');
@@ -1621,7 +1627,7 @@ async function saveClientSide(){
 
   tell(bodyHtml);
   const fresh = await api('/api/config');
-  if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); }
+  if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); renderModels(CFG); }
   updateUnsavedIndicator();
 }
 

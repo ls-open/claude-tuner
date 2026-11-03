@@ -322,7 +322,7 @@ def _apply_patch_unlocked(patch):
         if three_p.get("modelPrefer1mContext") != want_top:
             three_p["modelPrefer1mContext"] = want_top
             three_p_changed = True
-        if cleaned and cleaned != three_p.get("inferenceModels"):
+        if cleaned != (three_p.get("inferenceModels") or []):
             three_p["inferenceModels"] = cleaned
             three_p_changed = True
             notes.append("模型映射已更新")
