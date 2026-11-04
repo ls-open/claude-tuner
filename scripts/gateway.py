@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Claude Desktop 3P gateway -> third-party model rewrite proxy."""
-import copy
 import hashlib
 import http.client
 import json

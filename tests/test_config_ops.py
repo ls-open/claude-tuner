@@ -24,6 +24,10 @@ from unittest import mock
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
+TESTS_DIR = Path(__file__).resolve().parent
+if str(TESTS_DIR) not in sys.path:
+    sys.path.insert(0, str(TESTS_DIR))
+import _isolated_home  # noqa: E402
 
 
 def load_config_ops():
@@ -401,6 +405,24 @@ class TestPaths(ConfigOpsTestCase):
         # 会让这条用例在那边必红 —— 而那种红是「测试写得不对」。
         self.assertEqual(paths["claude_settings"],
                          os.path.join("/tmp/fake-home", ".claude", "settings.json"))
+
+    def test_subprocess_env_covers_every_path_the_platform_reads(self):
+        """`_isolated_home.subprocess_env()` 的键集必须真的把**每一条**路径关进临时目录。
+
+        这条用例是给测试基础设施本身上的锁：早先每个测试文件各拼一份 env，
+        `XDG_CONFIG_HOME` 就漏在其中一份里，Ubuntu 上 bootstrap 于是写进了 runner 真实的
+        `~/.config` —— 断言盯着临时目录，既是假红，又真的把机器写脏。
+        这里用 `clear=True` 断掉一切继承，任何漏掉的键都会在这台机器上立刻现形（Linux/Windows
+        上分别走 XDG 与 APPDATA 分支，所以在 CI 的另外两个平台上也验得到）。
+        """
+        import tempfile
+        home = str(Path(tempfile.mkdtemp()) / "isolated")
+        with mock.patch.dict(os.environ, _isolated_home.subprocess_env(home), clear=True):
+            paths = self.ops.platform_paths()
+        for key in ("claude_dir", "claude_3p_dir", "config_library",
+                    "bridge_home", "claude_settings", "plugin_dir"):
+            self.assertTrue(str(paths[key]).startswith(home),
+                            "%s 没被关进临时目录：%s" % (key, paths[key]))
 
     def test_platform_paths_linux_uses_xdg(self):
         """Linux 上绝不能落到 ~/Library —— 那是 macOS 的布局，写了没人读。"""

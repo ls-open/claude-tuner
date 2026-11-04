@@ -36,6 +36,7 @@ SCRIPTS = PLUGIN_ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import config_ops  # noqa: E402  路径口径与生产同一份（platform_paths）
+import _isolated_home  # noqa: E402
 GATEWAY = SCRIPTS / "gateway.py"
 
 
@@ -60,9 +61,7 @@ class WebUITestCase(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.home = Path(cls._tmp.name)
         # 路径由生产口径算（见 config_ops.platform_paths），不写死 macOS 布局
-        cls._env = {"HOME": str(cls.home), "USERPROFILE": str(cls.home),
-                    "APPDATA": str(cls.home / "AppData" / "Roaming"),
-                    "XDG_CONFIG_HOME": str(cls.home / ".config")}
+        cls._env = _isolated_home.subprocess_env(cls.home)
         with mock.patch.dict(os.environ, cls._env):
             _paths = config_ops.platform_paths()
         cls.config_lib = Path(_paths["config_library"])
@@ -86,12 +85,12 @@ class WebUITestCase(unittest.TestCase):
 
         # 存到类上：起不来时的重跑探针要用同一份环境，不能指望局部变量能跨方法看见
         # （曾经写成局部 `env`，探针里 NameError，把真正的原因整个吞掉）。
-        env = cls._proc_env = dict(os.environ)
-        env.update({"HOME": str(cls.home), "USERPROFILE": str(cls.home),
-                    "APPDATA": str(cls.home / "AppData" / "Roaming"),
-                    "XDG_CONFIG_HOME": str(cls.home / ".config"),
-                    "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
-                    "CLAUDE_TUNER_HOME": str(cls.bridge_home), "CLAUDE_TUNER_PORT": str(cls.port)})
+        env = cls._proc_env = _isolated_home.subprocess_env(
+            cls.home,
+            CLAUDE_TUNER_3P_DIR=cls.config_lib,
+            CLAUDE_TUNER_HOME=cls.bridge_home,
+            CLAUDE_TUNER_PORT=cls.port,
+        )
         # 把网关的输出留下来：起不来时它是唯一的线索（曾经在 CI 上只看到
         # 「15 秒内没起来」而没有任何原因，只能靠猜）。
         cls._log_path = cls.bridge_home / "gateway.test.log"

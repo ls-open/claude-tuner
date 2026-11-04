@@ -143,18 +143,6 @@ def present_rules(parsed):
     return set(_match(_COMPILED, system_field, system_msgs, body))
 
 
-def silent_rules(parsed_after_cleaning, rules_cfg, changed):
-    """洗完触发物还在、`changed` 里却没有这条规则 —— 返回这些规则的键。
-
-    `rules_cfg` 用生产同一口径取开关值（`r.get(key, DEFAULT_RULES[key])` 由调用方保证），
-    这里只回答「开了且该动却没动」。
-    """
-    fired = {c for c in changed or [] if isinstance(c, str)}
-    return [rule for rule in sorted(present_rules(parsed_after_cleaning))
-            if rules_cfg.get(rule, False)
-            and not any(c == rule or c.startswith(rule + "_") for c in fired)]
-
-
 def residue_rules(cleaned_parsed):
     """清洗完之后，报文里还留着哪几类易变痕 —— 返回规则键集合。
 

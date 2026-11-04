@@ -19,6 +19,8 @@ import time
 import unittest
 import urllib.request
 
+import _isolated_home
+
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATEWAY = os.path.join(PLUGIN_ROOT, "scripts", "gateway.py")
 STOP_FILE = "stop.request"
@@ -37,10 +39,11 @@ class GatewayLifecycleTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.home = self._tmp.name
         self.port = free_port()
-        self.env = dict(os.environ,
-                        HOME=self.home,
-                        CLAUDE_TUNER_HOME=os.path.join(self.home, ".claude-tuner"),
-                        CLAUDE_TUNER_PORT=str(self.port))
+        self.env = _isolated_home.subprocess_env(
+            self.home,
+            CLAUDE_TUNER_HOME=os.path.join(self.home, ".claude-tuner"),
+            CLAUDE_TUNER_PORT=self.port,
+        )
         self.proc = None
         self.addCleanup(self._kill)
 

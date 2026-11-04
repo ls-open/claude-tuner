@@ -36,6 +36,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import common  # noqa: E402
 import config_ops  # noqa: E402
+import _isolated_home  # noqa: E402
 
 
 class BootstrapTestCase(unittest.TestCase):
@@ -46,17 +47,9 @@ class BootstrapTestCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.home = Path(self._tmp.name)
         # 客户端目录由**生产函数**算（同一份 platform_paths），测试不写死 macOS 的
-        # `~/Library/Application Support` —— 写死就等于把断言绑在一个平台上，
-        # 换到 Windows 就跑不过，而那种红是「测试写得不对」不是「代码有问题」。
-        # APPDATA 一并指到临时目录，Windows 上的分支也在这套隔离里跑。
-        # Windows 的 expanduser 读 USERPROFILE 而不是 HOME：两个都指到临时目录，
-        # 否则测试会去写 runner 的真实用户目录，而断言盯着临时目录（假红且危险）。
-        self._env = {
-            "HOME": str(self.home),
-            "USERPROFILE": str(self.home),
-            "APPDATA": str(self.home / "AppData" / "Roaming"),
-            "XDG_CONFIG_HOME": str(self.home / ".config"),
-        }
+        # `~/Library/Application Support` —— 写死就等于把断言绑在一个平台上。
+        # 键集只在 `_isolated_home.subprocess_env()` 里有一份，这里不再各拼一套。
+        self._env = _isolated_home.subprocess_env(self.home)
         with mock.patch.dict(os.environ, self._env):
             self.paths = config_ops.platform_paths()
         self.config_lib = Path(self.paths["config_library"])
@@ -68,16 +61,12 @@ class BootstrapTestCase(unittest.TestCase):
     # ── 跑生产入口 ──
 
     def run_bootstrap(self, *argv):
-        env = dict(os.environ)
-        env.update({
-            "HOME": str(self.home),
-            "USERPROFILE": str(self.home),
-            "APPDATA": str(self.home / "AppData" / "Roaming"),
-            "XDG_CONFIG_HOME": str(self.home / ".config"),
-            "CLAUDE_TUNER_3P_DIR": str(self.config_lib),
-            "CLAUDE_TUNER_HOME": str(self.bridge_home),
-            "CLAUDE_TUNER_API_KEY": "",
-        })
+        env = _isolated_home.subprocess_env(
+            self.home,
+            CLAUDE_TUNER_3P_DIR=self.config_lib,
+            CLAUDE_TUNER_HOME=self.bridge_home,
+            CLAUDE_TUNER_API_KEY="",
+        )
         # encoding 显式给 utf-8：bootstrap 自己被 configure_stdio 切到了 UTF-8，
         # 而 Windows 上父进程默认按 locale(cp1252/cp936) 解码 —— 中文会乱码解码失败。
         return subprocess.run([sys.executable, str(BOOTSTRAP)] + list(argv),
