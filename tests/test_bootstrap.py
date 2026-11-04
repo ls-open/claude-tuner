@@ -55,6 +55,7 @@ class BootstrapTestCase(unittest.TestCase):
             "HOME": str(self.home),
             "USERPROFILE": str(self.home),
             "APPDATA": str(self.home / "AppData" / "Roaming"),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
         }
         with mock.patch.dict(os.environ, self._env):
             self.paths = config_ops.platform_paths()
@@ -72,6 +73,7 @@ class BootstrapTestCase(unittest.TestCase):
             "HOME": str(self.home),
             "USERPROFILE": str(self.home),
             "APPDATA": str(self.home / "AppData" / "Roaming"),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
             "CLAUDE_TUNER_3P_DIR": str(self.config_lib),
             "CLAUDE_TUNER_HOME": str(self.bridge_home),
             "CLAUDE_TUNER_API_KEY": "",

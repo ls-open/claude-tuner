@@ -389,7 +389,8 @@ class TestPaths(ConfigOpsTestCase):
         self.assertIn("/backups/3p/", p)
 
     def test_platform_paths_honours_overrides(self):
-        env = {"HOME": "/tmp/fake-home", "USERPROFILE": "/tmp/fake-home", "CLAUDE_TUNER_HOME": "/tmp/fake-bridge",
+        env = {"HOME": "/tmp/fake-home", "USERPROFILE": "/tmp/fake-home",
+               "XDG_CONFIG_HOME": "/tmp/fake-config", "CLAUDE_TUNER_HOME": "/tmp/fake-bridge",
                "CLAUDE_TUNER_3P_DIR": "/tmp/fake-3p"}
         with mock.patch.dict(os.environ, env, clear=False):
             paths = self.ops.platform_paths()
