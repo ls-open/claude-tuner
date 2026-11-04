@@ -323,8 +323,14 @@ class Test3pGlobDerivation(unittest.TestCase):
                          os.path.join("/tmp/ccds-3p-derived", "*.json"))
 
     def test_3p_config_dir_windows(self):
+        """Windows 分支要能取出 APPDATA 下的 configLibrary。
+
+        **必须先把 stdlib 导入好再伪造 sys.platform**：`shutil` 在 win32 分支上会
+        `import _winapi`，而 macOS / Linux 上没有这个模块 —— 先改 platform 再导就会
+        ModuleNotFoundError。本机因为别的用例先导过 shutil 才侥幸通过，CI 上按顺序跑就露了。
+        """
         code = (
-            "import os, sys;"
+            "import os, sys, shutil, json;"
             "sys.platform = 'win32';"
             f"sys.path.insert(0, {SCRIPTS_DIR!r});"
             "import common;"
@@ -337,7 +343,3 @@ class Test3pGlobDerivation(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.strip(),
                          os.path.join("/fake/appdata", "Claude-3p", "configLibrary"))
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)

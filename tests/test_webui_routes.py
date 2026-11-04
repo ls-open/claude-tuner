@@ -115,6 +115,21 @@ class WebUITestCase(unittest.TestCase):
             tail = cls._log_path.read_text(encoding="utf-8", errors="replace")[-1500:]
         except OSError:
             pass
+        if not tail.strip():
+            # 一个字节都没写 —— 说明它没跑到打印那一步。再起一份把输出接进管道，
+            # 等 10 秒后收走它说的话：这样 CI 上也能看到真实原因，而不是「（无输出）」。
+            try:
+                probe = subprocess.Popen([sys.executable, str(GATEWAY)], env=env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         text=True)
+                try:
+                    out, _ = probe.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    probe.kill()
+                    out, _ = probe.communicate()
+                tail = "（重跑一次的完整输出，退出码 %s）\n%s" % (probe.returncode, (out or "")[-1500:])
+            except Exception as exc:
+                tail = "（重跑也失败：%s）" % exc
         raise RuntimeError("网关没能在 15 秒内起来。网关输出：\n%s" % (tail or "（无输出）"))
 
     @classmethod
