@@ -84,7 +84,9 @@ class WebUITestCase(unittest.TestCase):
         cls.token = "t" * 64
         (cls.bridge_home / "webui.token").write_text(cls.token, encoding="utf-8")
 
-        env = dict(os.environ)
+        # 存到类上：起不来时的重跑探针要用同一份环境，不能指望局部变量能跨方法看见
+        # （曾经写成局部 `env`，探针里 NameError，把真正的原因整个吞掉）。
+        env = cls._proc_env = dict(os.environ)
         env.update({"HOME": str(cls.home), "USERPROFILE": str(cls.home),
                     "APPDATA": str(cls.home / "AppData" / "Roaming"),
                     "XDG_CONFIG_HOME": str(cls.home / ".config"),
@@ -123,7 +125,7 @@ class WebUITestCase(unittest.TestCase):
             # 一个字节都没写 —— 说明它没跑到打印那一步。再起一份把输出接进管道，
             # 等 10 秒后收走它说的话：这样 CI 上也能看到真实原因，而不是「（无输出）」。
             try:
-                probe = subprocess.Popen([sys.executable, str(GATEWAY)], env=env,
+                probe = subprocess.Popen([sys.executable, str(GATEWAY)], env=cls._proc_env,
                                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                          text=True)
                 try:

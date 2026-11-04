@@ -7,6 +7,8 @@ import json
 import os
 import re
 import sys
+import socket
+import socketserver
 import threading
 import time
 import urllib.request
@@ -301,6 +303,25 @@ def _watch_stop(server, stop_file):
                 pass
             server.shutdown()
             return
+
+
+class GatewayServer(ThreadingHTTPServer):
+    """不查反向 DNS 的 HTTP 服务。
+
+    标准库的 `HTTPServer.server_bind()` 会顺手做一次 `socket.getfqdn(host)`，
+    只为了在日志里印个主机名。这一步在**启动路径上**：DNS 卡住（离线、VPN 断掉的
+    解析器、CI 的 macOS runner）时，它会在端口已经 bind 之后、`serve_forever()` 之前
+    阻塞 —— 症状是「进程活着、端口占着、一个字节都不响应」，外行看起来就是
+    「网关起不来，而且没有任何原因」。启动绝不能依赖解析器。
+
+    `server_name` 只有日志用途，直接用字面地址即可。
+    """
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = host
+        self.server_port = port
 
 
 def _hold_lifetime_lock():
@@ -1776,7 +1797,7 @@ if __name__ == "__main__":
         PORT = DEFAULT_PORT
 
     try:
-        server = ThreadingHTTPServer((HOST, PORT), Handler)
+        server = GatewayServer((HOST, PORT), Handler)
     except OSError as exc:
         print("gateway 启动失败（端口 %d 不可用）: %s" % (PORT, exc), flush=True)
         raise SystemExit(1)

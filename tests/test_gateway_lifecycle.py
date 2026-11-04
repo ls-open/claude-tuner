@@ -94,6 +94,31 @@ class GatewayLifecycleTest(unittest.TestCase):
         self._start()
         self.assertFalse(os.path.exists(os.path.join(self.env["CLAUDE_TUNER_HOME"], RUNTIME_FILE)),
                          "运行时记录应由 manager 在 spawn 时写，网关不该自己写一份")
+    def test_starts_even_when_reverse_dns_hangs(self):
+        """反向 DNS 卡住也必须照常启动。
+
+        标准库的 `HTTPServer.server_bind()` 会顺手 `socket.getfqdn(host)`（只为日志印个
+        主机名），而它在 bind 之后、`serve_forever()` 之前 —— 解析器一卡，网关就「活着、
+        占着端口、一个字节都不回」。这就是公开仓 macOS runner 上那次三平台 CI 变红的全部
+        原因：本机有网永远复现不出来，Windows / Ubuntu 的解析器是现成的。
+
+        这里把那一次 `getfqdn` 变成 60 秒，用**真实入口**起一遍：修复前必然超时。
+        """
+        overlay = os.path.join(self.home, "dns_overlay")
+        os.makedirs(overlay, exist_ok=True)
+        with open(os.path.join(overlay, "sitecustomize.py"), "w", encoding="utf-8") as fh:
+            fh.write("import socket, time\n"
+                     "_real = socket.getfqdn\n"
+                     "def _hang(*a, **k):\n"
+                     "    time.sleep(60)\n"
+                     "    return _real(*a, **k)\n"
+                     "socket.getfqdn = _hang\n")
+        old = self.env.get("PYTHONPATH")
+        self.env["PYTHONPATH"] = overlay + (os.pathsep + old if old else "")
+
+        self._start()          # 20 秒内起得来 —— 说明启动路径上没有任何一次解析
+        with urllib.request.urlopen("http://127.0.0.1:%d/v1/models" % self.port, timeout=5) as r:
+            self.assertEqual(r.status, 200)
 
 
 if __name__ == "__main__":
