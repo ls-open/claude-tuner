@@ -42,6 +42,7 @@ from common import (  # noqa: E402
     DEFAULT_PORT,
     atomic_write_json,
     ensure_config_initialized,
+    configure_stdio,
     find_active_3p_config_path,
     normalize_upstream,
     prune_backups,
@@ -49,7 +50,12 @@ from common import (  # noqa: E402
 
 
 def log(msg=""):
-    print(msg)
+    """输出一行。Windows 控制台默认编码打不了 emoji / 中文，兜一层转义 ——
+    安装器在那边失败时只留一句 UnicodeEncodeError，用户完全看不懂发生了什么。"""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("unicode_escape").decode("ascii"))
 
 
 # ==============================================================================
@@ -495,4 +501,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    configure_stdio()
     sys.exit(main())

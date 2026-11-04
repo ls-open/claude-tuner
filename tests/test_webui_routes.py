@@ -94,7 +94,6 @@ class WebUITestCase(unittest.TestCase):
         # 「15 秒内没起来」而没有任何原因，只能靠猜）。
         cls._log_path = cls.bridge_home / "gateway.test.log"
         cls._log = open(cls._log_path, "ab")
-        cls.addClassCleanup(cls._log.close)
         kwargs = {}
         if os.name == "nt":
             # POSIX 的 start_new_session 在 Windows 上会被忽略；那边用 creationflags
@@ -139,6 +138,11 @@ class WebUITestCase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        # Windows 上「打开着的文件」删不掉：先把日志句柄关掉，再让临时目录清理跑。
+        try:
+            cls._log.close()
+        except Exception:
+            pass
         cls.proc.terminate()
         try:
             cls.proc.wait(timeout=5)

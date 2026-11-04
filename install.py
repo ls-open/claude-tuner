@@ -36,8 +36,20 @@ SRC_DIR = os.path.dirname(os.path.abspath(_LOCAL_FILE)) if _LOCAL_FILE else None
 SRC_SCRIPTS = SRC_DIR or ""
 
 
+def configure_stdio():
+    """Windows 控制台默认 cp1252/cp936：不打这一下，安装器一 print emoji 就崩。"""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
+
 def log(msg=""):
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        print(msg.encode("unicode_escape").decode("ascii"), flush=True)
 
 
 def step(title):
@@ -281,4 +293,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    configure_stdio()
     sys.exit(main())
