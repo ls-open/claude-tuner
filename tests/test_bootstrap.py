@@ -49,8 +49,11 @@ class BootstrapTestCase(unittest.TestCase):
         # `~/Library/Application Support` —— 写死就等于把断言绑在一个平台上，
         # 换到 Windows 就跑不过，而那种红是「测试写得不对」不是「代码有问题」。
         # APPDATA 一并指到临时目录，Windows 上的分支也在这套隔离里跑。
+        # Windows 的 expanduser 读 USERPROFILE 而不是 HOME：两个都指到临时目录，
+        # 否则测试会去写 runner 的真实用户目录，而断言盯着临时目录（假红且危险）。
         self._env = {
             "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
             "APPDATA": str(self.home / "AppData" / "Roaming"),
         }
         with mock.patch.dict(os.environ, self._env):
@@ -67,6 +70,7 @@ class BootstrapTestCase(unittest.TestCase):
         env = dict(os.environ)
         env.update({
             "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
             "APPDATA": str(self.home / "AppData" / "Roaming"),
             "CLAUDE_TUNER_3P_DIR": str(self.config_lib),
             "CLAUDE_TUNER_HOME": str(self.bridge_home),

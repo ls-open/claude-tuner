@@ -60,7 +60,8 @@ class WebUITestCase(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.home = Path(cls._tmp.name)
         # 路径由生产口径算（见 config_ops.platform_paths），不写死 macOS 布局
-        cls._env = {"HOME": str(cls.home), "APPDATA": str(cls.home / "AppData" / "Roaming")}
+        cls._env = {"HOME": str(cls.home), "USERPROFILE": str(cls.home),
+                    "APPDATA": str(cls.home / "AppData" / "Roaming")}
         with mock.patch.dict(os.environ, cls._env):
             _paths = config_ops.platform_paths()
         cls.config_lib = Path(_paths["config_library"])
@@ -83,7 +84,9 @@ class WebUITestCase(unittest.TestCase):
         (cls.bridge_home / "webui.token").write_text(cls.token, encoding="utf-8")
 
         env = dict(os.environ)
-        env.update({"HOME": str(cls.home), "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
+        env.update({"HOME": str(cls.home), "USERPROFILE": str(cls.home),
+                    "APPDATA": str(cls.home / "AppData" / "Roaming"),
+                    "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
                     "CLAUDE_TUNER_HOME": str(cls.bridge_home), "CLAUDE_TUNER_PORT": str(cls.port)})
         # 把网关的输出留下来：起不来时它是唯一的线索（曾经在 CI 上只看到
         # 「15 秒内没起来」而没有任何原因，只能靠猜）。
