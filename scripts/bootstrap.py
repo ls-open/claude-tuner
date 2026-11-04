@@ -333,15 +333,24 @@ def _plugin_version():
 
 
 def _hooks_command():
-    """hooks.json 里现在写的是哪句命令。用户报「网关没被拉起来」时，第一个要看的就是它。"""
+    """hooks.json 里现在写的是哪条命令。用户报「网关没被拉起来」时，第一个要看的就是它。
+
+    exec form 下 `command` 只是解释器名，真正的调用在 `args` 里 —— 只打印 command
+    会得到一句没用的「python3」，所以两种形态都拼成一条可读的调用。
+    """
     with open(os.path.join(os.path.dirname(SCRIPT_DIR), "hooks", "hooks.json"),
               "r", encoding="utf-8") as fh:
         data = json.load(fh)
     for entries in (data.get("hooks") or {}).values():
         for entry in entries or []:
             for hook in (entry or {}).get("hooks") or []:
-                if (hook or {}).get("command"):
-                    return hook["command"]
+                cmd = (hook or {}).get("command") or ""
+                if not cmd:
+                    continue
+                args = hook.get("args")
+                if isinstance(args, list):
+                    return " ".join([cmd] + [str(a) for a in args])
+                return cmd
     return "（hooks.json 里没有 command）"
 
 

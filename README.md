@@ -265,22 +265,46 @@ claude -p "只回复两个字：成功"
 
 | 验的东西 | 怎么验的 |
 | :--- | :--- |
-| 全部单测 | 321 条在 Windows 上真跑，不是「应该能过」 |
+| 全部单测 | 在 Windows 上真跑（不写条数：它每加一条用例就过期一次，说了等于没说） |
 | hooks 的解释器名 | 用真子进程把最后那条命令执行一遍，确认解析得开 |
 | 安装器 | `install.py --dry-run` 在 Windows 上走完整条路径 |
 | 退出握手 | 写停止标记 → 网关自己退 → 端口关掉，两个平台同一条路 |
 | 启动不依赖网络 | 把反向 DNS 卡住 60 秒，网关照样起来（这就是 0.9.0 在 macOS CI 上翻车的那条） |
 
-**没验过的**，按「离用户多近」排：
+**hooks 的形态不再是个变量。** 早先 `hooks.json` 用的是 shell form（不带 `args`）：
+macOS 交给 `sh -c`，Windows 交给 Git Bash、没有就交给 PowerShell —— 而
+`"${CLAUDE_PLUGIN_ROOT}/scripts/manager.py"` 在 PowerShell 里是**它自己的变量语法**，
+会展开成空串，命令变成 `python3 "/scripts/manager.py"`，静默失败。
+现在改成 **exec form**（`command` + `args`）：任何平台都没有 shell，占位符按普通字符串替换。
+**这个失败模式从构造上不再存在**，不需要有台 Windows 机器才能保证。
+（改之前用探针实测过：客户端把替换后的路径当成一个参数递进来，真命令执行成功，退出码 0。）
 
-1. **客户端会不会真的执行 `hooks.json`** —— 用什么 shell、路径带空格怎么处理、工作目录在哪。
-   这是整条链的第一环，也是唯一完全没有证据的一环。
+**还没验过的**，按「离用户多近」排：
+
+1. `python3` / `python` / `py` 在真实 Windows 上叫什么——`bootstrap.py align` 会挑本机存在的那个，
+   CI 验了解析与执行，但真实机器上的 PATH 只有真机知道。
 2. 3P 配置目录在真实 Windows 客户端上是不是 `%APPDATA%\Claude-3p`（我们是按文档推的）。
 3. 一个陌生人照着一行命令装，在干净系统上能不能走通（防火墙、代理、杀软）。
 4. 企业环境：MITM 证书、代理、组策略。
 
+> 另外两条与平台无关、但值得知道的事实：hooks **只在会话启动时加载一次**（改了要新开会话才生效），
+> 而 `UserPromptSubmit` 在桌面端**从未触发过**——别指望「发消息时会顺手把网关拉起来」。
+
 **所以我们的取舍是**：不把没验的东西写成「支持」。Windows 保持实验性，出了问题**由用户
 先替我们验一步**，我们把代价压到「跑一条命令、贴一段文字」。
+
+### 网关起不来怎么办（任何平台，不需要任何 AI）
+
+请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条命令就够：
+
+```bash
+python3 ~/.claude/skills/claude-tuner/scripts/manager.py ensure
+python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
+```
+
+第一条把网关拉起来（macOS/Linux 的路径；Windows 是
+`python "%USERPROFILE%\.claude\skills\claude-tuner\scripts\manager.py" ensure`），
+第二条给出可贴的诊断信息。**这两条不依赖客户端、不依赖任何模型。**
 
 ### Windows 出问题怎么办
 
