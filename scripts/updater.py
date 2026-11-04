@@ -23,7 +23,7 @@ import tarfile
 import tempfile
 import time
 
-from common import BACKUP_KEEP_TREES, prune_backups
+from common import safe_extractall, BACKUP_KEEP_TREES, prune_backups
 import urllib.request
 
 sys.dont_write_bytecode = True
@@ -129,7 +129,7 @@ def _extract(blob, workdir):
             # 只允许相对路径、且不越出工作目录 —— 远端内容不可信
             if m.name.startswith("/") or ".." in m.name.split("/"):
                 raise ValueError("压缩包里有不安全的路径：%s" % m.name)
-        tar.extractall(workdir)
+        safe_extractall(tar, workdir)
     entries = [os.path.join(workdir, n) for n in os.listdir(workdir)]
     for entry in entries:
         if os.path.isdir(entry) and os.path.isfile(os.path.join(entry, "release.json")):

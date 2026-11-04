@@ -103,7 +103,11 @@ def download_plugin_package():
             with urllib.request.urlopen(req, timeout=15) as resp, open(pkg_tar, "wb") as out:
                 shutil.copyfileobj(resp, out)
             with tarfile.open(pkg_tar, "r:gz") as tar:
-                tar.extractall(tmp_dir)
+                # 与 common.safe_extractall 同一判据：filter="data" 是 3.12 起才有的参数
+                # （3.11.4+ 也有）。install.py 必须能在插件文件落地前独立运行，所以这里
+                # 不能 import common，只能自带这份四行判断。
+                kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+                tar.extractall(tmp_dir, **kwargs)
             # 找到解压后的项目根目录
             for entry in os.listdir(tmp_dir):
                 full = os.path.join(tmp_dir, entry)

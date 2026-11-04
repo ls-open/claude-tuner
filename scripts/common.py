@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sys
+import tarfile
 import time
 
 
@@ -169,6 +170,16 @@ def read_3p_models():
         return mapping
     except Exception:
         return {}
+
+
+def safe_extractall(tar, path):
+    """解压 tar 包，且尽量挡住路径穿越。
+
+    `filter="data"` 是 3.12 起才有的参数（3.11.4+ 也有）；插件最低支持 3.11.0，
+    所以按能力探测。解的是**网络下载的包**，这条不是洁癖。
+    """
+    kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+    tar.extractall(path, **kwargs)
 
 
 def atomic_write_json(path, data, indent=2):

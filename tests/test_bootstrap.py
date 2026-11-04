@@ -80,8 +80,14 @@ class BootstrapTestCase(unittest.TestCase):
                               capture_output=True, text=True, env=env, timeout=60)
 
     def install(self, *extra):
+        """跑一次安装。**在这里就断言退出码**：否则 bootstrap 一失败，表现只是
+        「某个文件不存在」，等于把「为什么失败」这条信息丢掉了（CI 上尤其致命）。"""
         # --no-restart：测试不该去碰真实的网关进程
-        return self.run_bootstrap("install", "--no-restart", *extra)
+        res = self.run_bootstrap("install", "--no-restart", *extra)
+        self.assertEqual(res.returncode, 0,
+                         "bootstrap 退出码 %d\nstdout:\n%s\nstderr:\n%s"
+                         % (res.returncode, (res.stdout or "")[-1200:], (res.stderr or "")[-1200:]))
+        return res
 
     # ── 夹料 ──
 
