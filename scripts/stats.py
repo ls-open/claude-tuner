@@ -238,6 +238,36 @@ def parse_session_transcript(filepath):
 
 
 
+def rule_health(sid):
+    """本会话里出现过多少次「规则哑火 / 清洗残留」。
+
+    这两种标记由网关每轮写进 `changes`（判据见 `volatile_markers.py`）：
+    `rule_silent_*` 是「触发物还在、规则没动手」，`rule_residue_*` 是「洗完还有易变痕」。
+    它们是**规则失效**的证据，不是上游的事 —— 命中率掉的时候先看这里。
+    """
+    silent = residue = 0
+    try:
+        for lf in live_stats.log_paths(BASE):
+            with open(lf, "r", errors="ignore") as fh:
+                for line in fh:
+                    if "canonicalized" not in line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("session_id") != sid:
+                        continue
+                    for c in obj.get("changes") or []:
+                        if c.startswith("rule_silent_"):
+                            silent += 1
+                        elif c.startswith("rule_residue_"):
+                            residue += 1
+    except Exception:
+        pass
+    return {"silent": silent, "residue": residue}
+
+
 def main():
     target_sid = None
     if "--session" in sys.argv:
@@ -305,6 +335,11 @@ def main():
     state_parts = []
     if comp_count > 0:
         state_parts.append("压缩 %d 次" % comp_count)
+    health = rule_health(s["sid"])
+    if health["silent"]:
+        state_parts.append("规则哑火 %d 次（见 volatile_markers）" % health["silent"])
+    if health["residue"]:
+        state_parts.append("清洗残留 %d 处（见 volatile_markers）" % health["residue"])
 
     drops = s["drops"]
     if drops:
