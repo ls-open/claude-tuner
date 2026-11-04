@@ -56,7 +56,12 @@ def get_3p_config_dir():
     if sys.platform == "win32":
         app_support = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
         return os.path.join(app_support, "Claude-3p", "configLibrary")
-    return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
+    # Linux：按 XDG 走。之前非 win32 一律落到 ~/Library —— 那是 macOS 的布局，
+    # 在 Linux 上等于往一个没人读的目录里写配置，装完「成功」而客户端不认。
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+                        "Claude-3p", "configLibrary")
 
 
 # 3P 配置扫描 Glob 路径：由 get_3p_config_dir() 派生而非各写一份默认值，

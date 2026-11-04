@@ -400,6 +400,16 @@ class TestPaths(ConfigOpsTestCase):
         self.assertEqual(paths["claude_settings"],
                          os.path.join("/tmp/fake-home", ".claude", "settings.json"))
 
+    def test_platform_paths_linux_uses_xdg(self):
+        """Linux 上绝不能落到 ~/Library —— 那是 macOS 的布局，写了没人读。"""
+        with mock.patch("sys.platform", "linux"):
+            env = {"XDG_CONFIG_HOME": "/fake/config", "HOME": "/fake/home"}
+            with mock.patch.dict(os.environ, env, clear=False):
+                paths = self.ops.platform_paths()
+                self.assertEqual(paths["claude_dir"], os.path.join("/fake/config", "Claude"))
+                self.assertEqual(paths["config_library"],
+                                 os.path.join("/fake/config", "Claude-3p", "configLibrary"))
+
     def test_platform_paths_windows(self):
         with mock.patch("sys.platform", "win32"):
             env = {"APPDATA": "/fake/appdata", "HOME": "/fake/home"}

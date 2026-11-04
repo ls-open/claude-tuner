@@ -24,8 +24,11 @@ def platform_paths():
     home = os.path.expanduser("~")
     if sys.platform == "win32":
         app_support = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
-    else:
+    elif sys.platform == "darwin":
         app_support = os.path.join(home, "Library", "Application Support")
+    else:
+        # Linux 走 XDG。非 win32 一律当 macOS 会让 Linux 用户装到一个没人读的目录。
+        app_support = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
     claude_dir = os.path.join(app_support, "Claude")
     claude_3p_dir = os.path.join(app_support, "Claude-3p")
     return {
