@@ -260,13 +260,12 @@ claude -p "只回复两个字：成功"
 
 ## 🪟 Windows
 
-**实验性。** 核心逻辑是纯 Python，`platform_support.py` 收口了全部系统差异，CI 在真实的
-`windows-latest` 上跑全部单测与安装演练。但**没有一台 Windows 机器**，所以真机没验过：
-客户端会不会真的拉起网关、3P 配置目录是不是我们推的那个位置。
+**Windows 还没有真机验证。** 核心逻辑是纯 Python，`platform_support.py` 收口了全部系统差异，
+CI 在真实的 Windows 上跑全部单测与安装演练；但我们手上没有 Windows 机器，所以**安装过程、
+客户端拉起网关、3P 配置目录这几件只有真机才能确认的事，都没有验过**。请按实验性使用。
 
-- **能用就用，不能用在 [issue](https://github.com/ls-open/claude-tuner/issues) 里说一声**，
-  附上下面的诊断输出；懒得提也没关系，那就当它不支持。
-- 想让它变成正式支持，只有一条路：有人在真机上装通并告诉我们结果。
+装完如果不对，把下面的 `doctor` 输出贴到 [issue](https://github.com/ls-open/claude-tuner/issues)
+里——有这一段才可能定位问题。
 
 ## 🚑
 
@@ -283,10 +282,11 @@ python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
 第二条打印一段可直接贴进 issue 的诊断信息（版本、系统、Python、解释器、插件目录、hooks 命令、
 3P 配置路径、网关 pid 与日志尾部）。**不含任何密钥**，也不依赖客户端。
 
-### 提 PR
+### 反馈
 
-平台相关的改动只往 `scripts/platform_support.py` 一处放，业务代码里不要再写 `if win32`。
-PR 里请写清：改了什么、在哪个系统上验的、`doctor` 的前后输出。
+本仓是发布产物（见文首），**直接提交 PR 会被下一次发布覆盖**，所以请开 issue：附上 `doctor`
+的输出，写清系统版本与客户端版本就够了。平台相关的改动在源码侧只往 `scripts/platform_support.py`
+一处放，业务代码里不再写 `if win32` —— 这条对 PR 同样成立，但我们合的是源码仓。
 
 > Linux：没有该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 
