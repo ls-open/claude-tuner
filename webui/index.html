@@ -686,10 +686,9 @@ const ADVANCED = [
 ];
 
 const RULE_GROUPS = [
-  ['⚡ 传输通道优化与数据对齐', '探针秒回、补齐思维链与并发定序（不改动正文）', [
+  ['⚡ 传输通道优化与数据对齐', '探针秒回与并发定序（不改动正文）', [
     ['probe_interception', '拦截连接探针本地秒回（不扣费）', ''],
     ['strip_billing_header', '过滤客户端版本与计费标记', ''],
-    ['restore_thinking', '自动回填历史思考过程（Thinking）', ''],
     ['split_mixed_user_messages', '规范化工具混合返回格式', ''],
     ['tool_block_ordering', '并发工具返回结果自动排序', ''],
   ]],
@@ -760,7 +759,6 @@ const WHEN = {
 const CORE_CACHE_RULES = new Set([
   'strip_date',
   'strip_git_status',
-  'restore_thinking',
   'strip_total_tokens_tag',
   'probe_interception',
 ]);

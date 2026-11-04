@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Claude Desktop 3P gateway -> third-party model rewrite proxy."""
 import copy
-import glob
 import hashlib
 import http.client
 import json
@@ -46,11 +45,6 @@ import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle
 HOST = "127.0.0.1"
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
-PROJECTS_DIR = os.environ.get("CLAUDE_PROJECTS_DIR", os.path.expanduser("~/.claude/projects"))
-COWORK_SESSIONS_DIRS = [
-    os.path.expanduser("~/Library/Application Support/Claude-3p/local-agent-mode-sessions"),
-    os.path.expanduser("~/Library/Application Support/Claude/local-agent-mode-sessions"),
-]
 CAPTURE_SESSIONS_DIR = "sessions"  # 按会话归档的子目录，见 save_session_capture()
 SESSION_KEY_LEN = 8  # 会话键取 session_id 前若干位，够区分同时开着的几个对话即可
 MAX_SESSION_CAPTURES = 20  # 会话归档保留份数上限（每份是一整段对话报文，不设闸门只增不减）
@@ -442,22 +436,6 @@ def make_probe_response(parsed):
         },
     }
 
-
-def find_session_transcript(session_id):
-    if not session_id:
-        return None
-    # 1. 优先从标准 Code 模式 projects 目录查找
-    matches = glob.glob(os.path.join(PROJECTS_DIR, "*", f"{session_id}.jsonl"))
-    if matches:
-        return matches[0]
-    # 2. 从 CoWork 协作模式 (local-agent-mode-sessions) 目录查找
-    for cw_dir in COWORK_SESSIONS_DIRS:
-        if os.path.isdir(cw_dir):
-            pattern = os.path.join(cw_dir, "*", "*", "*", ".claude", "projects", "session", f"{session_id}.jsonl")
-            cw_matches = glob.glob(pattern)
-            if cw_matches:
-                return cw_matches[0]
-    return None
 
 
 def strip_model_declaration_text(text):
@@ -1044,140 +1022,6 @@ def save_session_capture(capture_dir, parsed, kind=None):
     return path
 
 
-_transcript_cache = {}
-_TRANSCRIPT_CACHE_MAX = 10    # 按活跃会话数限制缓存上限，防止长会话 thinking 索引累积占用内存
-_TRANSCRIPT_CACHE_BATCH = 2   # 超限时按 LRU 每次淘汰的条目数
-_tpath_locks = {}
-_tpath_locks_lock = threading.Lock()
-
-
-def _get_tpath_lock(tpath):
-    """获取指定转录文件的细粒度并发锁，消除跨会话/子代理之间的全局锁竞争。"""
-    with _tpath_locks_lock:
-        lock = _tpath_locks.get(tpath)
-        if lock is None:
-            if len(_tpath_locks) > 200:
-                # 仅淘汰未持锁的闲置锁，绝不触碰任何正在持锁中的活跃锁对象（彻底消除并发重构竞态）
-                for k, lk in list(_tpath_locks.items()):
-                    if not lk.locked():
-                        _tpath_locks.pop(k, None)
-            lock = threading.Lock()
-            _tpath_locks[tpath] = lock
-        return lock
-
-
-def parse_transcript_data(tpath):
-    """基于文件偏移量（offset seek）与 per-tpath 细粒度锁增量解析 .jsonl 底稿，提取 thinking 索引。"""
-    try:
-        cur_size = os.path.getsize(tpath)
-        cur_mtime = os.path.getmtime(tpath)
-    except OSError:
-        return {}
-
-    file_lock = _get_tpath_lock(tpath)
-    with file_lock:
-        entry = _transcript_cache.get(tpath)
-        # 大小与 mtime 均未变化时直接命中并刷新 LRU 顺序（同时比对 mtime 以防等长重写）
-        if entry and entry["size"] == cur_size and entry.get("mtime") == cur_mtime:
-            _transcript_cache[tpath] = _transcript_cache.pop(tpath)
-            return entry["index"]
-
-        # 首次读取 / 被截断 / 等长重写时归零重读；正常追加则从原 offset 增量续读
-        truncated = bool(entry) and cur_size < entry["size"]
-        rewritten = bool(entry) and cur_size == entry["size"] and entry.get("mtime") != cur_mtime
-        if not entry or truncated or rewritten:
-            entry = {
-                "offset": 0,
-                "size": 0,
-                "index": {},
-                "current_turn_thinking": [],
-                "current_turn_tools": [],
-                "current_turn_texts": [],
-            }
-
-        offset = entry["offset"]
-        index = entry["index"]
-        current_turn_thinking = entry["current_turn_thinking"]
-        current_turn_tools = entry["current_turn_tools"]
-        current_turn_texts = entry["current_turn_texts"]
-
-        def flush_turn():
-            nonlocal current_turn_thinking, current_turn_tools, current_turn_texts
-            if current_turn_thinking:
-                for tid in current_turn_tools:
-                    index["tool:" + tid] = list(current_turn_thinking)
-                if not current_turn_tools:
-                    for txt in current_turn_texts:
-                        if txt:
-                            index["text:" + txt] = list(current_turn_thinking)
-            current_turn_thinking.clear()
-            current_turn_tools.clear()
-            current_turn_texts.clear()
-
-        try:
-            with open(tpath, "r", encoding="utf-8", errors="replace") as f:
-                if offset > 0:
-                    f.seek(offset)
-                while True:
-                    line = f.readline()
-                    if not line:
-                        break
-                    # 仅当读到完整行换行符时才推进有效 offset（防半截脏读）
-                    if line.endswith("\n"):
-                        offset = f.tell()
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        d = json.loads(line)
-                    except Exception:
-                        continue
-
-                    dtype = d.get("type")
-                    # 遇到压缩分界线 (compact_boundary)：仅 flush 正在累积的 turn，不清空 index
-                    # 保留历史 thinking 供 boundary 后的保留消息（preserved messages）匹配，杜绝压缩后首轮掉 thinking
-                    if dtype == "system" and d.get("subtype") == "compact_boundary":
-                        flush_turn()
-                        continue
-
-                    msg = d.get("message") or {}
-                    role = msg.get("role") or ("assistant" if dtype == "assistant" else ("user" if dtype in ("user", "tool_result") else None))
-                    if not role:
-                        continue
-
-                    if role in ("user", "tool_result") or dtype in ("user", "tool_result"):
-                        flush_turn()
-                    elif role == "assistant" or dtype == "assistant":
-                        c = msg.get("content") or []
-                        if isinstance(c, list):
-                            for b in c:
-                                if not isinstance(b, dict):
-                                    continue
-                                btype = b.get("type")
-                                if btype == "thinking":
-                                    current_turn_thinking.append(dict(b))
-                                elif btype == "tool_use" and b.get("id"):
-                                    current_turn_tools.append(b["id"])
-                                elif btype == "text" and b.get("text"):
-                                    current_turn_texts.append(b["text"].strip()[:100])
-                        elif isinstance(c, str):
-                            current_turn_texts.append(c.strip()[:100])
-
-            flush_turn()
-        except OSError:
-            return {}
-
-        # 注意判据是 >=：检查发生在「插入本条之前」，用 > 会让实际上界变成 MAX+1
-        if len(_transcript_cache) >= _TRANSCRIPT_CACHE_MAX:
-            for k in list(_transcript_cache.keys())[:_TRANSCRIPT_CACHE_BATCH]:
-                _transcript_cache.pop(k, None)
-        entry["offset"] = offset
-        entry["size"] = cur_size
-        entry["mtime"] = cur_mtime
-        entry["index"] = index
-        _transcript_cache[tpath] = entry
-
-        return index
 
 
 def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cfg=None):
@@ -1186,7 +1030,7 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     顺序是这里定的，别在别处复刻：
     1. 按客户端面定型剥离口径（CoWork 面整面不剥）
     2. **剥离之前**记下会被剥的工具名与客户端原始工具名 —— 剥完就再也算不出来
-    3. prepare_request 剥工具、排 tool_result、回填 thinking
+    3. prepare_request 剥工具、排 tool_result
     4. canonicalize 清洗易变前缀；配对段落用它需要的那两份名单
 
     第 2 步是这套配合的关键：第 4 步判断「这段该不该删」靠的是「客户端发过哪些工具」，
@@ -1207,7 +1051,6 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
     """主请求前置稳定化预处理：
     1. 稳定工具顺序 + 模块化工具裁剪 (Tool Pruning)
     2. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
-    3. 回填被客户端剥离的 thinking blocks (Thinking Restoration) —— 仅对主会话生效，子代理生命周期独立无需回填
     """
     changed = []
     r = rules or load_rules_config()
@@ -1265,94 +1108,6 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
                     new_ids = [b.get("id", "") for b in content if isinstance(b, dict) and b.get("type") == "tool_use"]
                     if orig_ids != new_ids:
                         changed.append("tool_use_blocks_sorted_%d" % len(orig_ids))
-
-    # 子代理生命周期独立且短暂，无做历史思维链回填的必要，直接跳过彻底避免磁盘扫描
-    is_sub = kind in ("subagent", "cowork_subagent") if kind else (classify_kind(parsed) in ("subagent", "cowork_subagent"))
-    if is_sub or not r.get("restore_thinking", True) or not session_id or not isinstance(incoming_msgs, list) or not incoming_msgs:
-        return changed
-
-    # 1. 惰性检测：先在内存纯列表里数一遍「历史里有几条 assistant 消息是没带 thinking 的」
-    #    若无任何缺失（bare_assistant == 0，即 99% 的绝大多数常态），立即 0 开销放行，彻底杜绝磁盘 glob 扫描
-    bare_assistant = 0
-    for m in incoming_msgs:
-        if not isinstance(m, dict) or m.get("role") != "assistant":
-            continue
-        c = m.get("content")
-        if isinstance(c, str):
-            bare_assistant += 1
-            continue
-        if not isinstance(c, list):
-            continue
-        has_body = any(isinstance(b, dict) and b.get("type") in ("text", "tool_use") for b in c)
-        has_think = any(isinstance(b, dict) and b.get("type") == "thinking" for b in c)
-        if has_body and not has_think:
-            bare_assistant += 1
-
-    if not bare_assistant:
-        return changed
-
-    changed.append("bare_thinking_%d" % bare_assistant)
-
-    # 2. 只有真查出有缺失（bare_assistant > 0）时，才按需触发磁盘寻找与增量解析
-    thinking_index = None
-    tpath = find_session_transcript(session_id)
-    if tpath:
-        thinking_index = parse_transcript_data(tpath)
-
-    if not thinking_index:
-        # 有该补的、索引却没建起来 —— 这是真故障，不是「没发生」
-        changed.append("thinking_index_missing")
-        return changed
-
-    # 4. Thinking 确定性归一化与智能全量补齐
-    #    必须与索引字典做整数组比对：跳过式粗筛（例如「已有 thinking 就 continue」）会漏判，导致缓存掉落
-    restored_count = 0
-    unmatched = 0
-    if thinking_index:
-        for m in incoming_msgs:
-            if not isinstance(m, dict) or m.get("role") != "assistant":
-                continue
-            c = m.get("content")
-            if isinstance(c, str):
-                c = [{"type": "text", "text": c}]
-                m["content"] = c
-            if not isinstance(c, list):
-                continue
-            current_thinking = [b for b in c if isinstance(b, dict) and b.get("type") == "thinking"]
-            thinking_to_inject = None
-            # 1. 优先按 tool_use 的 UUID 匹配（绝对唯一主键）
-            for b in c:
-                if isinstance(b, dict) and b.get("type") == "tool_use" and b.get("id"):
-                    key = "tool:" + b["id"]
-                    if key in thinking_index:
-                        thinking_to_inject = thinking_index[key]
-                        break
-            # 2. 仅当本消息完全没有匹配到 tool_use 时，才 fallback 到纯文本查找
-            if not thinking_to_inject:
-                for b in c:
-                    if isinstance(b, dict) and b.get("type") == "text" and b.get("text"):
-                        key = "text:" + b["text"].strip()[:100]
-                        if key in thinking_index:
-                            thinking_to_inject = thinking_index[key]
-                            break
-            if thinking_to_inject:
-                if current_thinking != thinking_to_inject:
-                    m["content"] = [dict(tb) for tb in thinking_to_inject] + [
-                        b for b in c if not (isinstance(b, dict) and b.get("type") == "thinking")
-                    ]
-                    restored_count += 1
-            elif current_thinking:
-                pass
-            else:
-                # 这条历史没有 thinking、索引里也找不到它的原件 —— 补不回来。
-                # 它不是「没发生」，是「发生了但我们没接住」，必须和成功分开记，
-                # 否则永远看不出这条规则的失效。
-                unmatched += 1
-
-    if restored_count:
-        changed.append(f"restore_thinking_{restored_count}")
-    if unmatched:
-        changed.append(f"restore_thinking_miss_{unmatched}")
 
     return changed
 

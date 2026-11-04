@@ -237,28 +237,6 @@ def parse_session_transcript(filepath):
     }
 
 
-def get_session_hydration_details(sid):
-    """扫描本地网关日志，按 session_id 过滤并统计本会话的 Thinking 补全次数。"""
-    thinking_hydrations = 0
-    try:
-        for lf in live_stats.log_paths(BASE):
-            with open(lf, "r", errors="ignore") as fh:
-                for line in fh:
-                    if "canonicalized" not in line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-                    if obj.get("session_id") != sid:
-                        continue
-                    for c in obj.get("changes", []):
-                        if c.startswith("restore_thinking_"):
-                            thinking_hydrations += 1
-    except Exception:
-        pass
-    return {"thinking_hydrations": thinking_hydrations}
-
 
 def main():
     target_sid = None
@@ -324,12 +302,9 @@ def main():
     print(" " + " · ".join(scale_parts))
 
     # ── 生命周期与运行状态 ──
-    h_details = get_session_hydration_details(sid)
     state_parts = []
     if comp_count > 0:
         state_parts.append("压缩 %d 次" % comp_count)
-    if h_details["thinking_hydrations"] > 0:
-        state_parts.append("已自动恢复思维链")
 
     drops = s["drops"]
     if drops:
