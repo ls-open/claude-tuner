@@ -223,9 +223,11 @@ def _windows_process_names():
 
 
 # 桌面端在各平台的进程特征。macOS 用可执行文件路径片段（客户端主进程就在 .app 里），
-# Windows 用可执行名（安装包可能是 Claude.exe，也可能是带版本后缀的变体，按前缀认）。
+# Windows 用可执行名——**按前缀认**：安装包可能是 Claude.exe，也可能带版本/产物线后缀。
+# 判宽一点是刻意的：误判为「在跑」的代价只是让用户自己确认一下；误判为「没跑」会在
+# 客户端正写着配置时插进去覆盖，那是数据损坏，代价不对称。
 MAC_CLIENT_PATTERN = "Claude.app/Contents/MacOS/Claude"
-WIN_CLIENT_NAMES = ("claude.exe",)
+WIN_CLIENT_PREFIX = "claude"
 
 
 def client_running():
@@ -235,7 +237,8 @@ def client_running():
     """
     try:
         if IS_WINDOWS:
-            return any(name.lower() in WIN_CLIENT_NAMES for name in _windows_process_names())
+            return any(name.lower().startswith(WIN_CLIENT_PREFIX) and name.lower().endswith(".exe")
+                       for name in _windows_process_names())
         if sys.platform == "darwin":
             # 不能用 `pgrep -f` 匹配客户端绝对路径：实测在这台机器上它匹配不到主进程
             # （只匹配到 Helper），于是「客户端在跑吗」永远答否，界面上那句
@@ -246,7 +249,7 @@ def client_running():
                                  capture_output=True, text=True, timeout=5)
             for line in (res.stdout or "").splitlines():
                 exe = line.strip().split(" ")[0] if line.strip() else ""
-                if exe.endswith("/Claude.app/Contents/MacOS/Claude"):
+                if exe.endswith(MAC_CLIENT_PATTERN):
                     return True
             return False
         return False      # Linux 上没有该桌面端

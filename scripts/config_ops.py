@@ -16,6 +16,12 @@ import uuid
 # 平台路径
 # ==============================================================================
 
+def _threep_config_dir():
+    """延迟导入：config_ops 要在没有 common 的加载顺序下也能被导入（测试按文件路径加载）。"""
+    from common import get_3p_config_dir
+    return get_3p_config_dir()
+
+
 def platform_paths():
     """返回本机各处配置文件的路径（只做路径拼接，不判断存在性）。
 
@@ -41,8 +47,10 @@ def platform_paths():
         "desktop_config_1p": os.path.join(claude_dir, "claude_desktop_config.json"),
         "desktop_config_3p": os.path.join(claude_3p_dir, "claude_desktop_config.json"),
         "developer_settings_3p": os.path.join(claude_3p_dir, "developer_settings.json"),
-        "config_library": os.environ.get("CLAUDE_TUNER_3P_DIR")
-        or os.path.join(claude_3p_dir, "configLibrary"),
+        # 3P 目录的口径只在 common.get_3p_config_dir() 里有一份 —— 它同时负责
+        # CLAUDE_TUNER_3P_DIR 覆盖与三平台布局。这里再拼一次就是第二个真相源，
+        # 症状是「网关读 A、安装器写 B」这种没有任何报错的错位。
+        "config_library": _threep_config_dir(),
         "bridge_home": os.environ.get("CLAUDE_TUNER_HOME")
         or os.path.join(home, ".claude-tuner"),
         "claude_settings": os.path.join(home, ".claude", "settings.json"),
@@ -289,7 +297,11 @@ CLIENT_MODEL_IDS = (
 )
 
 def _1m_flags(one_m):
-    """1M 上下文相关的三个字段。关掉时一并置否，不留半开半关的状态。"""
+    """单条映射里的两个 1M 标记。关掉时一并置否，不留半开半关的状态。
+
+    （第三个相关字段是顶层的 `modelPrefer1mContext`，由 `build_3p_bundle` 的
+    `one_m` 参数单独写，不在这条映射里。）
+    """
     return {"supports1m": bool(one_m), "prefer1m": bool(one_m)}
 
 
@@ -317,8 +329,6 @@ def identity_model_mapping(one_m=True):
 DEFAULT_UPSTREAM = "https://api.deepseek.com/anthropic"
 DEFAULT_MODEL = "deepseek-flash"
 
-# 客户端界面的三个面（Chat / Cowork / Code）。都是 3P 配置里的键，false = 关掉该面。
-# **不是默认写入的** —— 只写用户明确改过的那一个，其余保持客户端原样。
 # 跟随安装一起写死的 3P 字段。只写这些，其余键一律保留。
 _3P_FORCED = {
     "inferenceProvider": "gateway",

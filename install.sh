@@ -20,7 +20,7 @@ die() { printf '\n❌ %s\n' "$*" >&2; exit 1; }
 
 # ── 找 Python：3.11 是硬要求（install.py 自己会再核一次版本） ──
 PY=""
-for candidate in python3 python; do
+for candidate in python3 python py; do   # py 是 Windows 的启动器；与 bootstrap 的候选名单保持一致
   if command -v "$candidate" >/dev/null 2>&1; then
     if "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
       PY="$candidate"

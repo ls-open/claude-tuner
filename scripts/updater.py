@@ -23,6 +23,7 @@ import tarfile
 import tempfile
 import time
 
+import platform_support  # 进程脱离父进程等平台差异只在那里写一份
 from common import safe_extractall, BACKUP_KEEP_TREES, prune_backups
 import urllib.request
 
@@ -161,7 +162,10 @@ def _validate(root):
 
 
 def apply_update():
-    """下载 → 校验 → 备份现有的 → 换掉 → 重启网关。
+    """下载 → 校验 → 备份现有的 → 换掉。
+
+    重启网关不在这里做：调用方（配置台）换完之后自己触发 `restart_gateway()`，
+    顺序反了会出现「新文件已覆盖、网关还跑着旧代码」的短暂错位。
 
     返回字典；失败时 ``ok=False``，且**正在用的那份保持原样**。
     """
@@ -224,9 +228,11 @@ def apply_update():
 def restart_gateway():
     """换完代码要重启网关 —— 它自己不会重启自己。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
+    # `start_new_session` 是 POSIX 专有语义，Windows 上被静默忽略：换完代码重启的网关
+    # 会跟这个即将退出的更新进程绑在一起。统一走 platform_support（铁律 7）。
     subprocess.Popen([sys.executable, manager, "restart"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+                     **platform_support.detached_kwargs())
 
 
 def main(argv=None):

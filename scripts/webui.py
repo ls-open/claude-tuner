@@ -107,7 +107,7 @@ def load_html():
         mtime = os.path.getmtime(HTML_PATH)
     except OSError:
         return ("<!doctype html><meta charset=utf-8><h1>配置台文件缺失</h1>"
-                "<p>找不到 %s。请重跑安装脚本（install.sh）同步插件文件。</p>" % HTML_PATH)
+                "<p>找不到 %s。请重跑安装器（`install.py`，或 macOS/Linux 上的 `install.sh` 一行命令）同步插件文件。</p>" % HTML_PATH)
     if _html_cache[0] == mtime and _html_cache[1]:
         return _html_cache[1]
     with open(HTML_PATH, "r", encoding="utf-8") as fh:
@@ -497,13 +497,10 @@ def restart_gateway():
     """委托 manager 重启网关 —— 网关自己不会重启自己。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
     kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
-    if sys.platform == "win32":
-        flags = subprocess.CREATE_NO_WINDOW
-        if hasattr(subprocess, "DETACHED_PROCESS"):
-            flags |= subprocess.DETACHED_PROCESS
-        kwargs["creationflags"] = flags
-    else:
-        kwargs["start_new_session"] = True
+    # 脱离父进程的做法只写在 platform_support 里（铁律 7）。这里原来手抄了一份，
+    # 还用了与 CREATE_NO_WINDOW 语义冲突的 DETACHED_PROCESS —— 业务代码里第二份平台分支
+    # 就是这个下场：抄的时候看不出来，只有在那个平台上才炸。
+    kwargs.update(platform_support.detached_kwargs())
     subprocess.Popen([sys.executable, manager, "restart"], **kwargs)
 
 

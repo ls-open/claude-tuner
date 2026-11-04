@@ -22,6 +22,7 @@ HOME / CLAUDE_TUNER_3P_DIR / CLAUDE_TUNER_HOME 全部指向临时目录，不碰
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -57,6 +58,12 @@ class BootstrapTestCase(unittest.TestCase):
         self.claude_dir = Path(self.paths["claude_dir"])
         self.bridge_home = self.home / ".claude-tuner"
         self.claude_home = self.home / ".claude"
+        # hooks.json 的副本：安装会做一次「解释器名对齐」，让它改副本而不是仓库里那份。
+        # **放在 home 之外**：有的用例断言 dry-run 之后 home 里一个文件都不许有。
+        self._hooks_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._hooks_tmp.cleanup)
+        self.hooks_copy = Path(self._hooks_tmp.name) / "hooks.json"
+        shutil.copy2(PLUGIN_ROOT / "hooks" / "hooks.json", self.hooks_copy)
 
     # ── 跑生产入口 ──
 
@@ -66,6 +73,7 @@ class BootstrapTestCase(unittest.TestCase):
             CLAUDE_TUNER_3P_DIR=self.config_lib,
             CLAUDE_TUNER_HOME=self.bridge_home,
             CLAUDE_TUNER_API_KEY="",
+            CLAUDE_TUNER_HOOKS_FILE=self.hooks_copy,
         )
         # encoding 显式给 utf-8：bootstrap 自己被 configure_stdio 切到了 UTF-8，
         # 而 Windows 上父进程默认按 locale(cp1252/cp936) 解码 —— 中文会乱码解码失败。
@@ -362,6 +370,29 @@ class TestBackupPruning(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestInstallAlignsHooks(BootstrapTestCase):
+    """装完必须把 hooks 的解释器名对齐到这台机器。
+
+    这一条在 macOS 上永远「通过」—— 那边本来就叫 `python3`，对齐是空操作。
+    所以断言写成「对齐之后那个名字在本机存在」，而不是「等于 python3」：
+    Windows runner 上它会是 `python`，那正是这条用例存在的理由。
+    """
+
+    def test_装完之后_hooks_用的解释器本机存在(self):
+        self.install("--key", "sk-align-test-123456")
+        data = json.loads(self.hooks_copy.read_text(encoding="utf-8"))
+        for event, groups in (data.get("hooks") or {}).items():
+            for group in groups or []:
+                for hook in (group or {}).get("hooks") or []:
+                    with self.subTest(event=event):
+                        self.assertIsNotNone(shutil.which(hook["command"]),
+                                             "装完 hooks 用的是 `%s`，本机没有" % hook["command"])
+        # 仓库里那份必须原样不动（测试不许弄脏源码树）
+        repo_hook = (PLUGIN_ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8")
+        self.assertIn('"command": "python3"', repo_hook,
+                      "安装过程改写了仓库里的 hooks.json —— 它应该只改装好的那份")
 
 
 class TestDoctor(BootstrapTestCase):
