@@ -336,7 +336,9 @@ def cmd_install(args):
     for b in backups:
         log("   ↩︎ 原文件已备份：%s" % b)
     for p in problems:
-        log("   ⚠️ %s" % p)
+        # 用专用字样：`⚠️ ` 这个前缀在安装输出里也被「还没有 API Key」这类提醒用着，
+        # 混在一起就没人分得清哪条是真失败（含测试与 CI）。
+        log("   ❌ 写入失败：%s" % p)
     if args.no_restart:
         log("   已跳过网关重启（--no-restart），由调用方负责拉起")
     else:

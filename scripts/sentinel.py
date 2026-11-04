@@ -36,7 +36,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
 sys.dont_write_bytecode = True  # 不在插件运行目录留 __pycache__（代码以仓库为准）
 
-import gateway  # noqa: E402  （复用与线上完全同一套清洗规则，杜绝哨兵与生产行为不一致）
+import gateway  # noqa: E402
+from common import configure_stdio  # noqa: E402  （复用与线上完全同一套清洗规则，杜绝哨兵与生产行为不一致）
 import tool_rules  # noqa: E402  （配对表与它的判据都在这儿，与网关读的是同一份）
 
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
@@ -782,4 +783,5 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_stdio()
     main()

@@ -21,6 +21,7 @@ sys.dont_write_bytecode = True
 
 from common import (
     DEFAULT_LOG_RETENTION_DAYS,
+    configure_stdio,
     STOP_FILE_NAME,
     LIFETIME_LOCK_NAME,
     clamp_retention_days,
@@ -434,7 +435,14 @@ def log_event(event, req_id=None):
         event["level"] = EVENT_LEVELS.get(event.get("event", ""), "INFO")
     line = json.dumps(event, ensure_ascii=False)
     with _LOG_LOCK:
-        print(line, flush=True)
+        try:
+            print(line, flush=True)
+        except UnicodeEncodeError:
+            # Windows 控制台默认是 cp1252/cp936，`ensure_ascii=False` 的中文直接抛
+            # UnicodeEncodeError —— 而这一行在 canonicalize 的热路径上，一条中文 WARN
+            # 就能把整轮请求打断（CI 的 windows-latest 上真炸过）。日志绝不能反过来
+            # 弄坏被它记录的东西：退化成 ascii 转义再输出。
+            print(line.encode("unicode_escape").decode("ascii"), flush=True)
         today_str = time.strftime("%Y-%m-%d")
         log_dir = os.path.join(BASE_DIR, "logs")
         try:
@@ -1755,6 +1763,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    configure_stdio()
     ensure_config_initialized(CONFIG_FILE)
     cleanup_runtime()
     # 端口由 manager 独占决定（它负责顺延扫描，并把地址回写 config.json 与全部 3P 配置），

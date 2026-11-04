@@ -17,6 +17,7 @@ import platform_support  # 进程存活 / 锁 / 脱离父进程 —— 平台差
 
 from common import (
     DEFAULT_LOG_RETENTION_DAYS,
+    configure_stdio,
     STOP_FILE_NAME,
     LIFETIME_LOCK_NAME,
     RUNTIME_INFO_NAME,
@@ -571,4 +572,5 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_stdio()
     main()

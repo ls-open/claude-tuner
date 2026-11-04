@@ -31,6 +31,7 @@ import config_ops
 import platform_support  # noqa: E402
 from common import (  # noqa: E402
     DEFAULT_LOG_RETENTION_DAYS,
+    configure_stdio,
     DEFAULT_PORT,
     DEFAULT_PROBE_TIMEOUT,
     DEFAULT_RULES,
@@ -667,4 +668,5 @@ def handle_post(handler, query, body):
 
 
 if __name__ == "__main__":
+    configure_stdio()
     sys.exit(main())

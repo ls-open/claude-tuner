@@ -87,6 +87,10 @@ class BootstrapTestCase(unittest.TestCase):
         self.assertEqual(res.returncode, 0,
                          "bootstrap 退出码 %d\nstdout:\n%s\nstderr:\n%s"
                          % (res.returncode, (res.stdout or "")[-1200:], (res.stderr or "")[-1200:]))
+        # 单个动作写失败时 bootstrap 只是打个 ⚠️ 并照样返回 0 —— 不在这里抓，
+        # 表现就只是「后面某个文件不存在」，原因被丢掉了（CI 上踩过）。
+        self.assertNotIn("写入失败", res.stdout or "",
+                         "bootstrap 报告了写入问题：\n%s" % (res.stdout or "")[-1200:])
         return res
 
     # ── 夹料 ──

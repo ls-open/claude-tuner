@@ -172,6 +172,20 @@ def read_3p_models():
         return {}
 
 
+def configure_stdio():
+    """把 stdout/stderr 切到 UTF-8。
+
+    Windows 上它们默认跟随控制台代码页（cp1252 / cp936），中文一多就抛
+    UnicodeEncodeError 或变乱码。每个入口（gateway / manager / webui / stats / sentinel）
+    启动时调一次；`log_event` 另有兜底，这条只是让输出本来就正常。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
+
 def safe_extractall(tar, path):
     """解压 tar 包，且尽量挡住路径穿越。
 

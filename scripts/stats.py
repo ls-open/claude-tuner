@@ -14,6 +14,7 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 import live_stats  # noqa: E402  （日志文件枚举只此一份，两份实现会把同一行读成两三次）
+from common import configure_stdio  # noqa: E402  （Windows 控制台默认编码打不了中文）
 
 BASE = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
 
@@ -354,4 +355,5 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_stdio()
     main()
