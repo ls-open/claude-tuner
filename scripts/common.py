@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import time
 
 
@@ -48,10 +49,13 @@ def prune_backups(directory, keep, prefix=None):
 
 
 def get_3p_config_dir():
-    """获取 Claude 3P configLibrary 目录路径（全仓唯一入口，仅 macOS）。"""
+    """获取 Claude 3P configLibrary 目录路径（全仓唯一入口）。"""
     custom = os.environ.get("CLAUDE_TUNER_3P_DIR")
     if custom:
         return os.path.expanduser(custom)
+    if sys.platform == "win32":
+        app_support = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        return os.path.join(app_support, "Claude-3p", "configLibrary")
     return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
 
 
@@ -177,8 +181,19 @@ def atomic_write_json(path, data, indent=2):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=indent)
-        os.chmod(tmp, mode)  # 已存在的 .tmp 会保留旧权限，显式对齐
-        os.replace(tmp, path)
+        try:
+            os.chmod(tmp, mode)  # 已存在的 .tmp 会保留旧权限，显式对齐
+        except OSError:
+            pass  # Windows 上部分权限位无直接映射，防抛错
+        # Windows 上若目标文件被读取或杀毒扫描，os.replace 可能偶发 PermissionError，给小幅度重试
+        for attempt in range(5):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.05)
     except Exception:
         try:
             os.remove(tmp)
@@ -252,6 +267,13 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
 
 # 默认值只在这里定义一次，其余模块一律 import —— 同一个数字在几处各写一份，
 # 迟早有一处改漏，而症状是「配置台设了、网关没听」这种最难查的形态。
+# 网关 ↔ manager 的文件握手名。**只在这里定义一次**：两个进程各写一份的话，
+# 改名字时必有一边漏改，症状是「停止标记写了没人看」这种查半天的问题。
+STOP_FILE_NAME = "stop.request"          # 请求网关自己退出（Windows 没有可拦的退出信号）
+LIFETIME_LOCK_NAME = "gateway.lock"      # 网关持有一生，用作「这个 pid 还是不是我们」的证明
+RUNTIME_INFO_NAME = "gateway.runtime.json"   # 网关启动时写：谁在跑、跑的是哪个脚本
+STOP_GRACE_SECONDS = 5.0                 # 请它退出后等多久再考虑强杀
+
 DEFAULT_PORT = 8789
 DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
 DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案

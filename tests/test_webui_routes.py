@@ -26,12 +26,17 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-GATEWAY = PLUGIN_ROOT / "scripts" / "gateway.py"
+SCRIPTS = PLUGIN_ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+import config_ops  # noqa: E402  路径口径与生产同一份（platform_paths）
+GATEWAY = SCRIPTS / "gateway.py"
 
 
 def free_port():
@@ -54,7 +59,11 @@ class WebUITestCase(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.home = Path(cls._tmp.name)
-        cls.config_lib = cls.home / "Library/Application Support/Claude-3p/configLibrary"
+        # 路径由生产口径算（见 config_ops.platform_paths），不写死 macOS 布局
+        cls._env = {"HOME": str(cls.home), "APPDATA": str(cls.home / "AppData" / "Roaming")}
+        with mock.patch.dict(os.environ, cls._env):
+            _paths = config_ops.platform_paths()
+        cls.config_lib = Path(_paths["config_library"])
         cls.config_lib.mkdir(parents=True)
         cls.bridge_home = cls.home / ".claude-tuner"
         cls.bridge_home.mkdir(parents=True)

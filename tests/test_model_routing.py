@@ -317,6 +317,22 @@ class Test3pGlobDerivation(unittest.TestCase):
         self.assertEqual(out.stdout.strip(),
                          os.path.join("/tmp/ccds-3p-derived", "*.json"))
 
+    def test_3p_config_dir_windows(self):
+        code = (
+            "import os, sys;"
+            "sys.platform = 'win32';"
+            f"sys.path.insert(0, {SCRIPTS_DIR!r});"
+            "import common;"
+            "print(common.get_3p_config_dir())"
+        )
+        env = dict(os.environ, APPDATA="/fake/appdata")
+        env.pop("CLAUDE_TUNER_3P_DIR", None)
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                             text=True, env=env, timeout=60)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(),
+                         os.path.join("/fake/appdata", "Claude-3p", "configLibrary"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

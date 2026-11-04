@@ -27,7 +27,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-import config_ops  # noqa: E402
+import config_ops
+import platform_support  # noqa: E402
 from common import (  # noqa: E402
     DEFAULT_LOG_RETENTION_DAYS,
     DEFAULT_PORT,
@@ -180,13 +181,12 @@ def tool_stats_payload():
 
 
 def client_running():
-    """客户端在不在跑。偏好类改动只在它没跑时写得进去，所以页面要据此提示。"""
-    try:
-        res = subprocess.run(["pgrep", "-f", "Claude.app/Contents/MacOS/Claude"],
-                             capture_output=True, timeout=5)
-        return res.returncode == 0
-    except Exception:
-        return False
+    """客户端在不在跑。偏好类改动只在它没跑时写得进去，所以页面要据此提示。
+
+    平台差异（`pgrep` / 进程枚举）统一在 `platform_support.client_running()` 里 ——
+    这里再抄一份就会出现「页面说没开、manager 说有」这种自相矛盾。
+    """
+    return platform_support.client_running()
 
 
 def read_config_payload(handler):
@@ -495,9 +495,15 @@ def test_upstream(url, api_key, model):
 def restart_gateway():
     """委托 manager 重启网关 —— 网关自己不会重启自己。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
-    subprocess.Popen([sys.executable, manager, "restart"], stdin=subprocess.DEVNULL,
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+    kwargs = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}
+    if sys.platform == "win32":
+        flags = subprocess.CREATE_NO_WINDOW
+        if hasattr(subprocess, "DETACHED_PROCESS"):
+            flags |= subprocess.DETACHED_PROCESS
+        kwargs["creationflags"] = flags
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen([sys.executable, manager, "restart"], **kwargs)
 
 
 def config_url():

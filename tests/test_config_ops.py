@@ -397,6 +397,15 @@ class TestPaths(ConfigOpsTestCase):
         self.assertEqual(paths["bridge_home"], "/tmp/fake-bridge")
         self.assertEqual(paths["claude_settings"], "/tmp/fake-home/.claude/settings.json")
 
+    def test_platform_paths_windows(self):
+        with mock.patch("sys.platform", "win32"):
+            env = {"APPDATA": "/fake/appdata", "HOME": "/fake/home"}
+            with mock.patch.dict(os.environ, env, clear=False):
+                paths = self.ops.platform_paths()
+                self.assertEqual(paths["claude_dir"], os.path.join("/fake/appdata", "Claude"))
+                self.assertEqual(paths["claude_3p_dir"], os.path.join("/fake/appdata", "Claude-3p"))
+                self.assertEqual(paths["config_library"], os.path.join("/fake/appdata", "Claude-3p", "configLibrary"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

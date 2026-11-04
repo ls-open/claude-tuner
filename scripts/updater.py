@@ -204,6 +204,14 @@ def apply_update():
                 shutil.copytree(src, dst, symlinks=True)
             else:
                 shutil.copy2(src, dst)
+        # 换完文件必须重新做一遍机器适配：hooks.json 里的解释器名是**这台机器**的事，
+        # 整树覆盖会把它改回模板值（Windows 上 `python3` 多半不存在），
+        # 症状是更新之后 Hook 静默不再拉起网关。
+        try:
+            subprocess.run([sys.executable, os.path.join(SCRIPT_DIR, "bootstrap.py"), "align"],
+                           timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         return {"ok": True, "source": used, "backup": backup,
                 "version": json.load(open(os.path.join(root, "release.json"), encoding="utf-8")
                                      ).get("version", "")}
