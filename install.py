@@ -70,24 +70,20 @@ def die(msg):
 
 
 def get_default_paths():
-    home = os.path.expanduser("~")
-    if sys.platform == "win32":
-        app_support = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
-    else:
-        app_support = os.path.join(home, "Library", "Application Support")
+    """安装器自己要用的两个目录。
 
-    claude_dir = os.path.join(app_support, "Claude")
-    claude_3p_dir = os.path.join(app_support, "Claude-3p")
+    这里**不推导客户端的配置目录**：那份口径在 `scripts/config_ops.py:platform_paths()`
+    与 `scripts/common.py:get_3p_config_dir()` 里各有一份权威（一个管路径、一个管 3P），
+    由 bootstrap 在插件落地之后去算。安装器只关心「插件放哪」和「网关的家在哪」，
+    两者都与平台无关（都在家目录下）。
+
+    之前这里还顺手推了一份 `claude_dir` / `claude_3p_dir`，既没人用，Linux 分支又是错的
+    （非 win32 一律落到 macOS 的 `~/Library`）—— 一份没人读的错误口径，比没有更危险。
+    """
+    home = os.path.expanduser("~")
     bridge_home = os.environ.get("CLAUDE_TUNER_HOME", os.path.join(home, ".claude-tuner"))
     dest = os.environ.get("CLAUDE_TUNER_DIR", os.path.join(home, ".claude", "skills", PLUGIN_NAME))
-
-    return {
-        "home": home,
-        "claude_dir": claude_dir,
-        "claude_3p_dir": claude_3p_dir,
-        "bridge_home": bridge_home,
-        "dest": dest,
-    }
+    return {"home": home, "bridge_home": bridge_home, "dest": dest}
 
 
 def is_client_running():

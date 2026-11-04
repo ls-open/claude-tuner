@@ -23,6 +23,7 @@ import tarfile
 import tempfile
 import time
 
+import platform_support  # 进程脱离父进程等平台差异只在那里写一份
 from common import safe_extractall, BACKUP_KEEP_TREES, prune_backups
 import urllib.request
 
@@ -224,9 +225,11 @@ def apply_update():
 def restart_gateway():
     """换完代码要重启网关 —— 它自己不会重启自己。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
+    # `start_new_session` 是 POSIX 专有语义，Windows 上被静默忽略：换完代码重启的网关
+    # 会跟这个即将退出的更新进程绑在一起。统一走 platform_support（铁律 7）。
     subprocess.Popen([sys.executable, manager, "restart"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                     start_new_session=True)
+                     **platform_support.detached_kwargs())
 
 
 def main(argv=None):
