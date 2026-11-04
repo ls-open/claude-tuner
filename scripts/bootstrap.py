@@ -20,11 +20,14 @@
 用法：
     bootstrap.py install [--dry-run] [--force] [--key K] [--upstream URL] [--no-cli]
     bootstrap.py status [--json]
+    bootstrap.py doctor
     bootstrap.py uninstall [--dry-run] [--purge-3p]
 """
 import argparse
 import json
 import os
+import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -37,9 +40,11 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 import config_ops  # noqa: E402
+import platform_support  # noqa: E402
 from common import (  # noqa: E402
     BACKUP_KEEP_FILES,
     DEFAULT_PORT,
+    RUNTIME_INFO_NAME,
     atomic_write_json,
     ensure_config_initialized,
     configure_stdio,
@@ -315,6 +320,114 @@ def status(paths=None):
 
 
 # ==============================================================================
+# 诊断（doctor）
+# ==============================================================================
+
+def _plugin_version():
+    try:
+        with open(os.path.join(os.path.dirname(SCRIPT_DIR), "release.json"),
+                  "r", encoding="utf-8") as fh:
+            return json.load(fh).get("version") or "未知"
+    except (OSError, ValueError):
+        return "未知"
+
+
+def _hooks_command():
+    """hooks.json 里现在写的是哪句命令。用户报「网关没被拉起来」时，第一个要看的就是它。"""
+    with open(os.path.join(os.path.dirname(SCRIPT_DIR), "hooks", "hooks.json"),
+              "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    for entries in (data.get("hooks") or {}).values():
+        for entry in entries or []:
+            for hook in (entry or {}).get("hooks") or []:
+                if (hook or {}).get("command"):
+                    return hook["command"]
+    return "（hooks.json 里没有 command）"
+
+
+def _gateway_state(bridge_home):
+    pid_path = os.path.join(bridge_home, "gateway.pid")
+    try:
+        with open(pid_path, "r", encoding="utf-8") as fh:
+            pid = int(fh.read().strip())
+    except (OSError, ValueError):
+        return "没有 pid 文件（还没启动过，或被清掉了）"
+    alive = platform_support.is_alive(pid)
+    script = ""
+    try:
+        with open(os.path.join(bridge_home, RUNTIME_INFO_NAME), "r", encoding="utf-8") as fh:
+            script = json.load(fh).get("script") or ""
+    except (OSError, ValueError):
+        pass
+    return "pid %d · %s%s" % (pid, "在跑" if alive else "不在跑了（pid 可能已被复用）",
+                              (" · " + script) if script else "")
+
+
+def _newest_log(bridge_home):
+    """优先当天的 JSON 日志（`gateway.<日期>.log`）。
+
+    目录里还有 `gateway.out.log`（manager 拉到 stdout 的原始输出）。按文件名排序时
+    `out` 排在日期后面，取「最后一个」会拿到它 —— 那是排查启动失败时才看的，平时是噪音。
+    """
+    log_dir = os.path.join(bridge_home, "logs")
+    names = os.listdir(log_dir)
+    day = sorted(n for n in names if re.match(r"^gateway\.\d{4}-\d{2}-\d{2}\.log$", n))
+    if not day:
+        day = sorted(n for n in names if n.startswith("gateway.") and n.endswith(".log"))
+    if not day:
+        return "（还没有日志文件）"
+    path = os.path.join(log_dir, day[-1])
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        rows = fh.readlines()
+    tail = rows[-8:]
+    return "（%s，共 %d 行）\n" % (os.path.basename(path), len(rows)) + (
+        "\n".join("  " + r.rstrip("\n")[:180] for r in tail) or "  （空）")
+
+
+def doctor(paths=None):
+    """把排查要用的信息打一段可直接粘进 issue 的文本。
+
+    **这个命令自己不能失败。** 用户来报告的就是「它坏了」——诊断工具再抛异常，
+    他们能给的线索就只剩一句「不行」。所以每一段各兜各的，取不到就把原因写出来。
+
+    不打印任何密钥：这里只回答「填了没」，不回答「填的是什么」。
+    """
+    paths = paths or config_ops.platform_paths()
+    rows = []
+
+    def add(title, fn):
+        try:
+            rows.append((title, fn()))
+        except Exception as exc:                   # noqa: BLE001 —— 诊断工具不许抛
+            rows.append((title, "（取不到：%s: %s）" % (type(exc).__name__, exc)))
+
+    add("版本", _plugin_version)
+    add("系统", lambda: "%s · %s" % (platform.platform(), sys.platform))
+    add("Python", lambda: "%s（%s）" % (sys.version.split()[0], sys.executable))
+    add("解释器", lambda: " · ".join(
+        "%s=%s" % (n, "有" if shutil.which(n) else "无") for n in PYTHON_CANDIDATES))
+    add("插件目录", lambda: paths["plugin_dir"])
+    add("hooks 命令", _hooks_command)
+    try:
+        base = status(paths)
+    except Exception:                              # noqa: BLE001
+        base = None
+    add("3P 配置", lambda: "（读不到）" if base is None else
+        (base["three_p_config"] or "无") + ("" if base["installed"] else "（未生效）"))
+    add("网关", lambda: _gateway_state(paths["bridge_home"]))
+    add("日志尾部", lambda: _newest_log(paths["bridge_home"]))
+
+    log("claude-tuner 诊断（把下面整段一起复制，别只贴最后一行）")
+    log("-" * 60)
+    for title, value in rows:
+        log("%s：%s" % (title, value))
+    log("-" * 60)
+    log("以上的 Key 一律不打印（只报「填了没」）。遇到问题请附上这段：")
+    log("https://github.com/ls-open/claude-tuner/issues")
+    return 0
+
+
+# ==============================================================================
 # CLI
 # ==============================================================================
 
@@ -464,6 +577,8 @@ def build_parser():
     st = sub.add_parser("status", help="体检")
     st.add_argument("--json", action="store_true", dest="as_json")
 
+    sub.add_parser("doctor", help="打印一段可直接粘进 issue 的诊断信息（不含密钥）")
+
     al = sub.add_parser("align", help="把机器相关的适配重新对齐（hooks 的解释器名等，幂等）")
     al.add_argument("--dry-run", action="store_true")
 
@@ -484,6 +599,8 @@ def main(argv=None):
         result = align_runtime(dry_run=getattr(args, "dry_run", False))
         log("适配：%s" % json.dumps(result, ensure_ascii=False))
         return 0
+    if cmd == "doctor":
+        return doctor()
     info = status()
     if getattr(args, "as_json", False):
         print(json.dumps(info, ensure_ascii=False, indent=1))

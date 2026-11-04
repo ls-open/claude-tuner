@@ -289,6 +289,14 @@ def main(argv=None):
 
     log("\n" + "=" * 60)
     ok("🎉 claude-tuner 安装完成！")
+    if sys.platform == "win32":
+        # 提前说清楚，比事后让人猜强：Windows 上「客户端会不会真的执行 hooks.json」
+        # 只能在真机上验，我们验不到。装完就把话说在前面，也顺手给一条能贴给我们的命令。
+        log("  ⚠️  Windows 目前是**实验性**：安装器与网关逻辑已在 CI 上验过，")
+        log("     但「客户端会不会把网关拉起来」这一环我们验不到（没有 Windows 机器）。")
+        log("     若在客户端里发消息没反应，请运行下面这条，把整段输出贴到 issue（不含密钥）：")
+        log("     %s %s doctor" % (sys.executable, os.path.join(dest, "scripts", "bootstrap.py")))
+        log("     https://github.com/ls-open/claude-tuner/issues")
     return 0
 
 

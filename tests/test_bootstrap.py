@@ -373,3 +373,47 @@ class TestBackupPruning(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestDoctor(BootstrapTestCase):
+    """`doctor` 是用户报障时唯一能提供的线索，所以它自己**不许失败**。
+
+    它存在的场景恰恰是「别的地方都坏了」：目录不全、网关没起来、客户端没拉钩子。
+    在这种环境里还能打出一段有用的文字，才叫诊断工具；能用只说明它没被测过。
+    """
+
+    def test_works_in_a_completely_empty_home(self):
+        """什么都没有时也要有话说 —— 这正是用户第一次报障时的样子。"""
+        res = self.run_bootstrap("doctor")
+        self.assertEqual(res.returncode, 0,
+                         "doctor 自己抛了：\n%s\n%s" % (res.stdout or "", res.stderr or ""))
+        out = res.stdout or ""
+        for label in ("版本", "系统", "Python", "解释器", "hooks 命令", "网关"):
+            self.assertIn(label, out, "诊断缺了一项：%s\n%s" % (label, out))
+        # 没启动过就要明确说「没有 pid 文件」，不能空着让人猜
+        self.assertIn("没有 pid 文件", out)
+
+    def test_never_prints_the_api_key(self):
+        """诊断信息是要贴到公开 issue 里的 —— 里面绝不能有 Key。
+
+        先真的装一遍（把 Key 写进 3P 配置），再跑 doctor：这样断言的不是「碰巧没有」，
+        而是「文件里明明有，它也确实读到了那份配置，但没打出来」。
+        """
+        key = "sk-doctor-must-not-leak-9921"
+        self.install("--key", key)
+        res = self.run_bootstrap("doctor")
+        out = res.stdout or ""
+        self.assertNotIn(key, out, "诊断输出里出现了 API Key：\n%s" % out)
+        self.assertIn("3P 配置", out)
+        self.assertIn("configLibrary", out, "没读到 3P 配置，这条断言就白写了：\n%s" % out)
+
+    def test_reports_a_living_gateway(self):
+        """网关在跑时要说「在跑」—— 拿测试进程自己的 pid 当活样本，不真起网关。"""
+        self.bridge_home.mkdir(parents=True, exist_ok=True)
+        (self.bridge_home / "gateway.pid").write_text(str(os.getpid()), encoding="utf-8")
+        (self.bridge_home / "gateway.runtime.json").write_text(
+            json.dumps({"pid": os.getpid(), "script": "/fake/gateway.py"}), encoding="utf-8")
+        res = self.run_bootstrap("doctor")
+        out = res.stdout or ""
+        self.assertIn("在跑", out, out)
+        self.assertIn("/fake/gateway.py", out, "运行时记录里的脚本路径没被打出来：\n%s" % out)
