@@ -196,7 +196,7 @@ def extract_tool_names(payload):
     return [t["name"] for t in tools if isinstance(t, dict) and t.get("name")]
 
 
-def cleaned_copy(payload, tp_cfg=None):
+def cleaned_copy(payload, tp_cfg=None, with_changed=False):
     """跑一遍**生产那条路**（`gateway.stabilize_request`），返回清洗后的副本。
 
     不能只调 `canonicalize`：生产是「先剥工具、再清洗」两步，剥完 `tools` 就少了，
@@ -204,11 +204,12 @@ def cleaned_copy(payload, tp_cfg=None):
     —— 段落该删没删这种故障会被它报成 ✅（铁律 6）。
     """
     p = copy.deepcopy(payload)
+    changed = []
     try:
-        gateway.stabilize_request(p, None, kind=gateway.classify_kind(p), tool_pruning_cfg=tp_cfg)
+        changed = gateway.stabilize_request(p, None, kind=gateway.classify_kind(p), tool_pruning_cfg=tp_cfg)
     except Exception as exc:  # 清洗器本身出问题时不应阻断哨兵
         print("  ⚠️ stabilize_request() 执行异常: %s" % exc, file=sys.stderr)
-    return p
+    return (p, changed) if with_changed else p
 
 
 def extract_client_version(payload):
@@ -467,6 +468,28 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     return hits, len(missing)
 
 
+def _audit_rule_health(changed):
+    """④.5 规则哑火：触发物还在却没动手 / 洗完还有易变痕。
+
+    单份抓包就能判 —— 它问的是「这份请求里有没有该被处理却没处理的东西」，
+    与版本无关。判据在 `volatile_markers`（网关每轮用的是同一份）。
+    """
+    silent = [c[len("rule_silent_"):] for c in changed if c.startswith("rule_silent_")]
+    residue = [c[len("rule_residue_"):] for c in changed if c.startswith("rule_residue_")]
+    print()
+    print("─" * 78)
+    print("④.5 规则哑火")
+    print("─" * 78)
+    if not silent and not residue:
+        print("  ✅ 该动手的规则都动手了，清洗后无易变残留")
+        return
+    for rule in silent:
+        print("  ⚠️ %s：触发物还在，规则却没动手 —— 规则实现坏了，或客户端只改了一半措辞" % rule)
+    for rule in residue:
+        print("  ⚠️ %s：清洗后仍有残留 —— 客户端把锚点本身改了措辞（规则认不出这种形态）" % rule)
+    print("     处置：拿到这份残留原文，改对应规则的锚点；改完重跑确认转为 ✅。")
+
+
 def cmd_audit(model, session=None, last=False):
     cur = _resolve_current(model, session, last=last)
     if not cur:
@@ -477,7 +500,7 @@ def cmd_audit(model, session=None, last=False):
     base_cfg = gateway.load_tool_pruning_config()
     tp_cfg = gateway.pruning_cfg_for_surface(base_cfg, gateway.classify_kind(raw))
     surface_skipped = tp_cfg is not base_cfg
-    clean = cleaned_copy(raw, tp_cfg=tp_cfg)
+    clean, changed = cleaned_copy(raw, tp_cfg=tp_cfg, with_changed=True)
     print("=" * 78)
     print("版本哨兵 · 注入面覆盖自检")
     print("=" * 78)
@@ -499,6 +522,8 @@ def cmd_audit(model, session=None, last=False):
     findings += injected
     _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
     findings += pair_findings
+    _audit_rule_health(changed)
+    findings += sum(1 for c in changed if c.startswith(("rule_silent_", "rule_residue_")))
 
     print()
     print("─" * 78)

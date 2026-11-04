@@ -41,6 +41,7 @@ from common import (
     plugin_version,
 )
 import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle_get / handle_post
+import volatile_markers  # noqa: E402  「规则哑火」判据（纯函数层，见该模块开头）
 
 HOST = "127.0.0.1"
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
@@ -824,6 +825,12 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     #    放在最后（配对段落已删完），所以报出来的都是我们**没能**处理干净的 —— 即
     #    客户端新增的交叉引用。这是探测器不是改写器，只记日志，见 report_orphan_mentions。
     report_orphan_mentions(parsed, _ghost_names)
+
+    # 7. 收尾：规则哑火。两类信号合成 `rule_silent_<规则>` / `rule_residue_<规则>` ——
+    #    前者是「洗完触发物还在、却没有任何规则认领」，后者是「洗完还有易变痕」
+    #    （客户端把锚点改了措辞时，前者跟着一起瞎）。必须排在所有规则之后：
+    #    这是判据，不是改写器。
+    changed.extend(volatile_markers.rule_markers(parsed, r, changed))
 
     return changed
 
