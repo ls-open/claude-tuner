@@ -41,8 +41,10 @@ Claude Code 与 Claude 桌面端（3P 模式）默认只认官方模型名称。
 python3 ~/.claude/skills/claude-tuner/scripts/stats.py
 ```
 
-它读本地日志算**你自己的**命中率与上下文规模。本插件任何地方都不写「命中率 99%」这种数：
-那是结果，取决于会话形态、上游是否真的支持缓存、客户端版本；我们能负责的只有手段。
+它读本地日志算**你自己的**命中率与上下文规模。
+
+这里不给数字：命中率是结果，取决于会话形态、上游是否真的支持缓存、客户端版本。我们负责的
+只有手段——让前缀别变。
 
 ---
 
@@ -83,12 +85,8 @@ flowchart LR
 ### 1. 前置准备
 - **操作系统**：
   - **macOS**：长期主力，稳定；
-  - **Windows**：**实验性 —— 装之前请先读这一段**。安装器、网关、配置台都是纯 Python，
-    CI 在真实的 `windows-latest` 上跑全部单测与安装演练（含 hooks 里那句命令能不能在本机
-    解析执行）。但**有一环 CI 永远验不了**：客户端到底会不会去执行 `hooks.json`。这只能在
-    真机上装一次才知道，而我们没有 Windows 机器 —— 所以这一环是空的。**能用是运气，
-    不能用是常态**，别把它当成 macOS 那条路的等价物。坏了不用自己啃：
-    [跑一条诊断命令](#windows-出问题怎么办)把输出贴给我们，或者直接提 PR；
+  - **Windows**：**实验性**。没有 Windows 机器，真机没验过；有问题请带上
+    [诊断输出](#windows-出问题怎么办)提 issue，不提就按能用算。macOS 才是主线；
   - **Linux**：无该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 - **客户端环境**：已安装 [Claude 桌面端](https://claude.com/product/claude-code) 或终端 Claude Code（首次启动会自动生成基础配置目录）。
 - **API 凭据**：支持 Anthropic 协议端点的服务商 API Key（如 DeepSeek 官方、OpenCode 或第三方中转服务）。
@@ -260,73 +258,37 @@ claude -p "只回复两个字：成功"
 
 ---
 
-## 🪟 Windows 支持现状（以及我们为什么把它标成实验性）
+## 🪟 Windows
 
-核心代理逻辑与配置台都是纯 Python 跨平台实现，`platform_support.py` 收口了全部系统差异
-（探活、终止、文件锁、脱离父进程起子进程、客户端是否在跑）。剩下的是**两条我们证明不了的边**。
+**实验性。** 核心逻辑是纯 Python，`platform_support.py` 收口了全部系统差异，CI 在真实的
+`windows-latest` 上跑全部单测与安装演练。但**没有一台 Windows 机器**，所以真机没验过：
+客户端会不会真的拉起网关、3P 配置目录是不是我们推的那个位置。
 
-**已经验过的**（在真实的 `windows-latest` runner 上，每次提交都跑）：
+- **能用就用，不能用在 [issue](https://github.com/ls-open/claude-tuner/issues) 里说一声**，
+  附上下面的诊断输出；懒得提也没关系，那就当它不支持。
+- 想让它变成正式支持，只有一条路：有人在真机上装通并告诉我们结果。
 
-| 验的东西 | 怎么验的 |
-| :--- | :--- |
-| 全部单测 | 在 Windows 上真跑（不写条数：它每加一条用例就过期一次，说了等于没说） |
-| hooks 的解释器名 | 逐条取解释器，再用真子进程按 exec form 形跑一遍，确认解析得开 |
-| 安装器 | `install.py --dry-run` 在 Windows 上走完整条路径 |
-| 退出握手 | 写停止标记 → 网关自己退 → 端口关掉，两个平台同一条路 |
-| 启动不依赖网络 | 把反向 DNS 卡住 60 秒，网关照样起来（这就是 0.9.0 在 macOS CI 上翻车的那条） |
+## 🚑
 
-**hooks 的形态不再是个变量。** 早先 `hooks.json` 用的是 shell form（不带 `args`）：
-macOS 交给 `sh -c`，Windows 交给 Git Bash、没有就交给 PowerShell —— 而
-`"${CLAUDE_PLUGIN_ROOT}/scripts/manager.py"` 在 PowerShell 里是**它自己的变量语法**，
-会展开成空串，命令变成 `python3 "/scripts/manager.py"`，静默失败。
-现在改成 **exec form**（`command` + `args`）：任何平台都没有 shell，占位符按普通字符串替换。
-**这个失败模式从构造上不再存在**，不需要有台 Windows 机器才能保证。
-（改之前用探针实测过：客户端把替换后的路径当成一个参数递进来，真命令执行成功，退出码 0。）
+### 网关起不来时（任何平台，不需要任何 AI）
 
-**还没验过的**，按「离用户多近」排：
-
-1. `python3` / `python` / `py` 在真实 Windows 上叫什么——`bootstrap.py align` 会挑本机存在的那个，
-   CI 验了解析与执行，但真实机器上的 PATH 只有真机知道。
-2. 3P 配置目录在真实 Windows 客户端上是不是 `%APPDATA%\Claude-3p`（我们是按文档推的）。
-3. 一个陌生人照着一行命令装，在干净系统上能不能走通（防火墙、代理、杀软）。
-4. 企业环境：MITM 证书、代理、组策略。
-
-> 另外两条与平台无关、但值得知道的事实：hooks **只在会话启动时加载一次**（改了要新开会话才生效），
-> 而 `UserPromptSubmit` 在桌面端**从未触发过**——别指望「发消息时会顺手把网关拉起来」。
-
-**所以我们的取舍是**：不把没验的东西写成「支持」。Windows 保持实验性，出了问题**由用户
-先替我们验一步**，我们把代价压到「跑一条命令、贴一段文字」。
-
-### 网关起不来怎么办（任何平台，不需要任何 AI）
-
-请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条命令就够：
+请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条：
 
 ```bash
 python3 ~/.claude/skills/claude-tuner/scripts/manager.py ensure
 python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
 ```
 
-第一条把网关拉起来（macOS/Linux 的路径；Windows 是
-`python "%USERPROFILE%\.claude\skills\claude-tuner\scripts\manager.py" ensure`），
-第二条给出可贴的诊断信息。**这两条不依赖客户端、不依赖任何模型。**
+第一条把网关拉起来（Windows：`python "%USERPROFILE%\.claude\skills\claude-tuner\scripts\manager.py" ensure`），
+第二条打印一段可直接贴进 issue 的诊断信息（版本、系统、Python、解释器、插件目录、hooks 命令、
+3P 配置路径、网关 pid 与日志尾部）。**不含任何密钥**，也不依赖客户端。
 
-### Windows 出问题怎么办
+### 提 PR
 
-先把这一段贴上，它比任何文字描述都有用（**不含任何密钥**，只回答「填了没」）：
+平台相关的改动只往 `scripts/platform_support.py` 一处放，业务代码里不要再写 `if win32`。
+PR 里请写清：改了什么、在哪个系统上验的、`doctor` 的前后输出。
 
-```bash
-python "%USERPROFILE%\.claude\skills\claude-tuner\scripts\bootstrap.py" doctor
-```
-
-它会打印版本、系统、Python、三个解释器在不在、插件目录、hooks 里现在那句命令、
-3P 配置路径、网关的 pid 与存活状态、日志最后几行。整段复制到
-[issue](https://github.com/ls-open/claude-tuner/issues) 里就行。
-
-**也欢迎直接提 PR。** 平台相关的改动只往一处放（`scripts/platform_support.py`），
-其余业务代码里不要再写 `if win32` —— 抄件一多就会出现「页面说客户端没开、manager 说有」。
-PR 里请带上：改了什么、在哪个 Windows 版本上验的、`doctor` 的前后输出。
-
-> Linux：没有该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。同样不承诺端到端可用。
+> Linux：没有该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 
 ---
 
