@@ -247,6 +247,7 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     # 技能把结论交回界面的通道 —— 都是有实际用途的能力，不是死重。
     "strip_task_stop_tools": False,       # TaskStop
     "strip_report_findings_tools": False, # ReportFindings
+    "strip_monitor_tools": False,         # Monitor（后台事件流；Bash 说明里点名用它，剥了会悬空）
 }
 
 

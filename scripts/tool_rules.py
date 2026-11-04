@@ -119,6 +119,10 @@ CATEGORY_NAMES = {
     # 默认关 —— 与其余几项同理，删不删由用户自己掂量。
     "strip_task_stop_tools": ("TaskStop",),
     "strip_report_findings_tools": ("ReportFindings",),
+    # Monitor 是后台事件流（盯长跑命令 / CI / 日志），Bash 工具的说明里点名「前台 sleep
+    # 被禁，改用 Monitor 等待条件」—— 剥掉它 Bash 那段就成了指向不存在工具的悬空引用。
+    # 各给一个开关、默认保留，理由同 TaskStop。
+    "strip_monitor_tools": ("Monitor",),
 }
 
 
