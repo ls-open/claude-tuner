@@ -42,6 +42,7 @@ from common import (  # noqa: E402
     DEFAULT_PORT,
     atomic_write_json,
     ensure_config_initialized,
+    configure_stdio,
     find_active_3p_config_path,
     normalize_upstream,
     prune_backups,
@@ -49,7 +50,12 @@ from common import (  # noqa: E402
 
 
 def log(msg=""):
-    print(msg)
+    """输出一行。Windows 控制台默认编码打不了 emoji / 中文，兜一层转义 ——
+    安装器在那边失败时只留一句 UnicodeEncodeError，用户完全看不懂发生了什么。"""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("unicode_escape").decode("ascii"))
 
 
 # ==============================================================================
@@ -336,7 +342,9 @@ def cmd_install(args):
     for b in backups:
         log("   ↩︎ 原文件已备份：%s" % b)
     for p in problems:
-        log("   ⚠️ %s" % p)
+        # 用专用字样：`⚠️ ` 这个前缀在安装输出里也被「还没有 API Key」这类提醒用着，
+        # 混在一起就没人分得清哪条是真失败（含测试与 CI）。
+        log("   ❌ 写入失败：%s" % p)
     if args.no_restart:
         log("   已跳过网关重启（--no-restart），由调用方负责拉起")
     else:
@@ -384,6 +392,60 @@ def cmd_uninstall(args):
     return 0
 
 
+# ── 机器相关的适配（每次「文件落地」之后都要重跑一遍） ──────────────────────────
+# hooks.json 是随插件发布的清单，但里面那句 `python3 ...` 要看**这台机器**上叫什么。
+# 早先把改写写在 install.py 里，只在安装那一刻生效 —— 下次点「检查更新」整棵树被覆盖，
+# 适配就没了，Hook 静默失效、网关再也拉不起来。
+# 所以适配必须做成**幂等的收尾步骤**，由所有「往插件目录写文件」的入口调用：
+# install.py（首次安装）、updater.py（检查更新）、tools/sync.py（开发同步）。
+PYTHON_CANDIDATES = ("python3", "python", "py")
+
+
+def _pick_interpreter():
+    """hooks 该用哪个解释器启动本插件 —— 取这台机器上真的能跑起来的那个名字。
+
+    优先 `python3`（POSIX 惯例），其次 `python`、`py`（Windows 上装的是这两个）。
+    都找不到就什么都不改，让客户端自己的报错暴露问题，比我们写一个猜的名字强。
+    """
+    import shutil as _shutil
+    for name in PYTHON_CANDIDATES:
+        if _shutil.which(name):
+            return name
+    return None
+
+
+def align_runtime(dest=None, dry_run=False):
+    """把 hooks.json 里的解释器名对齐到本机。幂等：已经对就一个字节都不写。"""
+    dest = dest or os.path.dirname(os.path.abspath(__file__))
+    hooks_file = os.path.join(os.path.dirname(dest), "hooks", "hooks.json")
+    if not os.path.isfile(hooks_file):
+        return {"changed": False, "reason": "no-hooks-file"}
+    interpreter = _pick_interpreter()
+    if not interpreter:
+        return {"changed": False, "reason": "no-interpreter"}
+    try:
+        with open(hooks_file, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        return {"changed": False, "reason": "read-error: %s" % exc}
+    fixed = text
+    for name in PYTHON_CANDIDATES:
+        if name == interpreter:
+            continue
+        fixed = fixed.replace('"%s ' % name, '"%s ' % interpreter)
+        fixed = fixed.replace('"%s"' % name, '"%s"' % interpreter)
+    if fixed == text:
+        return {"changed": False, "reason": "already-aligned", "interpreter": interpreter}
+    if dry_run:
+        return {"changed": True, "dry_run": True, "interpreter": interpreter}
+    try:
+        with open(hooks_file, "w", encoding="utf-8") as fh:
+            fh.write(fixed)
+    except OSError as exc:
+        return {"changed": False, "reason": "write-error: %s" % exc}
+    return {"changed": True, "interpreter": interpreter}
+
+
 def build_parser():
     p = argparse.ArgumentParser(description="claude-tuner 安装协调者")
     sub = p.add_subparsers(dest="cmd")
@@ -402,6 +464,9 @@ def build_parser():
     st = sub.add_parser("status", help="体检")
     st.add_argument("--json", action="store_true", dest="as_json")
 
+    al = sub.add_parser("align", help="把机器相关的适配重新对齐（hooks 的解释器名等，幂等）")
+    al.add_argument("--dry-run", action="store_true")
+
     un = sub.add_parser("uninstall", help="收回本插件写的客户端状态")
     un.add_argument("--dry-run", action="store_true")
     un.add_argument("--purge-3p", action="store_true", help="连 3P 推理配置一起删（危险）")
@@ -415,6 +480,10 @@ def main(argv=None):
         return cmd_install(args)
     if cmd == "uninstall":
         return cmd_uninstall(args)
+    if cmd == "align":
+        result = align_runtime(dry_run=getattr(args, "dry_run", False))
+        log("适配：%s" % json.dumps(result, ensure_ascii=False))
+        return 0
     info = status()
     if getattr(args, "as_json", False):
         print(json.dumps(info, ensure_ascii=False, indent=1))
@@ -432,4 +501,5 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    configure_stdio()
     sys.exit(main())

@@ -8,6 +8,7 @@
 import copy
 import os
 import re
+import sys
 import uuid
 
 
@@ -21,7 +22,13 @@ def platform_paths():
     环境变量覆盖：HOME / CLAUDE_TUNER_HOME / CLAUDE_TUNER_3P_DIR。测试靠它们指到临时目录。
     """
     home = os.path.expanduser("~")
-    app_support = os.path.join(home, "Library", "Application Support")
+    if sys.platform == "win32":
+        app_support = os.environ.get("APPDATA") or os.path.join(home, "AppData", "Roaming")
+    elif sys.platform == "darwin":
+        app_support = os.path.join(home, "Library", "Application Support")
+    else:
+        # Linux 走 XDG。非 win32 一律当 macOS 会让 Linux 用户装到一个没人读的目录。
+        app_support = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
     claude_dir = os.path.join(app_support, "Claude")
     claude_3p_dir = os.path.join(app_support, "Claude-3p")
     return {

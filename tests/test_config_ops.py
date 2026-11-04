@@ -386,16 +386,40 @@ class TestPaths(ConfigOpsTestCase):
         with mock.patch.dict(os.environ, {"CLAUDE_TUNER_HOME": "/tmp/ccds-test"}, clear=False):
             p = self.ops.backup_path("/x/configLibrary/abc.json", "2026-10-13T12:00:00+08:00")
         self.assertTrue(p.endswith("abc.json.20261013T1200000800.bak"), p)
-        self.assertIn("/backups/3p/", p)
+        # 分隔符随平台：Windows 上是 \backups\3p\
+        self.assertIn(os.path.join("", "backups", "3p", ""), p)
 
     def test_platform_paths_honours_overrides(self):
-        env = {"HOME": "/tmp/fake-home", "CLAUDE_TUNER_HOME": "/tmp/fake-bridge",
+        env = {"HOME": "/tmp/fake-home", "USERPROFILE": "/tmp/fake-home",
+               "XDG_CONFIG_HOME": "/tmp/fake-config", "CLAUDE_TUNER_HOME": "/tmp/fake-bridge",
                "CLAUDE_TUNER_3P_DIR": "/tmp/fake-3p"}
         with mock.patch.dict(os.environ, env, clear=False):
             paths = self.ops.platform_paths()
         self.assertEqual(paths["config_library"], "/tmp/fake-3p")
         self.assertEqual(paths["bridge_home"], "/tmp/fake-bridge")
-        self.assertEqual(paths["claude_settings"], "/tmp/fake-home/.claude/settings.json")
+        # 用 os.path.join 拼期望值：Windows 上分隔符是反斜杠，写死 `/tmp/fake-home/...`
+        # 会让这条用例在那边必红 —— 而那种红是「测试写得不对」。
+        self.assertEqual(paths["claude_settings"],
+                         os.path.join("/tmp/fake-home", ".claude", "settings.json"))
+
+    def test_platform_paths_linux_uses_xdg(self):
+        """Linux 上绝不能落到 ~/Library —— 那是 macOS 的布局，写了没人读。"""
+        with mock.patch("sys.platform", "linux"):
+            env = {"XDG_CONFIG_HOME": "/fake/config", "HOME": "/fake/home"}
+            with mock.patch.dict(os.environ, env, clear=False):
+                paths = self.ops.platform_paths()
+                self.assertEqual(paths["claude_dir"], os.path.join("/fake/config", "Claude"))
+                self.assertEqual(paths["config_library"],
+                                 os.path.join("/fake/config", "Claude-3p", "configLibrary"))
+
+    def test_platform_paths_windows(self):
+        with mock.patch("sys.platform", "win32"):
+            env = {"APPDATA": "/fake/appdata", "HOME": "/fake/home"}
+            with mock.patch.dict(os.environ, env, clear=False):
+                paths = self.ops.platform_paths()
+                self.assertEqual(paths["claude_dir"], os.path.join("/fake/appdata", "Claude"))
+                self.assertEqual(paths["claude_3p_dir"], os.path.join("/fake/appdata", "Claude-3p"))
+                self.assertEqual(paths["config_library"], os.path.join("/fake/appdata", "Claude-3p", "configLibrary"))
 
 
 if __name__ == "__main__":

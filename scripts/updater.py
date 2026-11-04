@@ -23,7 +23,7 @@ import tarfile
 import tempfile
 import time
 
-from common import BACKUP_KEEP_TREES, prune_backups
+from common import safe_extractall, BACKUP_KEEP_TREES, prune_backups
 import urllib.request
 
 sys.dont_write_bytecode = True
@@ -129,7 +129,7 @@ def _extract(blob, workdir):
             # 只允许相对路径、且不越出工作目录 —— 远端内容不可信
             if m.name.startswith("/") or ".." in m.name.split("/"):
                 raise ValueError("压缩包里有不安全的路径：%s" % m.name)
-        tar.extractall(workdir)
+        safe_extractall(tar, workdir)
     entries = [os.path.join(workdir, n) for n in os.listdir(workdir)]
     for entry in entries:
         if os.path.isdir(entry) and os.path.isfile(os.path.join(entry, "release.json")):
@@ -204,6 +204,14 @@ def apply_update():
                 shutil.copytree(src, dst, symlinks=True)
             else:
                 shutil.copy2(src, dst)
+        # 换完文件必须重新做一遍机器适配：hooks.json 里的解释器名是**这台机器**的事，
+        # 整树覆盖会把它改回模板值（Windows 上 `python3` 多半不存在），
+        # 症状是更新之后 Hook 静默不再拉起网关。
+        try:
+            subprocess.run([sys.executable, os.path.join(SCRIPT_DIR, "bootstrap.py"), "align"],
+                           timeout=30, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         return {"ok": True, "source": used, "backup": backup,
                 "version": json.load(open(os.path.join(root, "release.json"), encoding="utf-8")
                                      ).get("version", "")}

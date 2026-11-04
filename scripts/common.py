@@ -7,6 +7,8 @@ import json
 import os
 import re
 import shutil
+import sys
+import tarfile
 import time
 
 
@@ -48,11 +50,19 @@ def prune_backups(directory, keep, prefix=None):
 
 
 def get_3p_config_dir():
-    """获取 Claude 3P configLibrary 目录路径（全仓唯一入口，仅 macOS）。"""
+    """获取 Claude 3P configLibrary 目录路径（全仓唯一入口）。"""
     custom = os.environ.get("CLAUDE_TUNER_3P_DIR")
     if custom:
         return os.path.expanduser(custom)
-    return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
+    if sys.platform == "win32":
+        app_support = os.environ.get("APPDATA") or os.path.expanduser("~/AppData/Roaming")
+        return os.path.join(app_support, "Claude-3p", "configLibrary")
+    if sys.platform == "darwin":
+        return os.path.expanduser("~/Library/Application Support/Claude-3p/configLibrary")
+    # Linux：按 XDG 走。之前非 win32 一律落到 ~/Library —— 那是 macOS 的布局，
+    # 在 Linux 上等于往一个没人读的目录里写配置，装完「成功」而客户端不认。
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+                        "Claude-3p", "configLibrary")
 
 
 # 3P 配置扫描 Glob 路径：由 get_3p_config_dir() 派生而非各写一份默认值，
@@ -162,6 +172,30 @@ def read_3p_models():
         return {}
 
 
+def configure_stdio():
+    """把 stdout/stderr 切到 UTF-8。
+
+    Windows 上它们默认跟随控制台代码页（cp1252 / cp936），中文一多就抛
+    UnicodeEncodeError 或变乱码。每个入口（gateway / manager / webui / stats / sentinel）
+    启动时调一次；`log_event` 另有兜底，这条只是让输出本来就正常。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
+        except Exception:
+            pass
+
+
+def safe_extractall(tar, path):
+    """解压 tar 包，且尽量挡住路径穿越。
+
+    `filter="data"` 是 3.12 起才有的参数（3.11.4+ 也有）；插件最低支持 3.11.0，
+    所以按能力探测。解的是**网络下载的包**，这条不是洁癖。
+    """
+    kwargs = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+    tar.extractall(path, **kwargs)
+
+
 def atomic_write_json(path, data, indent=2):
     """原子写 JSON：同目录临时文件 + os.replace，并保留目标文件原有权限位。
 
@@ -177,8 +211,19 @@ def atomic_write_json(path, data, indent=2):
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(data, fh, ensure_ascii=False, indent=indent)
-        os.chmod(tmp, mode)  # 已存在的 .tmp 会保留旧权限，显式对齐
-        os.replace(tmp, path)
+        try:
+            os.chmod(tmp, mode)  # 已存在的 .tmp 会保留旧权限，显式对齐
+        except OSError:
+            pass  # Windows 上部分权限位无直接映射，防抛错
+        # Windows 上若目标文件被读取或杀毒扫描，os.replace 可能偶发 PermissionError，给小幅度重试
+        for attempt in range(5):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.05)
     except Exception:
         try:
             os.remove(tmp)
@@ -252,6 +297,13 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
 
 # 默认值只在这里定义一次，其余模块一律 import —— 同一个数字在几处各写一份，
 # 迟早有一处改漏，而症状是「配置台设了、网关没听」这种最难查的形态。
+# 网关 ↔ manager 的文件握手名。**只在这里定义一次**：两个进程各写一份的话，
+# 改名字时必有一边漏改，症状是「停止标记写了没人看」这种查半天的问题。
+STOP_FILE_NAME = "stop.request"          # 请求网关自己退出（Windows 没有可拦的退出信号）
+LIFETIME_LOCK_NAME = "gateway.lock"      # 网关持有一生，用作「这个 pid 还是不是我们」的证明
+RUNTIME_INFO_NAME = "gateway.runtime.json"   # 网关启动时写：谁在跑、跑的是哪个脚本
+STOP_GRACE_SECONDS = 5.0                 # 请它退出后等多久再考虑强杀
+
 DEFAULT_PORT = 8789
 DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
 DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案

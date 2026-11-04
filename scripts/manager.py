@@ -3,7 +3,6 @@
 import json
 import glob
 import os
-import signal
 import socket
 import subprocess
 import sys
@@ -14,8 +13,15 @@ import urllib.request
 # 代码以仓库为准且改动频繁，缓存无收益（省几毫秒），只带来「跑的是不是新代码」的疑问。
 sys.dont_write_bytecode = True
 
+import platform_support  # 进程存活 / 锁 / 脱离父进程 —— 平台差异只在那里写一份
+
 from common import (
     DEFAULT_LOG_RETENTION_DAYS,
+    configure_stdio,
+    STOP_FILE_NAME,
+    LIFETIME_LOCK_NAME,
+    RUNTIME_INFO_NAME,
+    STOP_GRACE_SECONDS,
     DEFAULT_PORT,
     THREEP_CONFIG_GLOB,
     atomic_write_json,
@@ -130,9 +136,9 @@ def acquire_lock():
     deadline = time.time() + 3.0
     while True:
         try:
-            import fcntl
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            break
+            if platform_support.lock_file(fd):
+                break
+            raise OSError("lock busy")
         except OSError:
             if time.time() >= deadline:
                 os.close(fd)
@@ -151,11 +157,7 @@ def acquire_lock():
 def release_lock(fd):
     if fd is None:
         return
-    try:
-        import fcntl
-        fcntl.flock(fd, fcntl.LOCK_UN)
-    except OSError:
-        pass
+    platform_support.unlock_file(fd)
     try:
         os.close(fd)
     except OSError:
@@ -171,18 +173,54 @@ def read_pid(pid_file):
         return None
 
 
-def pid_is_ours(pid):
-    """该 pid 现在是否仍是我们自己的脚本进程。
-
-    **任何失败都返回 False** —— 这个方向错了会去 kill 一个 pid 被系统回收后复用的
-    无关进程。活着与否另有 `gateway_alive()` 负责，这里只回答「能不能安全地杀」。
-    """
+def write_runtime_info(pid, script, port=None):
+    """记下「谁在跑、跑的是哪个脚本」。由 manager 在拉起时写 —— 这样**老版本的网关**
+    也有记录（它自己不写），升级时才知道端口上那个进程该不该动。"""
     try:
-        res = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True, timeout=5)
-        return os.path.basename(GATEWAY) in (res.stdout or "")
+        atomic_write_json(os.path.join(BASE, RUNTIME_INFO_NAME), {
+            "pid": pid,
+            "port": port or effective_port(),
+            "script": os.path.abspath(script),
+            "started_at": int(time.time()),
+        })
     except Exception:
+        pass
+
+
+def _runtime_info():
+    try:
+        with open(os.path.join(BASE, RUNTIME_INFO_NAME), "r", encoding="utf-8") as fh:
+            info = json.load(fh)
+        return info if isinstance(info, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def pid_is_ours(pid):
+    """该 pid 现在是否仍是我们自己的网关进程。
+
+    判据是**归属锁**：网关启动时拿住 `gateway.lock` 直到进程结束，进程一死内核就释放。
+    所以「锁还被人握着 + 这个 pid 还活着」= 它就是我们的网关；锁没被握 = 那个进程早没了，
+    现在这个 pid 是系统回收后复用的别人 —— 绝不能杀。
+
+    为什么不读命令行：`ps`/PowerShell 各写一套、路径带空格会被切碎、每次还要起子进程，
+    而这三件事在 Windows 上全都会咬人（真机上真踩过路径被切碎）。
+    """
+    if not platform_support.is_alive(pid):
         return False
+    if platform_support.lock_is_held(os.path.join(BASE, LIFETIME_LOCK_NAME)):
+        return True
+    # 退化路径：0.8.0 及更早的网关不拿这把锁，升级那一刻如果只认锁，
+    # 就会得出「端口上那个进程不是我们的」—— 于是永远停不掉、也永远升不了级。
+    # 这时退回「账本对得上」：pid 与脚本路径都与 manager 当初写的一致才算。
+    info = _runtime_info()
+    if info.get("pid") == pid and os.path.basename(str(info.get("script") or "")) == os.path.basename(GATEWAY):
+        return True
+    # 一次性升级过渡：0.8.0 及更早的网关既不持锁、也没有运行时记录（记录是 manager 新写的）。
+    # 这时只剩一个判据 —— 端口在应答我们的网关协议。pid 又来自我们自己写的 pid 文件，
+    # 两者都对得上就按「是我们的」处理；否则老版本永远停不掉，也就永远升不上来。
+    # 下一个大版本可以把这条删掉（届时所有在跑的实例都会持锁）。
+    return gateway_alive()
 
 
 def gateway_alive():
@@ -353,7 +391,8 @@ def _spawn_unlocked(script, name, pid_file, port=None):
     log_path = os.path.join(BASE, "logs", name + ".out.log")
     with open(rotate_stdout_log(log_path), "a", encoding="utf-8") as log:
         kwargs = {"stdout": log, "stderr": subprocess.STDOUT, "stdin": subprocess.DEVNULL,
-                  "env": env, "start_new_session": True}
+                  "env": env}
+        kwargs.update(platform_support.detached_kwargs())
         proc = subprocess.Popen(
             [sys.executable, script],
             **kwargs
@@ -368,6 +407,7 @@ def _spawn_unlocked(script, name, pid_file, port=None):
         log_msg("pid_file write failed: %s" % exc)
     # 记录启动时刻：外部据此判断「进程跑的是不是最新代码」（代码改动一定晚于 mtime）
     write_started_at(name)
+    write_runtime_info(proc.pid, script, port)
     log_msg("%s started (pid %d)" % (name, proc.pid))
     return True
 
@@ -391,26 +431,24 @@ def stop(pid_file, name):
             pass
         log_msg("%s not running" % name)
         return
+    # 1. 先请它自己退：写停止标记，网关的主循环轮询到就 shutdown。
+    #    这条路两个平台一样 —— Windows 上没有可拦的退出信号，信号那套语义搬不过去。
     try:
-        sig_term = getattr(signal, "SIGTERM", signal.SIGINT)
-        sig_kill = getattr(signal, "SIGKILL", sig_term)
-        os.kill(pid, sig_term)
-        # 等进程真正退出再删 pid 文件
-        for _ in range(30):
-            time.sleep(0.1)
-            try:
-                os.kill(pid, 0)
-            except (ProcessLookupError, OSError):
-                break
-        else:
-            os.kill(pid, sig_kill)
-            time.sleep(0.2)
-    except Exception as exc:
-        log_msg("stop %s error: %s" % (name, exc))
-    try:
-        os.remove(pid_file)
-    except OSError:
-        pass
+        with open(os.path.join(BASE, STOP_FILE_NAME), "w", encoding="utf-8") as fh:
+            fh.write(str(pid))
+    except OSError as exc:
+        log_msg("stop marker write failed: %s" % exc)
+    if not platform_support.wait_gone(pid, STOP_GRACE_SECONDS):
+        # 2. 不听话才强杀。POSIX 先 SIGTERM 再 SIGKILL；Windows 两者都是 TerminateProcess。
+        platform_support.terminate(pid)
+        if not platform_support.wait_gone(pid, 2.0):
+            platform_support.kill(pid)
+            platform_support.wait_gone(pid, 1.0)
+    for leftover in (pid_file, os.path.join(BASE, RUNTIME_INFO_NAME)):
+        try:
+            os.remove(leftover)
+        except OSError:
+            pass
     log_msg("%s stopped" % name)
 
 
@@ -424,16 +462,18 @@ def stop_all():
 
 
 def live_script_path():
-    """通过进程 cmdline 查询当前存活 gateway 实际执行的脚本路径（用于校验是否滞留在旧版本副本）。"""
+    """正在跑的那个网关，执行的是哪一份脚本。
+
+    读网关自己在启动时写下的 `gateway.runtime.json` —— 不查进程表。
+    记录里的 pid 必须还活着，否则那份记录是上一次崩溃留下的，不能当真。
+    """
     try:
-        with open(GATEWAY_PID, "r", encoding="utf-8") as fh:
-            pid = int(fh.read().strip())
-        res = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
-                             capture_output=True, text=True)
-        for token in (res.stdout or "").split():
-            if token.endswith(os.path.basename(GATEWAY)):
-                return os.path.abspath(token)
-    except Exception:
+        info = _runtime_info()
+        pid = info.get("pid")
+        script = info.get("script")
+        if isinstance(pid, int) and isinstance(script, str) and platform_support.is_alive(pid):
+            return os.path.abspath(script)
+    except (OSError, ValueError):
         pass
     return None
 
@@ -475,7 +515,12 @@ def log_msg(*args):
     """统一日志记录：在 --quiet 模式下完全静默 stdout 并自然写入当天日志文件。"""
     msg = " ".join(str(a) for a in args)
     if not QUIET:
-        print(msg)
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            # 与 gateway.log_event 同一条理由：Windows 控制台编码打不了中文/emoji，
+            # 而日志反过来把被记录的东西弄坏，是最不该发生的失败。
+            print(msg.encode("unicode_escape").decode("ascii"))
     try:
         log_dir = os.path.join(BASE, "logs")
         os.makedirs(log_dir, exist_ok=True)
@@ -532,4 +577,5 @@ def main():
 
 
 if __name__ == "__main__":
+    configure_stdio()
     main()

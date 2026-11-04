@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +35,7 @@ BOOTSTRAP = SCRIPTS / "bootstrap.py"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 import common  # noqa: E402
+import config_ops  # noqa: E402
 
 
 class BootstrapTestCase(unittest.TestCase):
@@ -43,9 +45,23 @@ class BootstrapTestCase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.home = Path(self._tmp.name)
-        self.config_lib = self.home / "Library" / "Application Support" / "Claude-3p" / "configLibrary"
-        self.config_lib.mkdir(parents=True)
-        self.claude_dir = self.home / "Library" / "Application Support" / "Claude"
+        # 客户端目录由**生产函数**算（同一份 platform_paths），测试不写死 macOS 的
+        # `~/Library/Application Support` —— 写死就等于把断言绑在一个平台上，
+        # 换到 Windows 就跑不过，而那种红是「测试写得不对」不是「代码有问题」。
+        # APPDATA 一并指到临时目录，Windows 上的分支也在这套隔离里跑。
+        # Windows 的 expanduser 读 USERPROFILE 而不是 HOME：两个都指到临时目录，
+        # 否则测试会去写 runner 的真实用户目录，而断言盯着临时目录（假红且危险）。
+        self._env = {
+            "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
+            "APPDATA": str(self.home / "AppData" / "Roaming"),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
+        }
+        with mock.patch.dict(os.environ, self._env):
+            self.paths = config_ops.platform_paths()
+        self.config_lib = Path(self.paths["config_library"])
+        self.config_lib.mkdir(parents=True, exist_ok=True)
+        self.claude_dir = Path(self.paths["claude_dir"])
         self.bridge_home = self.home / ".claude-tuner"
         self.claude_home = self.home / ".claude"
 
@@ -55,16 +71,32 @@ class BootstrapTestCase(unittest.TestCase):
         env = dict(os.environ)
         env.update({
             "HOME": str(self.home),
+            "USERPROFILE": str(self.home),
+            "APPDATA": str(self.home / "AppData" / "Roaming"),
+            "XDG_CONFIG_HOME": str(self.home / ".config"),
             "CLAUDE_TUNER_3P_DIR": str(self.config_lib),
             "CLAUDE_TUNER_HOME": str(self.bridge_home),
             "CLAUDE_TUNER_API_KEY": "",
         })
+        # encoding 显式给 utf-8：bootstrap 自己被 configure_stdio 切到了 UTF-8，
+        # 而 Windows 上父进程默认按 locale(cp1252/cp936) 解码 —— 中文会乱码解码失败。
         return subprocess.run([sys.executable, str(BOOTSTRAP)] + list(argv),
-                              capture_output=True, text=True, env=env, timeout=60)
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", env=env, timeout=60)
 
     def install(self, *extra):
+        """跑一次安装。**在这里就断言退出码**：否则 bootstrap 一失败，表现只是
+        「某个文件不存在」，等于把「为什么失败」这条信息丢掉了（CI 上尤其致命）。"""
         # --no-restart：测试不该去碰真实的网关进程
-        return self.run_bootstrap("install", "--no-restart", *extra)
+        res = self.run_bootstrap("install", "--no-restart", *extra)
+        self.assertEqual(res.returncode, 0,
+                         "bootstrap 退出码 %d\nstdout:\n%s\nstderr:\n%s"
+                         % (res.returncode, (res.stdout or "")[-1200:], (res.stderr or "")[-1200:]))
+        # 单个动作写失败时 bootstrap 只是打个 ⚠️ 并照样返回 0 —— 不在这里抓，
+        # 表现就只是「后面某个文件不存在」，原因被丢掉了（CI 上踩过）。
+        self.assertNotIn("写入失败", res.stdout or "",
+                         "bootstrap 报告了写入问题：\n%s" % (res.stdout or "")[-1200:])
+        return res
 
     # ── 夹料 ──
 
@@ -100,7 +132,7 @@ class BootstrapTestCase(unittest.TestCase):
 class TestDryRun(BootstrapTestCase):
     def test_dry_run_writes_nothing(self):
         res = self.install("--dry-run", "--key", "sk-test-key-123456")
-        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIsNotNone(res.stdout, "没拿到子进程输出（stderr: %s）" % (res.stderr or "")[-500:])
         self.assertEqual(self.all_files(), [])
         self.assertIn("未执行", res.stdout)
 
@@ -122,20 +154,22 @@ class TestDryRun(BootstrapTestCase):
 class TestInstall(BootstrapTestCase):
     def test_writes_the_handful_of_files_that_open_3p(self):
         self.assertEqual(self.install("--key", "sk-test-key-123456").returncode, 0)
-        for rel in (".claude/settings.json",
-                    "Library/Application Support/Claude/developer_settings.json",
-                    "Library/Application Support/Claude/claude_desktop_config.json",
-                    "Library/Application Support/Claude-3p/developer_settings.json",
-                    "Library/Application Support/Claude-3p/claude_desktop_config.json",
-                    ".claude-tuner/config.json"):
-            self.assertTrue((self.home / rel).is_file(), rel)
+        expected = [
+            self.home / ".claude" / "settings.json",
+            Path(self.paths["claude_dir"]) / "developer_settings.json",
+            Path(self.paths["claude_dir"]) / "claude_desktop_config.json",
+            Path(self.paths["claude_3p_dir"]) / "developer_settings.json",
+            Path(self.paths["claude_3p_dir"]) / "claude_desktop_config.json",
+            self.home / ".claude-tuner" / "config.json",
+        ]
+        for path in expected:
+            self.assertTrue(path.is_file(), str(path))
         # 两个 deploymentMode 都写：app.asar 里读它的路径是 userData + "-3p"，
         # 但 1P 目录那份同样要写，免得换个版本改了读法就失效
-        for rel in ("Library/Application Support/Claude/claude_desktop_config.json",
-                    "Library/Application Support/Claude-3p/claude_desktop_config.json"):
-            self.assertEqual(self.read(self.home / rel)["deploymentMode"], "3p")
-        self.assertIs(self.read(self.home / "Library/Application Support/Claude/"
-                                "developer_settings.json")["allowDevTools"], True)
+        for path in (Path(self.paths["claude_dir"]) / "claude_desktop_config.json",
+                     Path(self.paths["claude_3p_dir"]) / "claude_desktop_config.json"):
+            self.assertEqual(self.read(path)["deploymentMode"], "3p")
+        self.assertIs(self.read(Path(self.paths["claude_dir"]) / "developer_settings.json")["allowDevTools"], True)
 
     def test_3p_config_points_at_local_gateway(self):
         self.install("--key", "sk-test-key-123456")
@@ -234,7 +268,7 @@ class TestIdempotency(BootstrapTestCase):
         self.seed_settings()
         self.install("--key", "sk-test-key-123456")
         watched = [self.claude_home / "settings.json",
-                   self.home / "Library/Application Support/Claude-3p/claude_desktop_config.json",
+                   Path(self.paths["claude_3p_dir"]) / "claude_desktop_config.json",
                    self.bridge_home / "config.json"]
         before = {str(p): p.stat().st_mtime_ns for p in watched}
 

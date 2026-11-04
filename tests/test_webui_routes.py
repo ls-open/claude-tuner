@@ -26,12 +26,17 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-GATEWAY = PLUGIN_ROOT / "scripts" / "gateway.py"
+SCRIPTS = PLUGIN_ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+import config_ops  # noqa: E402  路径口径与生产同一份（platform_paths）
+GATEWAY = SCRIPTS / "gateway.py"
 
 
 def free_port():
@@ -54,7 +59,13 @@ class WebUITestCase(unittest.TestCase):
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.home = Path(cls._tmp.name)
-        cls.config_lib = cls.home / "Library/Application Support/Claude-3p/configLibrary"
+        # 路径由生产口径算（见 config_ops.platform_paths），不写死 macOS 布局
+        cls._env = {"HOME": str(cls.home), "USERPROFILE": str(cls.home),
+                    "APPDATA": str(cls.home / "AppData" / "Roaming"),
+                    "XDG_CONFIG_HOME": str(cls.home / ".config")}
+        with mock.patch.dict(os.environ, cls._env):
+            _paths = config_ops.platform_paths()
+        cls.config_lib = Path(_paths["config_library"])
         cls.config_lib.mkdir(parents=True)
         cls.bridge_home = cls.home / ".claude-tuner"
         cls.bridge_home.mkdir(parents=True)
@@ -74,11 +85,23 @@ class WebUITestCase(unittest.TestCase):
         (cls.bridge_home / "webui.token").write_text(cls.token, encoding="utf-8")
 
         env = dict(os.environ)
-        env.update({"HOME": str(cls.home), "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
+        env.update({"HOME": str(cls.home), "USERPROFILE": str(cls.home),
+                    "APPDATA": str(cls.home / "AppData" / "Roaming"),
+                    "XDG_CONFIG_HOME": str(cls.home / ".config"),
+                    "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
                     "CLAUDE_TUNER_HOME": str(cls.bridge_home), "CLAUDE_TUNER_PORT": str(cls.port)})
+        # 把网关的输出留下来：起不来时它是唯一的线索（曾经在 CI 上只看到
+        # 「15 秒内没起来」而没有任何原因，只能靠猜）。
+        cls._log_path = cls.bridge_home / "gateway.test.log"
+        cls._log = open(cls._log_path, "ab")
+        kwargs = {}
+        if os.name == "nt":
+            # POSIX 的 start_new_session 在 Windows 上会被忽略；那边用 creationflags
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        else:
+            kwargs["start_new_session"] = True
         cls.proc = subprocess.Popen([sys.executable, str(GATEWAY)], env=env,
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                    start_new_session=True)
+                                    stdout=cls._log, stderr=subprocess.STDOUT, **kwargs)
         cls._wait_ready()
 
     @classmethod
@@ -91,10 +114,35 @@ class WebUITestCase(unittest.TestCase):
                     return
             except Exception:
                 time.sleep(0.2)
-        raise RuntimeError("网关没能在 15 秒内起来")
+        tail = ""
+        try:
+            tail = cls._log_path.read_text(encoding="utf-8", errors="replace")[-1500:]
+        except OSError:
+            pass
+        if not tail.strip():
+            # 一个字节都没写 —— 说明它没跑到打印那一步。再起一份把输出接进管道，
+            # 等 10 秒后收走它说的话：这样 CI 上也能看到真实原因，而不是「（无输出）」。
+            try:
+                probe = subprocess.Popen([sys.executable, str(GATEWAY)], env=env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         text=True)
+                try:
+                    out, _ = probe.communicate(timeout=10)
+                except subprocess.TimeoutExpired:
+                    probe.kill()
+                    out, _ = probe.communicate()
+                tail = "（重跑一次的完整输出，退出码 %s）\n%s" % (probe.returncode, (out or "")[-1500:])
+            except Exception as exc:
+                tail = "（重跑也失败：%s）" % exc
+        raise RuntimeError("网关没能在 15 秒内起来。网关输出：\n%s" % (tail or "（无输出）"))
 
     @classmethod
     def tearDownClass(cls):
+        # Windows 上「打开着的文件」删不掉：先把日志句柄关掉，再让临时目录清理跑。
+        try:
+            cls._log.close()
+        except Exception:
+            pass
         cls.proc.terminate()
         try:
             cls.proc.wait(timeout=5)
