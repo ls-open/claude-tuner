@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-48BB78?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-blue?style=flat-square" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey?style=flat-square" alt="macOS | Windows">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey?style=flat-square" alt="macOS · Windows · Linux">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
 
@@ -78,7 +78,12 @@ flowchart LR
 ## ⚡️ 快速开始
 
 ### 1. 前置准备
-- **操作系统**：macOS / Windows / Linux。
+- **操作系统**：
+  - **macOS**：长期主力，稳定；
+  - **Windows**：安装器与网关逻辑同步在开发，CI 在 `windows-latest` 上跑全部单测与安装演练
+    （含 hooks 命令能否在本机解析执行）；**真实客户端拉起链路的实测覆盖还不完整**，
+    请按实验性对待，遇到问题欢迎反馈；
+  - **Linux**：无该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 - **客户端环境**：已安装 [Claude 桌面端](https://claude.com/product/claude-code) 或终端 Claude Code（首次启动会自动生成基础配置目录）。
 - **API 凭据**：支持 Anthropic 协议端点的服务商 API Key（如 DeepSeek 官方、OpenCode 或第三方中转服务）。
 
@@ -90,7 +95,7 @@ flowchart LR
 curl -fsSL https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.sh | bash
 ```
 
-**Windows / 全平台通用**（PowerShell / CMD / 终端执行）：
+**Windows / 全平台通用**（PowerShell / CMD / 终端执行，需 Python 3.11+）：
 
 ```bash
 python -c "import urllib.request; exec(urllib.request.urlopen('https://raw.githubusercontent.com/ls-open/claude-tuner/main/install.py').read())"
