@@ -386,7 +386,8 @@ class TestPaths(ConfigOpsTestCase):
         with mock.patch.dict(os.environ, {"CLAUDE_TUNER_HOME": "/tmp/ccds-test"}, clear=False):
             p = self.ops.backup_path("/x/configLibrary/abc.json", "2026-10-13T12:00:00+08:00")
         self.assertTrue(p.endswith("abc.json.20261013T1200000800.bak"), p)
-        self.assertIn("/backups/3p/", p)
+        # 分隔符随平台：Windows 上是 \backups\3p\
+        self.assertIn(os.path.join("", "backups", "3p", ""), p)
 
     def test_platform_paths_honours_overrides(self):
         env = {"HOME": "/tmp/fake-home", "USERPROFILE": "/tmp/fake-home",

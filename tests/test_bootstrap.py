@@ -78,8 +78,11 @@ class BootstrapTestCase(unittest.TestCase):
             "CLAUDE_TUNER_HOME": str(self.bridge_home),
             "CLAUDE_TUNER_API_KEY": "",
         })
+        # encoding 显式给 utf-8：bootstrap 自己被 configure_stdio 切到了 UTF-8，
+        # 而 Windows 上父进程默认按 locale(cp1252/cp936) 解码 —— 中文会乱码解码失败。
         return subprocess.run([sys.executable, str(BOOTSTRAP)] + list(argv),
-                              capture_output=True, text=True, env=env, timeout=60)
+                              capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", env=env, timeout=60)
 
     def install(self, *extra):
         """跑一次安装。**在这里就断言退出码**：否则 bootstrap 一失败，表现只是
@@ -129,7 +132,7 @@ class BootstrapTestCase(unittest.TestCase):
 class TestDryRun(BootstrapTestCase):
     def test_dry_run_writes_nothing(self):
         res = self.install("--dry-run", "--key", "sk-test-key-123456")
-        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIsNotNone(res.stdout, "没拿到子进程输出（stderr: %s）" % (res.stderr or "")[-500:])
         self.assertEqual(self.all_files(), [])
         self.assertIn("未执行", res.stdout)
 

@@ -515,7 +515,12 @@ def log_msg(*args):
     """统一日志记录：在 --quiet 模式下完全静默 stdout 并自然写入当天日志文件。"""
     msg = " ".join(str(a) for a in args)
     if not QUIET:
-        print(msg)
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            # 与 gateway.log_event 同一条理由：Windows 控制台编码打不了中文/emoji，
+            # 而日志反过来把被记录的东西弄坏，是最不该发生的失败。
+            print(msg.encode("unicode_escape").decode("ascii"))
     try:
         log_dir = os.path.join(BASE, "logs")
         os.makedirs(log_dir, exist_ok=True)
