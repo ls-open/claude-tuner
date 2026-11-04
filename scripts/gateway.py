@@ -21,6 +21,8 @@ sys.dont_write_bytecode = True
 
 from common import (
     DEFAULT_LOG_RETENTION_DAYS,
+    STOP_FILE_NAME,
+    LIFETIME_LOCK_NAME,
     clamp_retention_days,
     purge_old_logs,
     DEFAULT_PORT,
@@ -42,6 +44,7 @@ from common import (
 )
 import webui  # noqa: E402  配置台挂在同一个端口上，见 webui.handle_get / handle_post
 import volatile_markers  # noqa: E402  「规则哑火」判据（纯函数层，见该模块开头）
+import platform_support  # noqa: E402  进程存活 / 锁 / 脱离父进程起子进程（平台差异只在那里写一份）
 
 HOST = "127.0.0.1"
 BASE_DIR = os.environ.get("CLAUDE_TUNER_HOME", os.path.expanduser("~/.claude-tuner"))
@@ -274,6 +277,49 @@ def cleanup_runtime():
     """启动期清理超期历史日志，保持日志目录整洁。"""
     os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
     purge_logs_quietly()
+
+
+# ── 退出与归属的跨平台握手 ────────────────────────────────────────────────
+# 退出不走信号：Windows 上 `os.kill` 对任何非 CTRL_* 信号都是 TerminateProcess，
+# 进程没有机会清理。改成「谁想让我退，就写一个 stop.request」，这条对两个平台同样成立。
+_lifetime_lock_fd = None
+
+
+def _watch_stop(server, stop_file):
+    """轮询停止标记；看到就自己退。
+
+    用 `server.shutdown()` 而不是 `sys.exit()`：serve_forever 在主线程里跑，
+    shutdown 是它文档里给的跨线程退出方式，能让它在途的请求走完。
+    """
+    while True:
+        time.sleep(0.2)
+        if os.path.isfile(stop_file):
+            try:
+                os.remove(stop_file)
+            except OSError:
+                pass
+            server.shutdown()
+            return
+
+
+def _hold_lifetime_lock():
+    """拿住 gateway.lock 直到进程结束。
+
+    这把锁是**归属证明**：manager 想杀进程前先问「这把锁还有没有人握着」——
+    握着说明那个 pid 仍是我们的网关；没握说明进程早没了，pid 可能已被系统复用。
+    比读命令行可靠：不用 ps / PowerShell，也就没有「路径带空格被切碎」的问题。
+    """
+    try:
+        fd = os.open(os.path.join(BASE_DIR, LIFETIME_LOCK_NAME), os.O_CREAT | os.O_RDWR, 0o600)
+    except OSError:
+        return None
+    if platform_support.lock_file(fd):
+        return fd            # 不 close：由进程退出时交给内核释放
+    try:
+        os.close(fd)
+    except OSError:
+        pass
+    return None
 
 
 def load_default_model():
@@ -1711,7 +1757,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     ensure_config_initialized(CONFIG_FILE)
     cleanup_runtime()
-
     # 端口由 manager 独占决定（它负责顺延扫描，并把地址回写 config.json 与全部 3P 配置），
     # 这里只认它传来的值。网关不再自己另选端口 —— 否则选出的端口可能与
     # manager 已写进各处配置的地址不一致，客户端就会打到空端口上。
@@ -1735,8 +1780,18 @@ if __name__ == "__main__":
     except OSError:
         pass
 
+    # 模块级语句，_lifetime_lock_fd 直接赋值即可（这里用 global 会报语法错）
+    stop_file = os.path.join(BASE_DIR, STOP_FILE_NAME)
+    try:
+        os.remove(stop_file)      # 清掉上一次的残留，否则一起来就自己退
+    except OSError:
+        pass
+    _lifetime_lock_fd = _hold_lifetime_lock()
+    threading.Thread(target=_watch_stop, args=(server, stop_file), daemon=True).start()
+
     print("claude-gateway listening on http://%s:%d" % (HOST, PORT), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+
