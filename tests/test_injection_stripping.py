@@ -15,6 +15,10 @@ import re
 import sys
 import tempfile
 import unittest
+
+# 权限位是 POSIX 概念：Windows 的 os.stat 只有只读位，没有 0600 这回事。
+# 这类用例在那边跳过 —— 跳过是诚实的，硬改成通过就是把保证说没了。
+POSIX_ONLY = unittest.skipUnless(os.name == "posix", "权限位断言只在 POSIX 上成立")
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
@@ -880,6 +884,7 @@ class TestSentinelClientSurface(unittest.TestCase):
 class TestSentinelCaptureSwitch(unittest.TestCase):
     """抓包开关走 CLI：手改 JSON 是 SOP 第一步最容易写坏的一步。"""
 
+    @POSIX_ONLY
     def test_开关写配置且保留权限位(self):
         path = Path(sentinel.BASE_DIR) / "config.json"
         path.write_text(json.dumps({"capture_raw_inbound": False, "rules": {}}), encoding="utf-8")

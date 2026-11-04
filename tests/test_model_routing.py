@@ -20,6 +20,10 @@ import tempfile
 import time
 import unittest
 
+# 权限位是 POSIX 概念：Windows 的 os.stat 只有只读位，没有 0600 这回事。
+# 这类用例在那边跳过 —— 跳过是诚实的，硬改成通过就是把保证说没了。
+POSIX_ONLY = unittest.skipUnless(os.name == "posix", "权限位断言只在 POSIX 上成立")
+
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS_DIR = os.path.join(PLUGIN_ROOT, "scripts")
 if SCRIPTS_DIR not in sys.path:
@@ -276,6 +280,7 @@ class AtomicWriteTestCase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
 
+    @POSIX_ONLY
     def test_atomic_write_json_preserves_mode(self):
         """原子写必须保留原文件权限位：3P 配置含 API Key，落成 0644 等于对同机用户公开。"""
         path = os.path.join(self._tmp.name, "profile.json")

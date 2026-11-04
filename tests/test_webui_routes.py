@@ -85,9 +85,19 @@ class WebUITestCase(unittest.TestCase):
         env = dict(os.environ)
         env.update({"HOME": str(cls.home), "CLAUDE_TUNER_3P_DIR": str(cls.config_lib),
                     "CLAUDE_TUNER_HOME": str(cls.bridge_home), "CLAUDE_TUNER_PORT": str(cls.port)})
+        # 把网关的输出留下来：起不来时它是唯一的线索（曾经在 CI 上只看到
+        # 「15 秒内没起来」而没有任何原因，只能靠猜）。
+        cls._log_path = cls.bridge_home / "gateway.test.log"
+        cls._log = open(cls._log_path, "ab")
+        cls.addClassCleanup(cls._log.close)
+        kwargs = {}
+        if os.name == "nt":
+            # POSIX 的 start_new_session 在 Windows 上会被忽略；那边用 creationflags
+            kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        else:
+            kwargs["start_new_session"] = True
         cls.proc = subprocess.Popen([sys.executable, str(GATEWAY)], env=env,
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                    start_new_session=True)
+                                    stdout=cls._log, stderr=subprocess.STDOUT, **kwargs)
         cls._wait_ready()
 
     @classmethod
@@ -100,7 +110,12 @@ class WebUITestCase(unittest.TestCase):
                     return
             except Exception:
                 time.sleep(0.2)
-        raise RuntimeError("网关没能在 15 秒内起来")
+        tail = ""
+        try:
+            tail = cls._log_path.read_text(encoding="utf-8", errors="replace")[-1500:]
+        except OSError:
+            pass
+        raise RuntimeError("网关没能在 15 秒内起来。网关输出：\n%s" % (tail or "（无输出）"))
 
     @classmethod
     def tearDownClass(cls):

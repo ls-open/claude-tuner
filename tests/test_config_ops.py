@@ -395,7 +395,10 @@ class TestPaths(ConfigOpsTestCase):
             paths = self.ops.platform_paths()
         self.assertEqual(paths["config_library"], "/tmp/fake-3p")
         self.assertEqual(paths["bridge_home"], "/tmp/fake-bridge")
-        self.assertEqual(paths["claude_settings"], "/tmp/fake-home/.claude/settings.json")
+        # 用 os.path.join 拼期望值：Windows 上分隔符是反斜杠，写死 `/tmp/fake-home/...`
+        # 会让这条用例在那边必红 —— 而那种红是「测试写得不对」。
+        self.assertEqual(paths["claude_settings"],
+                         os.path.join("/tmp/fake-home", ".claude", "settings.json"))
 
     def test_platform_paths_windows(self):
         with mock.patch("sys.platform", "win32"):
