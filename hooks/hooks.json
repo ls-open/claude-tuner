@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manager.py\" ensure --quiet"
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/manager.py", "ensure", "--quiet"]
           }
         ]
       }
@@ -15,7 +16,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manager.py\" ensure --quiet"
+            "command": "python3",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/manager.py", "ensure", "--quiet"]
           }
         ]
       }
