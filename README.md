@@ -185,14 +185,33 @@ python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture off  # 收工�
 
 ## 💻 终端 Claude Code 联动
 
-安装时默认已打通终端环境。终端中的 `claude` 命令行工具将自动走本地网关转发，共享前缀优化规则与上游模型配置：
+**默认开启，这是一个有明显副作用的动作，先看清楚再装。**
+
+安装会往 `~/.claude/settings.json` 的 `env` 里写 9 个变量：
+
+| 变量 | 值 | 效果 |
+| :--- | :--- | :--- |
+| `ANTHROPIC_BASE_URL` | `http://127.0.0.1:<端口>` | 终端 `claude` 的请求改走本地网关 |
+| `ANTHROPIC_AUTH_TOKEN` | 你填的网关 Key | 终端用这把 Key 认证，**不再用官方订阅** |
+| `ANTHROPIC_MODEL` 等 4 个 | 上游模型名（如 `deepseek-…[1m]`） | 终端选的 Opus/Sonnet/Haiku 全部换成上游模型 |
+| `CLAUDE_CODE_SUBAGENT_MODEL` | 上游模型名 | 子代理同样如此 |
+| `CLAUDE_CODE_EFFORT_LEVEL` | `max` | 思考档位被固定 |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `786432` | 自动压缩窗口被改写 |
+
+也就是说：**装完之后，你在终端敲的 `claude` 不再走 Anthropic 订阅，而是走这台机器上的网关、
+打到你在配置里填的那个上游。** 网关没起来或上游挂了，终端也用不了。
+
+不想这样，两条路：
+
+- 安装时加 `--no-cli`：一个变量都不写；
+- 配置台取消勾选「终端 Claude Code 同样走本网关」：会把这 9 个键从 `settings.json` 里摘掉
+  （卸载同理）。
+
+留着的话，验证链路：
 
 ```bash
-# 验证链路
 claude -p "只回复两个字：成功"
 ```
-
-若需在终端恢复使用 Anthropic 官方订阅账号，只需在配置台取消勾选「终端 Claude Code 同样走本网关」即可。
 
 ---
 
