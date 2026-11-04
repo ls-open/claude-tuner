@@ -30,21 +30,9 @@ Claude Code 与 Claude 桌面端（3P 模式）默认只认官方模型名称。
 
 网关只跑在本地（`127.0.0.1:8789`），纯标准库，不改客户端业务逻辑，只做请求前后的整理。
 
----
-
-## 📊 实测效果
-
-本插件做的是「让前缀恒定」这件**手段**，不承诺任何**结果数字**：命中率取决于你的会话形态、
-上游是否支持缓存、客户端版本，换台机器就不是同一个值。想知道自己机器上怎样，跑一条命令：
-
-```bash
-python3 ~/.claude/skills/claude-tuner/scripts/stats.py
-```
-
-它读本地日志算**你自己的**命中率与上下文规模。
-
-这里不给数字：命中率是结果，取决于会话形态、上游是否真的支持缓存、客户端版本。我们负责的
-只有手段——让前缀别变。
+> **不承诺命中率数字。** 省多少取决于你的会话形态、上游是否真的支持缓存、客户端版本。
+> 我们负责的只有手段——让前缀别变；想知道自己机器上怎样，跑
+> `python3 ~/.claude/skills/claude-tuner/scripts/stats.py` 看本地日志算出来的值。
 
 ---
 
@@ -86,7 +74,7 @@ flowchart LR
 - **操作系统**：
   - **macOS**：长期主力，稳定；
   - **Windows**：**实验性**。没有 Windows 机器，真机没验过；有问题请带上
-    [诊断输出](#windows-出问题怎么办)提 issue，不提就按能用算。macOS 才是主线；
+    [诊断输出](docs/details.md#windows)提 issue，不提就按能用算。macOS 才是主线；
   - **Linux**：无该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 - **客户端环境**：已安装 [Claude 桌面端](https://claude.com/product/claude-code) 或终端 Claude Code（首次启动会自动生成基础配置目录）。
 - **API 凭据**：支持 Anthropic 协议端点的服务商 API Key（如 DeepSeek 官方、OpenCode 或第三方中转服务）。
@@ -146,21 +134,6 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 
 保存分两条路：④⑤（以及上游地址、日志保留天数）改完 300 ms 自动保存并给 5 秒撤销；写客户端配置的 ①②③⑥ 才会在区块标题上出现「保存 N 项」。「工具精简」另有整组总开关，避免逐项点选。
 
-### 配置生效机制速查
-
-配置台清晰标注了每一项配置的生效边界：
-
-| 标记 | 写入位置 | 涵盖内容 |
-| :--- | :--- | :--- |
-| **保存后即生效** | 网关自身配置 | 上游地址、请求稳定化规则、工具精简规则、日志保留天数 |
-| **保存后新会话生效** | 客户端设置 / 3P 配置 | 输入联想、自动压缩、高级压缩 / 思考开关、Co-Authored-By、终端联动 |
-| **保存后需重启客户端** | 3P 配置 / 桌面偏好 | API Key、上游模型映射、1M 上下文窗口、缓存保留 1 小时、随附技能、定时任务 |
-
-> 若因清除浏览器缓存需要带 Token 的免密登录链接，可在终端运行：
-> ```bash
-> python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url
-> ```
-
 ### 真实用量透视
 
 直接解析上游原生返回的 `usage` 数据，展示缓存读取与未命中 Token 的占比、以及工具裁剪剥掉的定义数量；全部取自上游返回值，不做估算。
@@ -176,21 +149,12 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 </details>
 
 <details>
-<summary><strong>Q: 为什么工具裁剪是分组静态开关，而不是按任务动态选择？</strong></summary>
+<summary><strong>Q: 为什么工具是静态分组裁剪，而不是按任务动态挑（包括 Tool Search）？</strong></summary>
 
-`tools` 位于请求最前面，属于缓存前缀的一部分。按任务每轮动态增删，等于每轮换一次前缀，缓存几乎每轮都要重建。分组开关只在改配置时影响一次，之后前缀稳定下来就能持续命中。
+因为 `tools` 在请求最前面，是缓存前缀的一部分。按任务每轮增删、或用客户端的 Tool Search
+先检索再取用，等于**每轮换一次前缀**，缓存几乎每轮重建 —— 本项目做的事就全部作废。
+所以工具一律静态分组：只在改配置时变一次，之后前缀稳定、持续命中。代价是少了按任务粒度的灵活。
 
-代价是少了按任务粒度做工具检索的灵活性。
-</details>
-
-<details>
-<summary><strong>Q: 能开客户端的 Tool Search（`toolSearchEnabled`）吗？</strong></summary>
-
-**不能。** Tool Search 是客户端的一次性省 Token 手段：它不再把全部工具说明一次发给模型，
-而是先发一个检索入口，模型要用哪个工具再去取哪个。
-
-代价是工具表逐轮变化 —— 而 `tools` 在请求最前面，属于缓存前缀。前缀每轮变一次，缓存就
-每轮重建，本项目做的事全部作废。两者只能选一个，这里选缓存：工具一律静态分组裁剪。
 </details>
 
 <details>
@@ -234,7 +198,8 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 如需移除本插件及相关网关组件，执行以下命令即可：
 
 ```bash
-bash ~/.claude/skills/claude-tuner/install.sh --uninstall
+bash ~/.claude/skills/claude-tuner/install.sh --uninstall      # macOS / Linux
+python "%USERPROFILE%\.claude\skills\claude-tuner\install.py" --uninstall   # Windows
 ```
 
 该命令会停止本地网关、删除插件目录，并清除安装时写入 `~/.claude/settings.json` 的环境变量与四项省钱键（缓存时长 / 输入联想 / 自动压缩）；改动前的配置备份留在 `~/.claude-tuner/backups/`。3P 推理配置默认保留，要一并清掉可加 `bootstrap.py uninstall --purge-3p`。
