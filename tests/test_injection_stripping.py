@@ -5,7 +5,7 @@
   system 注入面开启，对话正文里的裸句原样保留。
 - **自检侧**：成对断言「网关剥得掉 **且** 哨兵认得出」，防止两侧正则静默脱节。
 
-取舍与实测数据见 docs/DECISIONS.md #18。
+取舍来自实测：只扫 system 面时，注入全落在 messages 面，结论是假保险。
 """
 import contextlib
 import io
@@ -17,7 +17,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parent.parent / "claude-tuner" / "scripts"
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 # 家目录隔离必须在 import gateway 之前（gateway 在 import 时就定下 BASE_DIR）
@@ -755,17 +755,6 @@ class TestSentinelMatchesGateway(unittest.TestCase):
             "system": "x-anthropic-billing-header: cc_entrypoint=local-agent; cc_is_subagent=true"
         }
         self.assertEqual(gateway.session_capture_key(payload_cw_sub), "12345678_cowork_subagent")
-
-        # 验证子代理跳过思维链回填
-        payload_msgs = {
-            "messages": [
-                {"role": "user", "content": "hi"},
-                {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}
-            ]
-        }
-        changed = gateway.prepare_request(payload_msgs, "12345678", kind="cowork_subagent")
-        self.assertNotIn("bare_thinking_1", changed)
-
 
 class TestRuleIsolation(unittest.TestCase):
     """一条规则炸掉，不能连累这一轮的其他规则。

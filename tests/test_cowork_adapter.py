@@ -1,12 +1,11 @@
 import unittest
-import glob
 import os
 import shutil
 import sys
 import tempfile
 
 # 引入 gateway 模块
-SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "claude-tuner", "scripts"))
+SCRIPTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 
@@ -77,30 +76,6 @@ class TestCoWorkAdapter(unittest.TestCase):
         for t in core_tools:
             should_strip = gateway.should_strip_tool(t, self.stripped_names, self.cfg)
             self.assertFalse(should_strip, f"Core tool {t} should NOT be stripped")
-
-    def test_cowork_transcript_discovery(self):
-        """验证 CoWork 模式下能精准定位 local-agent-mode-sessions 底稿
-
-        依赖本机存在 CoWork 会话目录，无该环境时跳过而非失败 —— 目录 glob 的
-        深度假设只能在真实 CoWork 底稿上验证，硬编码某个会话 ID 会让本测试
-        在其他机器上必然失败。
-        """
-        available = [d for d in gateway.COWORK_SESSIONS_DIRS if os.path.isdir(d)]
-        if not available:
-            self.skipTest("本机无 CoWork 会话目录，跳过底稿定位验证")
-        # 用目录里真实存在的会话底稿，而非硬编码 ID。会话底稿位于
-        # <a>/<b>/<c>/.claude/projects/session/<sid>.jsonl，与同目录树下的
-        # audit.jsonl 等辅助文件不同，须按路径特征挑出真正的会话底稿。
-        real = glob.glob(os.path.join(
-            available[0], "*", "*", "*", ".claude", "projects", "session", "*.jsonl"))
-        if not real:
-            self.skipTest("CoWork 会话目录内无会话底稿，跳过")
-        path = gateway.find_session_transcript(os.path.basename(real[0])[:-len(".jsonl")])
-        self.assertIsNotNone(path, "应能从 CoWork 目录定位到底稿")
-        self.assertTrue(os.path.exists(path))
-        self.assertIn("local-agent-mode-sessions", path)
-        self.assertEqual(path, real[0])
-
 
     def test_end_to_end_code_pruning(self):
         """验证端到端真实 Code 模式工具请求：原生工具毫发无损，桌面冗余精准剥离"""

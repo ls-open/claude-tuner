@@ -29,6 +29,10 @@ def tp_flag(cfg, key):
 PROTECTED_TOOLS = frozenset({
     "Bash", "Read", "Write", "Edit", "MultiEdit",
     "Glob", "Grep", "LS", "TodoWrite", "TodoRead",
+    # 上面这几个旧名在 2.1.3xx 桌面端已不再发送（名字换了，能力没少）：
+    # Task→Agent、TodoWrite/Read→mcp__ccd_turn__update_plan、Glob/Grep/LS→Bash 系命令、
+    # MultiEdit→Edit。留着不删是因为它们**是保险不是统计**：哪天客户端回退版本或换了实现
+    # 把旧名发回来，保护照样生效；删了则要靠人当时想起来再补。
     # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 那几个本来就是可剥类别，
     # 放进保护名单会把对应开关废掉（写完立刻自测发现的）。
     "Agent", "Task", "Skill", "AskUserQuestion",

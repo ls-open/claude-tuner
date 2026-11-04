@@ -13,7 +13,7 @@
 3. 任何一步失败，**正在用的那份保持原样**，且失败原因如实报出。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_updater.py
 """
 import importlib.util
@@ -27,8 +27,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "claude-tuner" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 
 
 def load_updater():
@@ -94,7 +94,7 @@ class TestExtractSafety(UpdaterTestCase):
         """压缩包来自网络，不能信 —— 里面的路径不许写到工作目录之外。"""
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-            info = tarfile.TarInfo("../../evil.sh")
+            info = tarfile.TarInfo("../../evil.sh")   # noqa: foreign-path 压缩包内的恶意条目
             data = b"rm -rf /"
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
@@ -209,7 +209,7 @@ class TestApplyKeepsThingsIntact(UpdaterTestCase):
         (self.plugin / "release.json").write_text(json.dumps({"version": "0.1.70"}), encoding="utf-8")
         self.up.PLUGIN_ROOT = str(self.plugin)
         self.addCleanup(lambda: setattr(self.up, "PLUGIN_ROOT",
-                                        str(REPO_ROOT / "claude-tuner")))
+                                        str(PLUGIN_ROOT / "claude-tuner")))
 
     def read_gateway(self):
         return (self.plugin / "scripts" / "gateway.py").read_text(encoding="utf-8")

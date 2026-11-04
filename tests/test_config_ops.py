@@ -12,7 +12,7 @@
 引用的就是它们），不是复刻件。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_config_ops.py
 """
 import importlib.util
@@ -22,8 +22,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "claude-tuner" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 
 
 def load_config_ops():

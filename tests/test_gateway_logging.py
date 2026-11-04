@@ -6,7 +6,7 @@
   还有重试余地，而这个标志不落盘就区分不出这两类失败。
 - 每轮都要留下 system / tools 的指纹，见 `TestPrefixFingerprint`。
 
-前两条是怎么发现的、代价是什么，见 docs/DECISIONS.md「结构化日志的两个字段约定」；这里只留规则。
+这两条都是踩过坑才定下来的；这里只留规则与断言。
 
 运行：python3 tools/test_gateway_logging.py
 """
@@ -21,8 +21,8 @@ import time
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-GATEWAY_PY = REPO_ROOT / "claude-tuner" / "scripts" / "gateway.py"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+GATEWAY_PY = PLUGIN_ROOT / "scripts" / "gateway.py"
 
 # 上游失败事件：这些都要能回答「当时响应头发出去了吗」
 UPSTREAM_FAILURE_EVENTS = [

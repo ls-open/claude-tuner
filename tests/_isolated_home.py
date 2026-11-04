@@ -2,7 +2,7 @@
 
 gateway 在 import 时就把 BASE_DIR 定下来，而日志、抓包、配置都写在那里。不隔离的话，
 测试造出来的 `canonicalized` / `rule_failed` / `pair_text_not_found` 会混进用户真实日志 ——
-那份日志是归因判据（见 AGENT.md 铁律 1），混进来的事件会把人引向错误结论。
+那份日志是缓存归因的唯一判据，混进来的事件会把人引向错误结论。
 """
 import atexit
 import os

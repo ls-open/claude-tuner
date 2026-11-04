@@ -12,12 +12,12 @@
 - 连跑两次，第二次必须零写入；
 - 改已有的文件前必须留下备份。
 
-**在子进程里真跑**（AGENT.md 铁律 6）：bootstrap 的入口就是命令行，import 后调函数
+**在子进程里真跑**（本仓铁律：命令行入口必须在子进程验）：bootstrap 的入口就是命令行，import 后调函数
 够不到 `main()` 与 `sys.argv`，而 `--dry-run` / `--no-restart` 恰恰只在那里成立。
 HOME / CLAUDE_TUNER_3P_DIR / CLAUDE_TUNER_HOME 全部指向临时目录，不碰真实的 ~/Library 与 ~/.claude。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_bootstrap.py
 """
 import json
@@ -28,8 +28,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS = REPO_ROOT / "claude-tuner" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS = PLUGIN_ROOT / "scripts"
 BOOTSTRAP = SCRIPTS / "bootstrap.py"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))

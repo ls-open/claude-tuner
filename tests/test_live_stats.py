@@ -11,7 +11,7 @@
 命中部分扔掉了），甚至算出大于 100% 的数。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_live_stats.py
 """
 import importlib.util
@@ -22,8 +22,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "claude-tuner" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 
 
 def load(name, filename):

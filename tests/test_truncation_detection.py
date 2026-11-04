@@ -5,7 +5,7 @@ import json
 
 # 引入本地网关模块
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-LOCAL_SCRIPTS = os.path.join(BASE_DIR, "claude-tuner", "scripts")
+LOCAL_SCRIPTS = os.path.join(BASE_DIR, "scripts")
 
 if LOCAL_SCRIPTS not in sys.path:
     sys.path.insert(0, LOCAL_SCRIPTS)

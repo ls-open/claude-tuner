@@ -10,12 +10,12 @@
 2. **没有把原来的路由挡掉** —— `/v1/models` 与 `/v1/messages` 是客户端的生命线，
    配置台接进 `do_GET` / `do_POST` 之后必须仍然原样工作。
 
-**必须子进程真跑**（AGENT.md 铁律 6）：路由在 `Handler` 的方法里，import 后调函数
+**必须子进程真跑**（本仓铁律：命令行入口必须在子进程验）：路由在 `Handler` 的方法里，import 后调函数
 够不到 `do_GET` / `do_POST` 的分派。HOME / CLAUDE_TUNER_3P_DIR / CLAUDE_TUNER_HOME 全部指向
 临时目录，端口用随机空闲口，不碰用户真实的网关与配置。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_webui_routes.py
 """
 import json
@@ -30,8 +30,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-GATEWAY = REPO_ROOT / "claude-tuner" / "scripts" / "gateway.py"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+GATEWAY = PLUGIN_ROOT / "scripts" / "gateway.py"
 
 
 def free_port():

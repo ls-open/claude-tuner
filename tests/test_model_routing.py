@@ -9,7 +9,7 @@
 6. THREEP_CONFIG_GLOB 由 get_3p_config_dir() 派生，全仓只有一份 3P 目录定义。
 
 **用 unittest 而不是 pytest 写**：本仓的契约门禁是 `tools/contract_check.py` 里的
-`unittest discover -s tools`。pytest 风格在这个门禁下会**收集到 0 个用例且不报错** ——
+`unittest discover -s claude-tuner/tests`。pytest 风格在这个门禁下会**收集到 0 个用例且不报错** ——
 一套绿油油的假保险，比没有测试更糟。要跑单文件：`python3 tools/test_model_routing.py`。
 """
 import json
@@ -20,8 +20,8 @@ import tempfile
 import time
 import unittest
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPTS_DIR = os.path.join(REPO_ROOT, "claude-tuner", "scripts")
+PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS_DIR = os.path.join(PLUGIN_ROOT, "scripts")
 if SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, SCRIPTS_DIR)
 

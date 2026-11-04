@@ -15,7 +15,7 @@
 配对里只剥掉一部分时段落必须原样保留（那时段落仍然成立）。
 
 跑法：
-    python3 -m unittest discover -s tools -p "test_*.py"
+    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_tool_rules.py
 """
 import importlib.util
@@ -26,8 +26,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS_DIR = REPO_ROOT / "claude-tuner" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 
 
 def _load(name, filename):

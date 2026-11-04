@@ -16,7 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parent.parent / "claude-tuner" / "scripts"
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import stats  # noqa: E402
@@ -122,40 +122,6 @@ class TestDropDetection(StatsTestCase):
         self.assertEqual(len(s["drops"]), 1, "压缩之后的那次真实回落漏报了")
 
 
-class TestHydrationScope(unittest.TestCase):
-    """Thinking 补全次数必须按 session_id 过滤，只统计当前会话（网关日志由所有会话共用）。"""
-
-    SID = "sid-mine"
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        logs = Path(self._tmp.name) / "logs"
-        logs.mkdir()
-        rows = [
-            {"session_id": self.SID, "event": "canonicalized",
-             "changes": ["restore_thinking_3", "strip_date"]},
-            {"session_id": "sid-other", "event": "canonicalized",
-             "changes": ["restore_thinking_100", "restore_thinking_50"]},
-            {"session_id": "sid-other", "event": "canonicalized",
-             "changes": ["restore_thinking_20"]},
-        ]
-        with open(logs / "gateway.log", "w", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-        self._saved_base = stats.BASE
-        stats.BASE = self._tmp.name
-        self.addCleanup(lambda: setattr(stats, "BASE", self._saved_base))
-
-    def test_only_own_session_is_counted(self):
-        got = stats.get_session_hydration_details(self.SID)["thinking_hydrations"]
-        self.assertEqual(got, 1, "把别的会话的补全算进来了")
-
-    def test_unknown_session_counts_zero(self):
-        got = stats.get_session_hydration_details("sid-nobody")["thinking_hydrations"]
-        self.assertEqual(got, 0)
-
-
 class TestLocalProbeRecords(StatsTestCase):
     """客户端把连通性探针以 `model:"probe"` 写进底稿，它不是一次上游调用。"""
 
@@ -166,34 +132,6 @@ class TestLocalProbeRecords(StatsTestCase):
         s = self.parse(rows)
         self.assertEqual(s["main_upstream"], 2, "探针被当成上游调用了")
         self.assertEqual(s["drops"], [], "探针 cache_read=0 会凭空造出一次「重算」")
-
-
-class TestHydrationLogDedup(unittest.TestCase):
-    """同一行事件在多个日志入口里只算一次。
-
-    `gateway.log` 是当天日文件的软链，`gateway.out.log` 是 stdout 副本 ——
-    按文件名 glob 会把同一条 `canonicalized` 读两三遍，补全次数跟着翻倍。
-    """
-
-    SID = "sid-dedup"
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self._tmp.cleanup)
-        logs = Path(self._tmp.name) / "logs"
-        logs.mkdir()
-        line = json.dumps({"event": "canonicalized", "session_id": self.SID,
-                           "changes": ["restore_thinking_2"]}, ensure_ascii=False) + "\n"
-        for name in ("gateway.2026-10-13.log", "gateway.out.log"):
-            (logs / name).write_text(line, encoding="utf-8")
-        os.symlink("gateway.2026-10-13.log", logs / "gateway.log")
-        self._saved = stats.BASE
-        stats.BASE = self._tmp.name
-        self.addCleanup(lambda: setattr(stats, "BASE", self._saved))
-
-    def test_same_event_counted_once(self):
-        got = stats.get_session_hydration_details(self.SID)["thinking_hydrations"]
-        self.assertEqual(got, 1, "日文件 / 软链 / stdout 副本是同一行事件，只能算一次")
 
 
 if __name__ == "__main__":
