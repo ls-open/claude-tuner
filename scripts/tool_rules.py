@@ -29,6 +29,10 @@ def tp_flag(cfg, key):
 PROTECTED_TOOLS = frozenset({
     "Bash", "Read", "Write", "Edit", "MultiEdit",
     "Glob", "Grep", "LS", "TodoWrite", "TodoRead",
+    # 上面这几个旧名在 2.1.3xx 桌面端已不再发送（名字换了，能力没少）：
+    # Task→Agent、TodoWrite/Read→mcp__ccd_turn__update_plan、Glob/Grep/LS→Bash 系命令、
+    # MultiEdit→Edit。留着不删是因为它们**是保险不是统计**：哪天客户端回退版本或换了实现
+    # 把旧名发回来，保护照样生效；删了则要靠人当时想起来再补。
     # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 那几个本来就是可剥类别，
     # 放进保护名单会把对应开关废掉（写完立刻自测发现的）。
     "Agent", "Task", "Skill", "AskUserQuestion",
@@ -119,6 +123,10 @@ CATEGORY_NAMES = {
     # 默认关 —— 与其余几项同理，删不删由用户自己掂量。
     "strip_task_stop_tools": ("TaskStop",),
     "strip_report_findings_tools": ("ReportFindings",),
+    # Monitor 是后台事件流（盯长跑命令 / CI / 日志），Bash 工具的说明里点名「前台 sleep
+    # 被禁，改用 Monitor 等待条件」—— 剥掉它 Bash 那段就成了指向不存在工具的悬空引用。
+    # 各给一个开关、默认保留，理由同 TaskStop。
+    "strip_monitor_tools": ("Monitor",),
 }
 
 

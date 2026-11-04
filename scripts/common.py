@@ -195,7 +195,6 @@ DEFAULT_RULES = {
     "strip_date": True,                  # 剥离 Today's date is... 动态跨天日期
     "strip_git_status": True,            # 剥离 gitStatus 仓库初始快照
     "split_mixed_user_messages": True,   # 拆分混合 user 消息 (text + tool_result，防 400)
-    "restore_thinking": True,            # 智能补齐历史 Thinking 思考链
     "tool_block_ordering": True,         # 并发工具调用的 tool_use / tool_result 块按 id 稳定排序
     "strip_security_guidelines": False,  # 剥离安全攻防与拒绝服务限制指令 (省 ~110 Tokens，防本地运维脚本误拒答)
     "strip_pronoun_guidelines": False,   # 剥离性别代词道德指引指令 (省 ~85 Tokens，专注于纯粹代码工程)
@@ -247,6 +246,7 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     # 技能把结论交回界面的通道 —— 都是有实际用途的能力，不是死重。
     "strip_task_stop_tools": False,       # TaskStop
     "strip_report_findings_tools": False, # ReportFindings
+    "strip_monitor_tools": False,         # Monitor（后台事件流；Bash 说明里点名用它，剥了会悬空）
 }
 
 
