@@ -72,10 +72,10 @@ flowchart LR
 
 ### 1. 前置准备
 - **操作系统**：
-  - **macOS**：长期主力，稳定；
-  - **Windows**：**实验性**。没有 Windows 机器，真机没验过；有问题请带上
-    [诊断输出](docs/details.md#windows)提 issue，不提就按能用算。macOS 才是主线；
-  - **Linux**：无该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
+  - **macOS**：主平台，稳定。
+  - **Windows**：**实验性**——代码已在 Windows CI 上跑通，但还没有真机验证。遇到问题请带上
+    [诊断输出](docs/details.md#windows) 提 issue。
+  - **Linux**：没有该桌面端；插件逻辑（网关、配置台）可用，配置走 XDG。
 - **客户端环境**：已安装 [Claude 桌面端](https://claude.com/product/claude-code) 或终端 Claude Code（首次启动会自动生成基础配置目录）。
 - **API 凭据**：支持 Anthropic 协议端点的服务商 API Key（如 DeepSeek 官方、OpenCode 或第三方中转服务）。
 
@@ -105,16 +105,12 @@ python install.py
 
 **验证是否生效**：
 
-```bash
-tail -5 ~/.claude-tuner/logs/gateway.log
-```
-
-日志中出现 `"event": "upstream_ok"` 即代表链路通畅。
+在配置台的「⑧ 网关状态」里看，或翻 `~/.claude-tuner/logs/` 下最新的
+`gateway.<日期>.log`：出现 `"event": "upstream_ok"` 就说明链路通了。
 
 ---
 
-> 终端联动、Windows、抓包自检、网关起不来怎么办 —— 这些细节在
-> [docs/details.md](docs/details.md)，不占正文。
+> 终端联动、Windows、抓包自检、网关起不来怎么办：[docs/details.md](docs/details.md)。
 
 ## 🎛️ 本地配置台
 
@@ -133,12 +129,6 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 | ⑨ 版本与更新 | 当前版本、客户端版本、更新检查 |
 
 保存分两条路：④⑤（以及上游地址、日志保留天数）改完 300 ms 自动保存并给 5 秒撤销；写客户端配置的 ①②③⑥ 才会在区块标题上出现「保存 N 项」。「工具精简」另有整组总开关，避免逐项点选。
-
-### 真实用量透视
-
-直接解析上游原生返回的 `usage` 数据，展示缓存读取与未命中 Token 的占比、以及工具裁剪剥掉的定义数量；全部取自上游返回值，不做估算。
-
----
 
 ## ❓ 常见问题 (FAQ)
 

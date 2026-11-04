@@ -71,12 +71,11 @@ claude -p "只回复两个字：成功"
 
 ## Windows
 
-**Windows 还没有真机验证。** 核心逻辑是纯 Python，`platform_support.py` 收口了全部系统差异，
-CI 在真实的 Windows 上跑全部单测与安装演练；但我们手上没有 Windows 机器，所以**安装过程、
-客户端拉起网关、3P 配置目录这几件只有真机才能确认的事，都没有验过**。请按实验性使用。
+**实验性。** 代码在 Windows CI 上跑通（单测 + 安装演练），但还没有真机验证——安装过程、
+客户端拉起网关、3P 配置目录这几件只有真机能确认。
 
-装完如果不对，把下面的 `doctor` 输出贴到 [issue](https://github.com/ls-open/claude-tuner/issues)
-里——有这一段才可能定位问题。
+遇到问题请把这行输出贴到 [issue](https://github.com/ls-open/claude-tuner/issues)：
+`bootstrap.py doctor`（在下面「网关起不来时」里有完整命令）。
 
 ## 网关起不来时
 
