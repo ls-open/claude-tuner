@@ -80,9 +80,10 @@ python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
 
 ## 反馈
 
-本仓是发布产物（见文首），**直接提交 PR 会被下一次发布覆盖**，所以请开 issue：附上 `doctor`
-的输出，写清系统版本与客户端版本就够了。平台相关的改动在源码侧只往 `scripts/platform_support.py`
-一处放，业务代码里不再写 `if win32` —— 这条对 PR 同样成立，但我们合的是源码仓。
+**issue 与 PR 都欢迎。** 报障请附上 `doctor` 的输出，写清系统版本与客户端版本就够了。
+
+提 PR 有两条约定：平台相关的改动只往 `scripts/platform_support.py` 一处放，业务代码里不再写
+`if win32`；提交前跑 `python3 -m unittest discover -s tests -p "test_*.py"`，全绿再提。
 
 > Linux：没有该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 

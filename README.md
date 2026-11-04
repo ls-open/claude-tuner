@@ -13,9 +13,9 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
 
-> **关于这个仓库**：它是从一个私有仓整体导出的**发布产物**，请**不要直接提交 PR**
-> —— 下一次发布会整树覆盖，你的改动会消失。问题与建议请开 issue；代码、测试（`tests/`）
-> 与文档都在同一棵树里，克隆下来就能读懂它是怎么工作的。
+> **关于这个仓库**：代码、测试（`tests/`）与文档都在同一棵树里，克隆下来就能读懂它是怎么
+> 工作的。**issue 与 PR 都欢迎** —— 提 PR 前跑一次
+> `python3 -m unittest discover -s tests -p "test_*.py"`，全绿再提交。
 
 ---
 
