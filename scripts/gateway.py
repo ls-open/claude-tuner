@@ -815,8 +815,9 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
 
     # 4. 彻底物理剥离动态注入的 gitStatus 区块（全面整块抹除）
     if r.get("strip_git_status", True):
-        # legacy 按角色判定（见 map_request_texts）：system 与 role=system 的消息放行截断，
-        # user/assistant 的裸句更可能是正常讨论，不截。
+        # 这条规则**不再按角色区分**：旧版对 user/assistant 裸句的截断兜底已经删掉，
+        # `strip_git_status_text` 现在只认 `<system-reminder>` 包裹形态。
+        # fn 仍收 `legacy` 只为与 map_request_texts 的签名一致。
         sys_n, msg_n = map_request_texts(
             parsed, _guard_rule("strip_git_status",
                                 lambda t, legacy: strip_git_status_text(t)))

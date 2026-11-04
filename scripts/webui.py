@@ -107,7 +107,7 @@ def load_html():
         mtime = os.path.getmtime(HTML_PATH)
     except OSError:
         return ("<!doctype html><meta charset=utf-8><h1>配置台文件缺失</h1>"
-                "<p>找不到 %s。请重跑安装脚本（install.sh）同步插件文件。</p>" % HTML_PATH)
+                "<p>找不到 %s。请重跑安装器（`install.py`，或 macOS/Linux 上的 `install.sh` 一行命令）同步插件文件。</p>" % HTML_PATH)
     if _html_cache[0] == mtime and _html_cache[1]:
         return _html_cache[1]
     with open(HTML_PATH, "r", encoding="utf-8") as fh:

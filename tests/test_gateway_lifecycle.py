@@ -22,9 +22,13 @@ import urllib.request
 import _isolated_home
 
 PLUGIN_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GATEWAY = os.path.join(PLUGIN_ROOT, "scripts", "gateway.py")
-STOP_FILE = "stop.request"
-RUNTIME_FILE = "gateway.runtime.json"
+SCRIPTS = os.path.join(PLUGIN_ROOT, "scripts")
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
+GATEWAY = os.path.join(SCRIPTS, "gateway.py")
+# 文件名只在 common.py 里定义一次：两个进程（网关与 manager）各写一份的话，
+# 改名时必有一边漏改，症状是「停止标记写了没人看」—— 测试也不该当第二份。
+from common import STOP_FILE_NAME as STOP_FILE, RUNTIME_INFO_NAME as RUNTIME_FILE  # noqa: E402
 
 
 def free_port():

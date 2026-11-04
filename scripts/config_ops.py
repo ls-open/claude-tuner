@@ -297,7 +297,11 @@ CLIENT_MODEL_IDS = (
 )
 
 def _1m_flags(one_m):
-    """1M 上下文相关的三个字段。关掉时一并置否，不留半开半关的状态。"""
+    """单条映射里的两个 1M 标记。关掉时一并置否，不留半开半关的状态。
+
+    （第三个相关字段是顶层的 `modelPrefer1mContext`，由 `build_3p_bundle` 的
+    `one_m` 参数单独写，不在这条映射里。）
+    """
     return {"supports1m": bool(one_m), "prefer1m": bool(one_m)}
 
 
@@ -325,8 +329,6 @@ def identity_model_mapping(one_m=True):
 DEFAULT_UPSTREAM = "https://api.deepseek.com/anthropic"
 DEFAULT_MODEL = "deepseek-flash"
 
-# 客户端界面的三个面（Chat / Cowork / Code）。都是 3P 配置里的键，false = 关掉该面。
-# **不是默认写入的** —— 只写用户明确改过的那一个，其余保持客户端原样。
 # 跟随安装一起写死的 3P 字段。只写这些，其余键一律保留。
 _3P_FORCED = {
     "inferenceProvider": "gateway",

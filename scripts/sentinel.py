@@ -284,7 +284,7 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
     print("  %d 个工具 → 剥离 %d，保留 %d" % (len(names), len(names) - len(kept), len(kept)))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
     if surface_skipped:
-        print("  ℹ️ 该客户端面整面不剥工具（`tool_rules.SKIP_COWORK_PRUNING`）：")
+        print("  ℹ️ 该客户端面整面不剥工具（CoWork 面按策略整面不剥）：")
         print("     体积由该面自己承担，换掉的是「每个命名空间逐个判定」的维护成本；")
         print("     工具剥离对前缀恒定零贡献，所以缓存侧没有损失。")
     elif pending:

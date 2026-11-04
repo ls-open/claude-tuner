@@ -9,7 +9,7 @@
 它做四件事：
   1. 把插件放到 ~/.claude/skills/claude-tuner/
   2. 写好让客户端进 3P 的配置与客户端设置（由 bootstrap.py 保证幂等）
-  3. Windows 平台自动对齐 hooks.json 解释器调用
+  3. hooks 的解释器名由 bootstrap 在文件落地后对齐到本机（Windows 上通常是 python）
   4. 拉起本地网关并打开可视化配置台
 """
 import argparse
@@ -69,7 +69,7 @@ def die(msg):
     sys.exit(1)
 
 
-def get_default_paths():
+def dest_dir():
     """安装器自己要用的两个目录。
 
     这里**不推导客户端的配置目录**：那份口径在 `scripts/config_ops.py:platform_paths()`
@@ -81,9 +81,8 @@ def get_default_paths():
     （非 win32 一律落到 macOS 的 `~/Library`）—— 一份没人读的错误口径，比没有更危险。
     """
     home = os.path.expanduser("~")
-    bridge_home = os.environ.get("CLAUDE_TUNER_HOME", os.path.join(home, ".claude-tuner"))
-    dest = os.environ.get("CLAUDE_TUNER_DIR", os.path.join(home, ".claude", "skills", PLUGIN_NAME))
-    return {"home": home, "bridge_home": bridge_home, "dest": dest}
+    return os.environ.get("CLAUDE_TUNER_DIR",
+                          os.path.join(home, ".claude", "skills", PLUGIN_NAME))
 
 
 def is_client_running():
@@ -157,9 +156,7 @@ def main(argv=None):
         die(f"本插件要求 Python 3.11+，当前版本为 {sys.version.split()[0]}。请先升级 Python。")
 
     args = build_parser().parse_args(argv)
-    paths = get_default_paths()
-    dest = paths["dest"]
-    bridge_home = paths["bridge_home"]
+    dest = dest_dir()
 
     # 卸载逻辑
     if args.uninstall:

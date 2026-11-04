@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """安装协调者：把插件需要的客户端状态一次写好，让用户只填一个 API Key。
 
-它管四件事，全部由 install.sh 调用：
+它管四件事，由安装器（`install.py`；`install.sh` 只负责找到 Python 并转交）调用：
 
 1. **打开 3P 模式** —— 写 `developer_settings.json`（就是菜单 Enable Developer Mode
    写的那份）与 `<userData>-3p/claude_desktop_config.json` 的 `deploymentMode`；
@@ -45,6 +45,7 @@ from common import (  # noqa: E402
     BACKUP_KEEP_FILES,
     DEFAULT_PORT,
     RUNTIME_INFO_NAME,
+    plugin_version,
     atomic_write_json,
     ensure_config_initialized,
     configure_stdio,
@@ -231,7 +232,7 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
         bridge["upstream_url"] = normalized
     actions.append({"kind": "ensure_bridge_config", "path": os.path.join(
         paths["bridge_home"], "config.json"), "data": bridge,
-        "reason": "告诉网关上游地址与兜底模型", "backup": False})
+        "reason": "告诉网关上游地址（默认模型留空，由网关按映射表兜底）", "backup": False})
 
     notes.append("装完要**完全退出并重开 Claude**，3P 与配置才会被读进去。")
     return actions, notes
@@ -324,11 +325,10 @@ def status(paths=None):
 # ==============================================================================
 
 def _plugin_version():
+    """版本号只有一处权威（`common.release_info`），这里不再自己 open 一遍。"""
     try:
-        with open(os.path.join(os.path.dirname(SCRIPT_DIR), "release.json"),
-                  "r", encoding="utf-8") as fh:
-            return json.load(fh).get("version") or "未知"
-    except (OSError, ValueError):
+        return plugin_version() or "未知"
+    except Exception:                              # noqa: BLE001 —— 诊断工具不许抛
         return "未知"
 
 
@@ -467,6 +467,12 @@ def cmd_install(args):
         # 用专用字样：`⚠️ ` 这个前缀在安装输出里也被「还没有 API Key」这类提醒用着，
         # 混在一起就没人分得清哪条是真失败（含测试与 CI）。
         log("   ❌ 写入失败：%s" % p)
+    # 机器相关的适配要在「文件落地之后」再跑一遍：hooks.json 里那句解释器名取决于这台
+    # 机器上叫什么（Windows 上通常是 python / py，没有 python3）。不在这里对齐，
+    # 客户端就永远拉不起网关，而且没有任何报错 —— 这正是它必须在安装路径上的理由。
+    aligned = align_runtime()
+    if aligned.get("changed"):
+        log("   🔧 hooks 的解释器已对齐到本机：%s" % aligned.get("interpreter"))
     if args.no_restart:
         log("   已跳过网关重启（--no-restart），由调用方负责拉起")
     else:
@@ -519,7 +525,8 @@ def cmd_uninstall(args):
 # 早先把改写写在 install.py 里，只在安装那一刻生效 —— 下次点「检查更新」整棵树被覆盖，
 # 适配就没了，Hook 静默失效、网关再也拉不起来。
 # 所以适配必须做成**幂等的收尾步骤**，由所有「往插件目录写文件」的入口调用：
-# install.py（首次安装）、updater.py（检查更新）、tools/sync.py（开发同步）。
+# bootstrap install（首次安装，install.py 转交给它）、updater.py（检查更新）、
+# tools/sync.py（开发同步）。
 PYTHON_CANDIDATES = ("python3", "python", "py")
 
 
@@ -539,7 +546,11 @@ def _pick_interpreter():
 def align_runtime(dest=None, dry_run=False):
     """把 hooks.json 里的解释器名对齐到本机。幂等：已经对就一个字节都不写。"""
     dest = dest or os.path.dirname(os.path.abspath(__file__))
-    hooks_file = os.path.join(os.path.dirname(dest), "hooks", "hooks.json")
+    # 路径可以被环境变量顶掉：测试要在一个临时副本上验「装完对齐了没有」，
+    # 不改写仓库里的那份（测试不该弄脏源码树——本机恰好不需要改写时看不出来，
+    # 换到没有 python3 的 Windows 上就会真的改到仓库文件）。
+    hooks_file = os.environ.get("CLAUDE_TUNER_HOOKS_FILE") or os.path.join(
+        os.path.dirname(dest), "hooks", "hooks.json")
     if not os.path.isfile(hooks_file):
         return {"changed": False, "reason": "no-hooks-file"}
     interpreter = _pick_interpreter()
@@ -581,7 +592,7 @@ def build_parser():
     ins.add_argument("--model", default="", help="上游模型名（identity 预设不使用）")
     ins.add_argument("--no-cli", action="store_true", help="不写 ~/.claude/settings.json 的 CLI 联动")
     ins.add_argument("--no-restart", action="store_true",
-                     help="不重启网关（install.sh 自己重启并核对端口上跑的是新代码）")
+                     help="不重启网关（安装器 install.py 之后会自己重启并核对端口）")
 
     st = sub.add_parser("status", help="体检")
     st.add_argument("--json", action="store_true", dest="as_json")

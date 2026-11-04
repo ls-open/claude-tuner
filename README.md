@@ -9,7 +9,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11%2B-48BB78?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/Dependencies-Zero%20(Stdlib%20Only)-blue?style=flat-square" alt="Zero Dependencies">
-  <img src="https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-lightgrey?style=flat-square" alt="macOS · Windows · Linux">
+  <img src="https://img.shields.io/badge/Platform-macOS%20%C2%B7%20Windows(实验性)%20%C2%B7%20Linux-lightgrey?style=flat-square" alt="macOS · Windows · Linux">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="MIT License">
 </p>
 
@@ -34,12 +34,15 @@ Claude Code 与 Claude 桌面端（3P 模式）默认只认官方模型名称。
 
 ## 📊 实测效果
 
-| 指标 | 结果 |
-| :--- | :--- |
-| 缓存命中率 | **99.5%**（本机 7 天、11,155 次请求） |
-| 输入成本 | 每百万 Token 约 **¥0.02 – 0.03** |
+本插件做的是「让前缀恒定」这件**手段**，不承诺任何**结果数字**：命中率取决于你的会话形态、
+上游是否支持缓存、客户端版本，换台机器就不是同一个值。想知道自己机器上怎样，跑一条命令：
 
-> 命中率按 Token 计：缓存读取 ÷（缓存读取 + 未命中输入），不含输出。这是链路观测值，不是对照实验算出的提升幅度；价格按 deepseek-v4-flash 官方定价估算。
+```bash
+python3 ~/.claude/skills/claude-tuner/scripts/stats.py
+```
+
+它读本地日志算**你自己的**命中率与上下文规模。本插件任何地方都不写「命中率 99%」这种数：
+那是结果，取决于会话形态、上游是否真的支持缓存、客户端版本；我们能负责的只有手段。
 
 ---
 
@@ -245,7 +248,8 @@ claude -p "只回复两个字：成功"
 会。客户端把请求直接发到本地网关，网关进程不在，这一轮就发不出去。
 
 - 网关自身的报文异常会回滚到原始请求放行，不会因为清洗失败而中断；
-- 进程真的退出时，下一次会话开始或提交消息前，客户端 Hook 会自动把它拉起；但正在进行的这一轮会失败，需要重新发起。
+- 进程真的退出时，**下一次会话开始**客户端 Hook 会把它拉起；但正在进行的这一轮会失败，需要重新发起。
+  （桌面端只有 `SessionStart` 会触发，`UserPromptSubmit` 从不触发 —— 别指望「发消息就顺手重启」。）
 </details>
 
 <details>
@@ -266,7 +270,7 @@ claude -p "只回复两个字：成功"
 | 验的东西 | 怎么验的 |
 | :--- | :--- |
 | 全部单测 | 在 Windows 上真跑（不写条数：它每加一条用例就过期一次，说了等于没说） |
-| hooks 的解释器名 | 用真子进程把最后那条命令执行一遍，确认解析得开 |
+| hooks 的解释器名 | 逐条取解释器，再用真子进程按 exec form 形跑一遍，确认解析得开 |
 | 安装器 | `install.py --dry-run` 在 Windows 上走完整条路径 |
 | 退出握手 | 写停止标记 → 网关自己退 → 端口关掉，两个平台同一条路 |
 | 启动不依赖网络 | 把反向 DNS 卡住 60 秒，网关照样起来（这就是 0.9.0 在 macOS CI 上翻车的那条） |

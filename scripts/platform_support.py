@@ -249,7 +249,7 @@ def client_running():
                                  capture_output=True, text=True, timeout=5)
             for line in (res.stdout or "").splitlines():
                 exe = line.strip().split(" ")[0] if line.strip() else ""
-                if exe.endswith("/Claude.app/Contents/MacOS/Claude"):
+                if exe.endswith(MAC_CLIENT_PATTERN):
                     return True
             return False
         return False      # Linux 上没有该桌面端
