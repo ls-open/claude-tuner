@@ -1,34 +1,35 @@
 name: CI
 
+# 这份文件随插件一起发布 —— 公开仓就是我所在的这棵树（插件根目录）。
+# 跨平台支持不能只写在 README 里：三个系统各跑一遍插件自己的测试，
+# 红的必须是「代码有问题」，而不是「测试写死了某个平台的路径」。
 on:
   push:
-    branches: [ main ]
+    branches: [main, master]
   pull_request:
-    branches: [ main ]
+    branches: [main, master]
 
 jobs:
-  test:
-    runs-on: macos-latest
+  tests:
+    name: ${{ matrix.os }} · Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12"]
+        os: [macos-latest, windows-latest, ubuntu-latest]
+        python-version: ['3.11', '3.12']
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Syntax check Python scripts
-      run: |
-        python3 -m py_compile scripts/*.py
+      - name: 单测（含 hooks 命令在本机能否执行）
+        shell: bash
+        run: python -m unittest discover -s tests -p "test_*.py" -v
 
-    - name: Shell script check
-      run: |
-        bash -n install.sh
-
-    - name: Dry-run installer verification
-      run: |
-        bash install.sh --dry-run
+      - name: 安装器演练（不落盘）
+        shell: bash
+        run: python install.py --dry-run
