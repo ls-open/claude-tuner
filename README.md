@@ -125,6 +125,9 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 
 ---
 
+> 终端联动、Windows、抓包自检、网关起不来怎么办 —— 这些细节在
+> [docs/details.md](docs/details.md)，不占正文。
+
 ## 🎛️ 本地配置台
 
 浏览器访问 **`http://127.0.0.1:8789/`** 即可管理网关。配置台按九个区块组织：
@@ -161,57 +164,6 @@ tail -5 ~/.claude-tuner/logs/gateway.log
 ### 真实用量透视
 
 直接解析上游原生返回的 `usage` 数据，展示缓存读取与未命中 Token 的占比、以及工具裁剪剥掉的定义数量；全部取自上游返回值，不做估算。
-
----
-
-## 🔍 跟版自检（抓包分析）
-
-客户端一升级，注入的提示词与工具表都可能变。升级后按这三步自查一次即可：
-
-```bash
-python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture on   # 打开抓包
-#   去客户端发一条消息（探针请求不会被抓）
-python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py audit --last # 四面自检
-python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture off  # 收工关掉
-```
-
-结论全绿即表示这次升级已被现有规则完全吸收，无需动作；有命中会直接指出该补哪条规则。
-想跟版对比，`sentinel.py compare <旧抓包> <新抓包>` 会列出工具定义与 System 提示词的具体差异。
-
-抓的是**客户端发来的原始报文**，平时开关是关的；打开后归档到 `~/.claude-tuner/captures/`
-（最多保留最近 20 个会话），用完记得关掉。
-
----
-
-## 💻 终端 Claude Code 联动
-
-**默认开启，这是一个有明显副作用的动作，先看清楚再装。**
-
-安装会往 `~/.claude/settings.json` 的 `env` 里写 9 个变量：
-
-| 变量 | 值 | 效果 |
-| :--- | :--- | :--- |
-| `ANTHROPIC_BASE_URL` | `http://127.0.0.1:<端口>` | 终端 `claude` 的请求改走本地网关 |
-| `ANTHROPIC_AUTH_TOKEN` | 你填的网关 Key | 终端用这把 Key 认证，**不再用官方订阅** |
-| `ANTHROPIC_MODEL` 等 4 个 | 上游模型名（如 `deepseek-…[1m]`） | 终端选的 Opus/Sonnet/Haiku 全部换成上游模型 |
-| `CLAUDE_CODE_SUBAGENT_MODEL` | 上游模型名 | 子代理同样如此 |
-| `CLAUDE_CODE_EFFORT_LEVEL` | `max` | 思考档位被固定 |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | `786432` | 自动压缩窗口被改写 |
-
-也就是说：**装完之后，你在终端敲的 `claude` 不再走 Anthropic 订阅，而是走这台机器上的网关、
-打到你在配置里填的那个上游。** 网关没起来或上游挂了，终端也用不了。
-
-不想这样，两条路：
-
-- 安装时加 `--no-cli`：一个变量都不写；
-- 配置台取消勾选「终端 Claude Code 同样走本网关」：会把这 9 个键从 `settings.json` 里摘掉
-  （卸载同理）。
-
-留着的话，验证链路：
-
-```bash
-claude -p "只回复两个字：成功"
-```
 
 ---
 
@@ -274,40 +226,6 @@ claude -p "只回复两个字：成功"
 
 网关服务仅严格监听在本地回路地址（`127.0.0.1`）；所有密钥仅存放于本机本地配置中（macOS / Linux 上权限位 `0600`；Windows 没有 POSIX 权限位，靠用户目录自身的 ACL），绝不上报任何外部服务器。日志只记请求元数据（会话、模型、Token、命中、耗时），不记 Prompt 正文。例外是调试用的原始报文归档：默认关闭（`capture_raw_inbound = false`），手动打开后才写到 `~/.claude-tuner/captures/`，最多保留最近 20 个会话，用完应关闭。
 </details>
-
----
-
-## 🪟 Windows
-
-**Windows 还没有真机验证。** 核心逻辑是纯 Python，`platform_support.py` 收口了全部系统差异，
-CI 在真实的 Windows 上跑全部单测与安装演练；但我们手上没有 Windows 机器，所以**安装过程、
-客户端拉起网关、3P 配置目录这几件只有真机才能确认的事，都没有验过**。请按实验性使用。
-
-装完如果不对，把下面的 `doctor` 输出贴到 [issue](https://github.com/ls-open/claude-tuner/issues)
-里——有这一段才可能定位问题。
-
-## 🚑
-
-### 网关起不来时（任何平台，不需要任何 AI）
-
-请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条：
-
-```bash
-python3 ~/.claude/skills/claude-tuner/scripts/manager.py ensure
-python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
-```
-
-第一条把网关拉起来（Windows：`python "%USERPROFILE%\.claude\skills\claude-tuner\scripts\manager.py" ensure`），
-第二条打印一段可直接贴进 issue 的诊断信息（版本、系统、Python、解释器、插件目录、hooks 命令、
-3P 配置路径、网关 pid 与日志尾部）。**不含任何密钥**，也不依赖客户端。
-
-### 反馈
-
-本仓是发布产物（见文首），**直接提交 PR 会被下一次发布覆盖**，所以请开 issue：附上 `doctor`
-的输出，写清系统版本与客户端版本就够了。平台相关的改动在源码侧只往 `scripts/platform_support.py`
-一处放，业务代码里不再写 `if win32` —— 这条对 PR 同样成立，但我们合的是源码仓。
-
-> Linux：没有该桌面端，插件逻辑（网关 / 配置台）可用，配置走 XDG。
 
 ---
 
