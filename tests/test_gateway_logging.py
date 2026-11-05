@@ -344,5 +344,62 @@ class TestLogRetentionConfig(unittest.TestCase):
         self.assertEqual(self._days({"rules": {"log_retention_days": 30}}), 7)
 
 
+class TestUpstreamTiming(unittest.TestCase):
+    """上游「首字节 / 最长静默」必须落盘：只有它能区分空等与半路哑（契约 D-1.2）。"""
+
+    def setUp(self):
+        self.gw = load_gateway()
+
+    def _clock(self, ticks):
+        """假时钟：按给定顺序返回秒数，用完就停在最后一个。"""
+        seq = list(ticks)
+        box = {"i": 0}
+
+        def now():
+            i = min(box["i"], len(seq) - 1)
+            box["i"] += 1
+            return seq[i]
+        return now
+
+    def test_measures_headers_ttfb_and_longest_gap(self):
+        tm = self.gw.StreamTiming(clock=self._clock([100.0, 100.5, 101.0, 130.0, 130.5]))
+        tm.headers_received()          # 0.5s 拿响应头
+        tm.chunk()                     # 1.0s 首字节
+        tm.chunk()                     # 29.0s 之后才来第二块 -> 最长静默 29.0s
+        f = tm.fields()                # 此刻 130.5s，距上一块 0.5s
+        self.assertEqual(f["headers_ms"], 500)
+        self.assertEqual(f["ttfb_ms"], 1000, "首字节按「第一块正文」算，响应头不算")
+        self.assertEqual(f["max_gap_ms"], 29000)
+        self.assertNotIn("ttfb_ms", self.gw.StreamTiming(clock=self._clock([0.0, 45.0])).fields(),
+                         "一个字节都没到就不该有 ttfb_ms —— 有它就意味着「开口前空等」和「半路哑」混成一种")
+
+    def test_fields_include_the_silence_that_is_still_running(self):
+        """超时是被那一次「还没结束的静默」掐断的，不算进去就永远差 45 秒。"""
+        tm = self.gw.StreamTiming(clock=self._clock([0.0, 1.0, 1.1, 46.1]))
+        tm.headers_received()
+        tm.chunk()
+        self.assertEqual(tm.fields()["max_gap_ms"], 45000)
+
+    def test_failure_events_carry_timing(self):
+        """静态守卫：断流事件漏了这几个数，就等于回到「只有一个总耗时」的老样子。"""
+        src = GATEWAY_PY.read_text(encoding="utf-8")
+        for marker in ('event="upstream_stream_error"', 'event="upstream_truncated"'):
+            idx = src.index(marker)
+            window = src[idx:idx + 900]
+            self.assertIn("**timing.fields()", window, f"{marker} 没记录首字节/静默时长")
+            self.assertIn("bytes_received=", window, f"{marker} 没记录已收到的字节数")
+            self.assertIn("last_event=", window, f"{marker} 没记录哑在哪个事件之后")
+        ok_idx = src.index('"event": "upstream_ok"')
+        self.assertIn("timing.fields()", src[ok_idx:ok_idx + 800],
+                      "成功轮次不记基线，长静默到底是异常还是常态就永远判不出来")
+
+    def test_last_event_reads_the_tail(self):
+        cap = self.gw.UsageCapture()
+        cap.feed(b'event: message_start\ndata: {"type":"message_start"}\n\n')
+        cap.feed(b'event: content_block_delta\ndata: {"type":"content_block_delta"}\n\n')
+        self.assertEqual(cap.last_event(), "content_block_delta")
+        self.assertIsNone(self.gw.UsageCapture().last_event(), "非 SSE / 空流不该编出一个事件名")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

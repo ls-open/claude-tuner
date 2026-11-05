@@ -69,6 +69,33 @@ claude -p "只回复两个字：成功"
 > python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url
 > ```
 
+## 上游卡住 / 断流：怎么判读日志
+
+`upstream_timeout`（默认 45 秒）是**空闲**读超时：socket 级、按每次读算的 ——
+**连续 N 秒一个字节都没到**才抛 `read operation timed out`，不是单轮总时长。
+上游只要一直在吐字节，一轮跑几分钟也不会被掐；反过来，长推理时上游真哑了 45 秒，也会被掐。
+
+一轮的日志里看这四样：
+
+| 字段 | 出现在 | 含义 |
+| :--- | :--- | :--- |
+| `headers_ms` | `upstream_ok` / `upstream_stream_error` / `upstream_truncated` | 发出请求到**响应头**到达 |
+| `ttfb_ms` | 同上 | 发出请求到**第一个正文字节**（响应头不算） |
+| `max_gap_ms` | 同上 | 相邻两块正文之间最长静默，**含触发超时的最后一次** |
+| `stage` | 失败事件 | `awaiting_headers`＝连响应头都没拿到；`body`＝已经流出去了，哑在正文里 |
+
+判读：
+
+| 现象 | 结论 | 处置 |
+| :--- | :--- | :--- |
+| `upstream_error` + `stage=awaiting_headers`，`max_gap_ms` ≈ `upstream_timeout` | 上游在**开口前**就空等超时（排队 / 大上下文预填充） | 这不是本地的问题，重试或换时段；把 `max_gap_ms` 和 `upstream_ok` 的基线比，看是不是只在高峰出现 |
+| `upstream_stream_error` + `stage=body`，`last_event` 是 `thinking_delta` / `content_block_delta` | **说到一半**哑了（上游卡住，或中间链路缓冲） | 看 `bytes_received` 判断已经吐了多少；`error` 是 `read operation timed out` 就说明是本地空闲超时掐的 |
+| `upstream_truncated`（读到 EOF 却没有 `message_stop`） | 上游自己断的流，**不是**被超时掐的 | 与上面两类分开计，别混进「成功轮次」 |
+| `upstream_ok` 里 `max_gap_ms` 就很大（十几秒） | 长静默是这类模型的常态，不是故障 | **没有成功轮次这条基线，长静默是异常还是常态永远判不出来** |
+
+`stage=body` 的失败事件还带 `usage`（已生成部分的 token 与费用）——被掐断的那轮照样计费，
+没有这条账上看不见。
+
 ## Windows
 
 **实验性。** 代码在 Windows CI 上跑通（单测 + 安装演练），但还没有真机验证——安装过程、

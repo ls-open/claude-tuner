@@ -1306,6 +1306,56 @@ class UsageCapture:
                 return False
         return b"message_stop" in self._tail or b"[DONE]" in self._tail
 
+    def last_event(self):
+        """流尾部最后一个 SSE 事件类型：断流时用它判断哑在哪一步；非 SSE 返回 None。"""
+        if not self._is_sse:
+            return None
+        found = re.findall(rb'"type"\s*:\s*"([a-z_]+)"', self._tail)
+        return found[-1].decode("ascii", "replace") if found else None
+
+
+class StreamTiming:
+    """上游「首个字节」与「最长静默」的观测器：只读时钟，不改转发行为。
+
+    把请求发给上游的时刻记为起点，之后记两件事：
+      - `ttfb_ms`：多久才吐出**第一个正文字节**（响应头不算）；
+      - `max_gap_ms`：相邻两块正文之间最长的静默，含触发超时的最后一次。
+    超时断流之后，只有这两个数能区分「上游一直没开口」（ttfb_ms 缺失、静默≈超时值）
+    与「说到一半哑了」（有 ttfb_ms，max_gap_ms≈超时值）。判读规则见 docs/details.md。
+    """
+
+    def __init__(self, clock=time.monotonic):
+        self._clock = clock
+        self.started = clock()
+        self._last = self.started
+        self._headers_at = None
+        self._first_byte_at = None
+        self.max_gap_ms = 0
+
+    def headers_received(self):
+        """响应头到达（此刻还没有正文，首字节仍在等）。"""
+        self._headers_at = self._clock()
+        self._last = self._headers_at
+
+    def chunk(self):
+        """收到一块正文：结算一次静默，并记下首字节时刻。"""
+        now = self._clock()
+        gap = int((now - self._last) * 1000)
+        if gap > self.max_gap_ms:
+            self.max_gap_ms = gap
+        if self._first_byte_at is None:
+            self._first_byte_at = now
+        self._last = now
+
+    def fields(self):
+        """打日志用：有则给 headers_ms / ttfb_ms，恒给 max_gap_ms（含到此刻的静默）。"""
+        out = {"max_gap_ms": max(self.max_gap_ms, int((self._clock() - self._last) * 1000))}
+        if self._headers_at is not None:
+            out["headers_ms"] = int((self._headers_at - self.started) * 1000)
+        if self._first_byte_at is not None:
+            out["ttfb_ms"] = int((self._first_byte_at - self.started) * 1000)
+        return out
+
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
@@ -1588,13 +1638,15 @@ class Handler(BaseHTTPRequestHandler):
         req, payload = self._build_upstream_request(parsed, upstream_url, session_id=session_id)
         timeout = self._get_upstream_timeout()
         self._headers_sent = False
+        timing = StreamTiming()
         try:
             with urllib.request.urlopen(req, timeout=timeout) as upstream:
-                self._stream_response(upstream, parsed, started, session_id, kind)
+                timing.headers_received()
+                self._stream_response(upstream, parsed, started, session_id, kind, timing)
         except urllib.error.HTTPError as exc:
             self._handle_http_error(exc, parsed, started, session_id, kind)
         except Exception as exc:
-            self._handle_unknown_error(exc, parsed, started, session_id, kind)
+            self._handle_unknown_error(exc, parsed, started, session_id, kind, timing)
 
     def _resolve_upstream_url(self):
         """解析最终上游 URL（env 优先，config.json 兜底）；未配置时本地 503 兜底并返回 None。"""
@@ -1636,7 +1688,7 @@ class Handler(BaseHTTPRequestHandler):
         req = urllib.request.Request(upstream_url, data=payload, headers=headers, method="POST")
         return req, payload
 
-    def _stream_response(self, upstream, parsed, started, session_id, kind):
+    def _stream_response(self, upstream, parsed, started, session_id, kind, timing):
         """流式回写客户端 + UsageCapture 聚合 usage + 成功/断连日志。"""
         self.send_response(upstream.status)
         self.send_header("Content-Type", upstream.headers.get("Content-Type", "application/json"))
@@ -1654,6 +1706,7 @@ class Handler(BaseHTTPRequestHandler):
             cap.set_expected_length(int(cl))
         client_gone = False
         upstream_read_error = None
+        recv_bytes = 0
         while True:
             try:
                 chunk = upstream.read1(65536)
@@ -1664,6 +1717,8 @@ class Handler(BaseHTTPRequestHandler):
                 break
             if not chunk:
                 break
+            timing.chunk()
+            recv_bytes += len(chunk)
             try:
                 self.wfile.write(chunk)
                 self.wfile.flush()
@@ -1690,6 +1745,13 @@ class Handler(BaseHTTPRequestHandler):
                 error=str(upstream_read_error),
                 headers_sent=self._headers_sent_flag(),
                 elapsed_ms=elapsed_ms,
+                # 断在正文里才有这三个：哑在哪个事件之后、已经收了多少
+                stage="body",
+                bytes_received=recv_bytes,
+                last_event=cap.last_event(),
+                # 已经生成的部分照样计费：没有这条，被掐断的那轮在账上看不见
+                usage=cap.get_usage() or {},
+                **timing.fields(),
             )
             return
         usage = cap.get_usage()
@@ -1707,6 +1769,10 @@ class Handler(BaseHTTPRequestHandler):
                 headers_sent=self._headers_sent_flag(),
                 elapsed_ms=elapsed_ms,
                 usage=usage or {},
+                stage="body",
+                bytes_received=recv_bytes,
+                last_event=cap.last_event(),
+                **timing.fields(),
             )
             return
 
@@ -1725,6 +1791,8 @@ class Handler(BaseHTTPRequestHandler):
         upstream_rid = upstream.headers.get("request-id")
         if upstream_rid:
             ok_event["upstream_request_id"] = upstream_rid
+        # 成功轮次也要留：没有这条基线，就看不出「45s 静默」到底是异常还是长推理的常态
+        ok_event.update(timing.fields())
         self._log(**ok_event)
 
     def _headers_sent_flag(self):
@@ -1759,7 +1827,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
-    def _handle_unknown_error(self, exc, parsed, started, session_id, kind):
+    def _handle_unknown_error(self, exc, parsed, started, session_id, kind, timing=None):
         """网络断流/连接重置等非 HTTP 异常的统一兜底 → 502 + 日志。"""
         self._log(
             model_mapped=parsed["model"],
@@ -1767,8 +1835,11 @@ class Handler(BaseHTTPRequestHandler):
             kind=kind,
             event="upstream_error",
             error=str(exc),
+            # 走到这里说明连响应头都没拿到：上游一个字节都没开口
+            stage="awaiting_headers",
             headers_sent=self._headers_sent_flag(),
             elapsed_ms=int((time.time() - started) * 1000),
+            **(timing.fields() if timing is not None else {}),
         )
         if not getattr(self, "_headers_sent", False):
             try:
