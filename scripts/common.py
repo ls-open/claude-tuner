@@ -305,7 +305,7 @@ RUNTIME_INFO_NAME = "gateway.runtime.json"   # 网关启动时写：谁在跑、
 STOP_GRACE_SECONDS = 5.0                 # 请它退出后等多久再考虑强杀
 
 DEFAULT_PORT = 8789
-DEFAULT_UPSTREAM_TIMEOUT = 45   # 转发到上游的读超时（秒）
+DEFAULT_UPSTREAM_TIMEOUT = 60   # 转发到上游的读超时（秒）
 DEFAULT_PROBE_TIMEOUT = 15      # 配置台「测试连通性」的超时：比转发短，页面要快速给答案
 DEFAULT_LOG_RETENTION_DAYS = 7
 LOG_RETENTION_MIN_DAYS = 1
