@@ -192,7 +192,6 @@ SETTINGS_ENV_KEYS = (
 SETTINGS_TOP_KEYS = (
     "promptCacheTtl",
     "subagentPromptCacheTtl",
-    "promptSuggestionEnabled",
     "autoCompactEnabled",
     "autoMemoryEnabled",
     "includeCoAuthoredBy",

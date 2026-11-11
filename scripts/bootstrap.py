@@ -209,11 +209,11 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
         # 省钱相关，默认帮用户开：
         # - promptCacheTtl：不设时客户端自己决定（订阅号 1 小时、API Key 只有 5 分钟）。
         #   1 小时的缓存写入更贵，但能跨更长的中断保温；上游认不认这个时长各家不同。
-        # - 输入联想：开着时客户端会为输入框那行灰字反复发请求。
         # - 自动压缩：上下文快满时自动压缩，压缩那一次会丢掉已有缓存。
+        # 输入联想不在这里：客户端设置页已有自己的「Prompt suggestions」开关
+        # （写 preferences.ccPromptSuggestions），由它管，我们不重复实现。
         "promptCacheTtl": "1h",
         "subagentPromptCacheTtl": "1h",
-        "promptSuggestionEnabled": False,
         "autoCompactEnabled": False,
     }
     merged_settings, changed_keys = config_ops.merge_settings(state["claude_settings"], settings_patch)
@@ -504,7 +504,6 @@ def cmd_uninstall(args):
         state["claude_settings"], {},
         unset_env=config_ops.SETTINGS_ENV_KEYS, unset_top=("promptCacheTtl",
                                                             "subagentPromptCacheTtl",
-                                                            "promptSuggestionEnabled",
                                                             "autoCompactEnabled"))
     # 客户端侧拦截的规则也要收回 —— 只删自己写过的那些，用户自己加的权限规则原样留着
     merged, deny_changed, _ = config_ops.merge_deny_rules(

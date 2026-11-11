@@ -674,7 +674,6 @@ const CUSTOM = '__custom__';
 // 这个开关组在干什么，由上面那段小节说明交代。
 const MONEY = [
   ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）'],
-  ['promptSuggestionEnabled', '关闭输入框自动联想（节省 Token）'],
   ['autoCompactEnabled', '关闭会话自动压缩（减少压缩次数）'],
 ];
 
@@ -853,7 +852,6 @@ function renderSwitches(d){
     SW(label, why, `data-key="${k}"`, k === 'promptCacheTtl' ? 'restart' : 'session')).join('');
   const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
   check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
-  check('promptSuggestionEnabled', d.settings.promptSuggestionEnabled === false);
   check('autoCompactEnabled', d.settings.autoCompactEnabled === false);
 
   const advOn = ADVANCED.some(([k, kind]) => {
@@ -1273,7 +1271,6 @@ function collectCurrentFormState(){
   }).filter(m => m.name);
   const on = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return el && el.checked; };
   const settings = {
-    promptSuggestionEnabled: !on('promptSuggestionEnabled'),
     autoCompactEnabled: !on('autoCompactEnabled'),
     includeCoAuthoredBy: !$('#coauthor').checked,
   };
