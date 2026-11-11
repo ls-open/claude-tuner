@@ -269,63 +269,56 @@ def merge_settings(existing, patch, unset_env=(), unset_top=()):
     return new, sorted(set(changed))
 
 
-def merge_deny_rules(existing, wanted, previously_written=()):
-    """把「客户端侧该挡的工具」并进 settings 的 `permissions.deny`。
+def merge_client_disabled(bundle, wanted, previously_written=()):
+    """把「该让客户端根本不发」的工具并进 3P 配置的 `disabledBuiltinTools`。
 
-    返回 (新配置, 变动键列表, 本次写进去的规则列表)。
+    返回 (新配置, 变动键列表, 本次写进去的名单)。
 
     三条纪律，对应三个真实事故面：
-    - **只回收自己写过的**：`previously_written` 是上一轮写进去的那份，只有它里面的
-      规则才会被删；用户自己在 `/permissions` 里加的一条都不动。
-    - **对象形式的规则不碰**：客户端也接受 `{toolName: ...}` 这类对象规则，那不是我们写的。
-    - **不留空壳**：规则清空后把 `permissions`/`deny` 一并收掉，别在用户的设置里
-      留一个空数组（客户端会把它当"用户设置过权限"来展示）。
+    - **只回收自己写过的**：用户自己在 Setup 窗口里加的条目（例如 `ClaudeDesign`）一条不动。
+    - **不留空壳**：名单清空后把键一并收掉，别在客户端配置里留一个空数组。
+    - **不碰其它键**：这份文件是客户端的资产，它会往里写别的字段（同 `build_3p_bundle`）。
     """
-    new = copy.deepcopy(existing) if isinstance(existing, dict) else {}
-    before = copy.deepcopy(new.get("permissions")) if isinstance(new.get("permissions"), dict) else None
+    new = copy.deepcopy(bundle) if isinstance(bundle, dict) else {}
+    before = new.get(DISABLED_TOOLS_FIELD)
 
-    perms = new.get("permissions")
-    if not isinstance(perms, dict):
-        perms = {}
-    deny = perms.get("deny")
-    if not isinstance(deny, list):
-        deny = []
-
+    cur = [r for r in (before or []) if isinstance(r, str)] if isinstance(before, list) else []
     prev = {r for r in (previously_written or ()) if isinstance(r, str) and r}
     want = {r for r in (wanted or ()) if isinstance(r, str) and r}
 
-    kept = [r for r in deny if not (isinstance(r, str) and r in prev and r not in want)]
-    present = {r for r in kept if isinstance(r, str)}
+    kept = [r for r in cur if not (r in prev and r not in want)]
+    present = set(kept)
     kept.extend(sorted(want - present))
 
     if kept:
-        perms["deny"] = kept
-        new["permissions"] = perms
+        new[DISABLED_TOOLS_FIELD] = kept
     else:
-        perms.pop("deny", None)
-        if perms:
-            new["permissions"] = perms
-        else:
-            new.pop("permissions", None)
+        new.pop(DISABLED_TOOLS_FIELD, None)
 
-    changed = ["permissions.deny"] if new.get("permissions") != before else []
+    changed = [DISABLED_TOOLS_FIELD] if new.get(DISABLED_TOOLS_FIELD) != before else []
     return new, changed, sorted(want)
 
 
-# 「本插件写了哪几条 deny 规则」记在网关 config.json 的这个键下 —— 改配置与卸载时
-# 只收回自己写过的那些，用户自己在 /permissions 里加的规则一条都不动。
-CLIENT_DENY_KEY = "client_deny_rules"
+# 3P 配置里那个字段名 —— 客户端的「Disabled built-in tools」写的就是它。
+DISABLED_TOOLS_FIELD = "disabledBuiltinTools"
+
+# 「本插件写了哪几条」记在网关 config.json 的这个键下 —— 改配置与卸载时只收回自己写过
+# 的那些，用户在客户端界面里加的条目一条都不动。
+CLIENT_DISABLED_KEY = "client_disabled_tools"
+
+# 旧落点（`permissions.deny`）的记账键，只用来认出来并收回 —— 不再写它。
+LEGACY_DENY_KEY = "client_deny_rules"
 
 
-def sync_client_deny(claude_settings, pruning_cfg, previously_written=()):
-    """把「让客户端根本不发」的那几条并进 settings，返回 (新配置, 变动键, 本次写入的规则)。
+def sync_client_disabled(bundle, pruning_cfg, previously_written=()):
+    """把「让客户端根本不发」的那几条并进 3P 配置，返回 (新配置, 变动键, 本次写入的名单)。
 
-    与 `merge_deny_rules` 的分工：那个只管合并纪律（谁的规则、怎么收回），这个回答
-    「该写哪几条」—— 口径来自 `tool_rules.deny_rules`，与网关剥离是同一份配置、
+    与 `merge_client_disabled` 的分工：那个只管合并纪律（谁的条目、怎么收回），这个回答
+    「该写哪几条」—— 口径来自 `tool_rules.client_disabled_tools`，与网关剥离是同一份配置、
     同一份判断，不另开一个开关。
     """
-    return merge_deny_rules(claude_settings, tool_rules.deny_rules(pruning_cfg),
-                            previously_written)
+    return merge_client_disabled(bundle, tool_rules.client_disabled_tools(pruning_cfg),
+                                 previously_written)
 
 
 def managed_settings_present(existing):

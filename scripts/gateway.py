@@ -16,7 +16,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from config_ops import CLIENT_DENY_KEY  # 记账键只写一处，见 config_ops.CLIENT_DENY_KEY
+from config_ops import DISABLED_TOOLS_FIELD  # 字段名只写一处，见 config_ops
 
 # 不在插件运行目录留 __pycache__：代码以仓库为准且改动频繁，缓存无收益（省几毫秒），
 # 只带来「跑的是不是新代码」的疑问。所有入口脚本（manager/gateway/stats/sentinel）同此。
@@ -160,14 +160,24 @@ def load_tool_pruning_config():
     return dict(DEFAULT_TOOL_PRUNING_CONFIG)
 
 
-def load_client_deny_rules():
-    """本插件写进客户端 `permissions.deny` 的那几条工具名（记账在 config.json）。
+def load_client_disabled_tools():
+    """客户端 `disabledBuiltinTools` 里的工具名 —— 读的是 3P 配置本身，不是我们的记账。
 
-    哨兵用它分辨「开关开着却没物可剥」的两种成因：客户端本来就不发，还是被我们写的
-    deny 挡住的 —— 后者的开关不能删，删了规则跟着撤、工具立刻回来。
+    那是客户端 Setup 窗口「Disabled built-in tools」的落点，也是这条链路唯一的真相源：
+    用户可能自己往里面加条目，我们的记账说不全。
+
+    哨兵用它分辨「开关开着却没物可剥」的两种成因：客户端本来就不发，还是被这份名单
+    挡住的 —— 后者的开关不能删，删了名单跟着撤、工具立刻回来。
     """
-    cfg = _read_config()
-    return [n for n in (cfg.get(CLIENT_DENY_KEY) or []) if isinstance(n, str)]
+    path = find_active_3p_config_path()
+    if not path:
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            cfg = json.load(fh)
+    except Exception:
+        return []
+    return [n for n in (cfg.get(DISABLED_TOOLS_FIELD) or []) if isinstance(n, str)]
 
 
 def load_rules_config():
@@ -848,8 +858,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
         _incoming_tools = {t.get("name") for t in parsed.get("tools") or []
                            if isinstance(t, dict) and t.get("name")}
     # 「这一轮客户端手里有没有这个工具」= 它发过来了 **或** 我们判定它已经被挡掉。
-    # 后者有两条来路：用户在客户端界面里把工具关了，或 tool_rules.deny_rules 写的
-    # settings 规则（目前只覆盖非 MCP 的内置工具）。
+    # 后者有两条来路：用户在客户端界面里把工具关了，或 tool_rules.client_disabled_tools
+    # 写进 3P 配置的 `disabledBuiltinTools`（目前只覆盖非 MCP 的内置工具）。
     # 少了后半句就会反噬：客户端一旦不发，这里判空 → 段落不再剥 → 留下指向不存在工具的
     # 孤句。桌面端那些段落是写死的字符串常量（例如 `After opening a PR, use the ccd_pr
     # tools:`），跟工具在不在**无关**，所以工具被挡掉时照样得剥。

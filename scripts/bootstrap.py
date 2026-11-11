@@ -156,8 +156,17 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
     bundle, changed = config_ops.build_3p_bundle(
         state["three_p"], api_key=api_key or None, gateway_url=gateway_url,
         models=mapping, one_m=one_m, scheduled_tasks=sched)
+    # 工具精简的**另一半**：让客户端根本不发那些工具，而不是到网关再剥。
+    # 落点是 3P 配置的 disabledBuiltinTools ——（客户端 Setup 窗口里那一栏）。
+    # 只增删自己写过的条目，用户自己加的（例如 ClaudeDesign）一条不动。
+    bundle, disabled_changed, disabled_written = config_ops.sync_client_disabled(
+        bundle, (state["bridge_cfg"] or {}).get("tool_pruning") or {},
+        (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DISABLED_KEY) or [])
+    if disabled_changed:
+        changed = sorted(set(list(changed) + disabled_changed))
+        notes.append("  客户端侧拦截 %d 个工具（新会话生效）" % len(disabled_written))
     actions.append(_write_action(three_p_path, bundle,
-                                 "3P 推理配置（连接本地网关 + 模型映射）"))
+                                 "3P 推理配置（连接本地网关 + 模型映射 + 客户端侧工具拦截）"))
     notes.append("  上游预设：%s → %s" % (preset_info["name"], upstream))
     mapped_to = {m["labelOverride"] for m in mapping}
     notes.append("  模型映射：%d 条，指向 %s" % (
@@ -217,18 +226,10 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
         "autoCompactEnabled": False,
     }
     merged_settings, changed_keys = config_ops.merge_settings(state["claude_settings"], settings_patch)
-    # 工具精简的**另一半**：让客户端根本不发那些工具，而不是到网关再剥。
-    # 客户端算上下文占用的地板是「自己手里的工具」，只有源头就少拿，它才算得准
-    # （详见 tool_rules.deny_rules）。写的是 permissions.deny，只增删自己写过的那几条。
-    deny_settings, deny_changed, deny_written = config_ops.sync_client_deny(
-        merged_settings, (state["bridge_cfg"] or {}).get("tool_pruning") or {},
-        (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DENY_KEY) or [])
-    if changed_keys or deny_changed:
-        actions.append(_write_action(paths["claude_settings"], deny_settings,
-                                     "客户端行为开关 + CLI 联动 + 客户端侧工具拦截（新会话生效）"))
-        notes.append("  客户端设置变更：%s" % ", ".join(changed_keys or []))
-    if deny_written:
-        notes.append("  客户端侧拦截 %d 条工具规则（重启客户端后生效）" % len(deny_written))
+    if changed_keys:
+        actions.append(_write_action(paths["claude_settings"], merged_settings,
+                                     "客户端行为开关 + CLI 联动（新会话生效）"))
+        notes.append("  客户端设置变更：%s" % ", ".join(changed_keys))
     if not with_cli:
         notes.append("  已跳过 CLI 联动（--no-cli）")
 
@@ -238,9 +239,9 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
     normalized = normalize_upstream(upstream)
     if bridge.get("upstream_url") != normalized:
         bridge["upstream_url"] = normalized
-    if deny_written != (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DENY_KEY):
-        # 记下这轮写进客户端的是哪几条 —— 下一轮只回收这份清单里的（用户自己加的规则不动）
-        bridge[config_ops.CLIENT_DENY_KEY] = deny_written
+    if disabled_written != (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DISABLED_KEY):
+        # 记下这轮写进客户端的是哪几条 —— 下一轮只回收这份名单里的（用户自己加的条目不动）
+        bridge[config_ops.CLIENT_DISABLED_KEY] = disabled_written
     actions.append({"kind": "ensure_bridge_config", "path": os.path.join(
         paths["bridge_home"], "config.json"), "data": bridge,
         "reason": "告诉网关上游地址（默认模型留空，由网关按映射表兜底）", "backup": False})
@@ -505,10 +506,17 @@ def cmd_uninstall(args):
         unset_env=config_ops.SETTINGS_ENV_KEYS, unset_top=("promptCacheTtl",
                                                             "subagentPromptCacheTtl",
                                                             "autoCompactEnabled"))
-    # 客户端侧拦截的规则也要收回 —— 只删自己写过的那些，用户自己加的权限规则原样留着
-    merged, deny_changed, _ = config_ops.merge_deny_rules(
-        merged, [], (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DENY_KEY) or [])
-    changed = sorted(set(list(changed) + deny_changed))
+    # 客户端侧拦截写在 3P 配置的 disabledBuiltinTools 里 —— 卸 载时只删自己写过的那些，
+    # 用户自己在 Setup 窗口加的条目原样留着。
+    three_p_bundle, disabled_changed, _ = config_ops.merge_client_disabled(
+        state["three_p"], [], (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DISABLED_KEY) or [])
+    if disabled_changed and state["three_p_path"]:
+        log("  客户端侧工具拦截将收回：%s" % ", ".join(disabled_changed))
+        if args.dry_run:
+            log("  [dry-run] 未写入 %s" % state["three_p_path"])
+        else:
+            _backup(state["three_p_path"], time.strftime("%Y-%m-%dT%H:%M:%S%z"), False)
+            atomic_write_json(state["three_p_path"], three_p_bundle)
     log("🧹 卸载：")
     if changed:
         log("  客户端设置将清除：%s" % ", ".join(changed))

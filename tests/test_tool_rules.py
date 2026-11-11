@@ -676,8 +676,8 @@ class TestIdleSwitchAttribution(unittest.TestCase):
         self.assertNotIn("strip_web_fetch_tools", out["stale"])
 
     def test_deny_leak_detected(self):
-        self.assertEqual(tr.deny_leaks(["NotebookEdit", "Bash"], ["NotebookEdit"]), ["NotebookEdit"])
-        self.assertEqual(tr.deny_leaks(["Bash"], ["NotebookEdit"]), [])
+        self.assertEqual(tr.client_disabled_leaks(["NotebookEdit", "Bash"], ["NotebookEdit"]), ["NotebookEdit"])
+        self.assertEqual(tr.client_disabled_leaks(["Bash"], ["NotebookEdit"]), [])
 
 
 if __name__ == "__main__":

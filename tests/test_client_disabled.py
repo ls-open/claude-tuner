@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""客户端侧工具拦截（`permissions.deny`）的单测。
+"""客户端侧工具拦截（3P 配置的 `disabledBuiltinTools`）的单测。
 
 为什么需要这个文件
 ------------------
 这条链路把「网关要剥什么」翻译成「客户端根本不发什么」。翻译错了有两种后果，都很隐蔽：
 
-1. **写多了**：把设置层根本不管用的规则也写进去（MCP 工具就是），配置看起来比实际能做到的
+1. **写多了**：把配置层根本不管用的规则也写进去（MCP 工具就是），配置看起来比实际能做到的
    多 —— 用户以为省了，其实一个没省。这条边界是实测撞出来的，写在 tool_rules 的注释里，
    这里用断言钉住：**产出里不许出现 mcp__ 开头的名字**。
-2. **回收错了**：用户自己在 `/permissions` 里加的规则，不能因为我们改了配置就被删掉。
+2. **回收错了**：用户自己在客户端 Setup 窗口里加的条目（例如 `ClaudeDesign`），不能因为我们
+   改了配置就被删掉。
 
 另外钉住一条容易写反的判定：工具被挡掉之后，客户端那段**写死的**提示词还留着，
 所以配对段落仍然必须剥（见 ParagraphStillStrippedTest）。
@@ -53,11 +54,11 @@ def cfg(**over):
     return {**base, "custom_strip_tools": over.get("custom_strip_tools", [])}
 
 
-class DenyRulesTest(unittest.TestCase):
+class ClientDisabledToolsTest(unittest.TestCase):
     """从配置算出「该让客户端根本不发」的工具名。"""
 
     def test_builtin_tools_come_from_config(self):
-        rules = tr.deny_rules(cfg(strip_web_search_tools=True, strip_notebook_tools=True))
+        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=True, strip_notebook_tools=True))
         self.assertIn("WebSearch", rules)
         self.assertIn("NotebookEdit", rules)
 
@@ -66,93 +67,87 @@ class DenyRulesTest(unittest.TestCase):
 
         写进去不会生效，只会让配置看起来比实际能做到的多 —— 比不写更坏。
         """
-        rules = tr.deny_rules(cfg(strip_pr_ci_tools=True, strip_session_tools=True,
+        rules = tr.client_disabled_tools(cfg(strip_pr_ci_tools=True, strip_session_tools=True,
                                   strip_web_fetch_tools=True, strip_terminal_tools=True))
         self.assertTrue(rules)
         self.assertEqual([r for r in rules if r.startswith("mcp__")], [])
 
     def test_disabled_category_adds_nothing(self):
-        rules = tr.deny_rules(cfg(strip_web_search_tools=False, strip_web_fetch_tools=False,
+        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=False, strip_web_fetch_tools=False,
                                   strip_notebook_tools=False))
         self.assertEqual(rules, [])
 
     def test_master_switch_off_disables_everything(self):
-        self.assertEqual(tr.deny_rules(cfg(enabled=False, strip_web_search_tools=True)), [])
+        self.assertEqual(tr.client_disabled_tools(cfg(enabled=False, strip_web_search_tools=True)), [])
 
     def test_protected_tools_are_never_denied(self):
         """PROTECTED_TOOLS 是底线：就算进了自定义清单也不挡。"""
-        rules = tr.deny_rules(cfg(custom_strip_tools=["Bash", "Read", "WebSearch"]))
+        rules = tr.client_disabled_tools(cfg(custom_strip_tools=["Bash", "Read", "WebSearch"]))
         self.assertNotIn("Bash", rules)
         self.assertNotIn("Read", rules)
 
     def test_custom_list_takes_non_mcp_only(self):
         """自定义清单里的非 MCP 工具会挡，MCP 工具照样排除（同一条边界）。"""
-        rules = tr.deny_rules(cfg(strip_web_search_tools=False,
+        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=False,
                                   custom_strip_tools=["BrandNewTool", "mcp__ccd_pr__get_status"]))
         self.assertIn("BrandNewTool", rules)
         self.assertNotIn("mcp__ccd_pr__get_status", rules)
 
 
-class MergeDenyRulesTest(unittest.TestCase):
-    """把规则并进 settings —— 只增删自己写过的那几条。"""
+class MergeClientDisabledTest(unittest.TestCase):
+    """把名单并进 3P 配置 —— 只增删自己写过的那些条目。"""
 
-    def test_adds_rules_and_keeps_user_entries(self):
-        existing = {"permissions": {"deny": ["Bash(rm -rf *)"]}, "other": 1}
-        new, changed, written = config_ops.merge_deny_rules(existing, ["WebSearch"], [])
-        self.assertEqual(changed, ["permissions.deny"])
-        self.assertIn("Bash(rm -rf *)", new["permissions"]["deny"])
-        self.assertIn("WebSearch", new["permissions"]["deny"])
+    def test_adds_entries_and_keeps_user_entries(self):
+        existing = {"disabledBuiltinTools": ["ClaudeDesign"], "inferenceModels": []}
+        new, changed, written = config_ops.merge_client_disabled(existing, ["WebSearch"], [])
+        self.assertEqual(changed, ["disabledBuiltinTools"])
+        self.assertIn("ClaudeDesign", new["disabledBuiltinTools"])
+        self.assertIn("WebSearch", new["disabledBuiltinTools"])
         self.assertEqual(written, ["WebSearch"])
-        self.assertEqual(new["other"], 1)
+        self.assertEqual(new["inferenceModels"], [])
 
     def test_removes_only_previously_written(self):
-        """关掉某个类别时收回规则，但用户自己写的那条必须原样留着。"""
-        existing = {"permissions": {"deny": ["Bash(rm -rf *)", "mcp__ccd_pr", "WebSearch"]}}
-        new, changed, _ = config_ops.merge_deny_rules(
-            existing, ["WebSearch"], previously_written=["mcp__ccd_pr", "WebSearch"])
-        self.assertEqual(new["permissions"]["deny"], ["Bash(rm -rf *)", "WebSearch"])
-        self.assertEqual(changed, ["permissions.deny"])
+        """关掉某个类别时收回条目，但用户自己在界面里加的那条必须原样留着。"""
+        existing = {"disabledBuiltinTools": ["ClaudeDesign", "NotebookEdit", "WebSearch"]}
+        new, changed, _ = config_ops.merge_client_disabled(
+            existing, ["WebSearch"], previously_written=["NotebookEdit", "WebSearch"])
+        self.assertEqual(new["disabledBuiltinTools"], ["ClaudeDesign", "WebSearch"])
+        self.assertEqual(changed, ["disabledBuiltinTools"])
 
     def test_idempotent(self):
-        existing = {"permissions": {"deny": ["WebSearch"]}}
-        new, changed, _ = config_ops.merge_deny_rules(existing, ["WebSearch"], ["WebSearch"])
+        existing = {"disabledBuiltinTools": ["WebSearch"]}
+        new, changed, _ = config_ops.merge_client_disabled(existing, ["WebSearch"], ["WebSearch"])
         self.assertEqual(changed, [])
         self.assertEqual(new, existing)
 
     def test_empty_result_leaves_no_shell(self):
-        """规则清空后不留空壳 —— 空数组会被客户端当成"用户设置过权限"展示。"""
-        existing = {"permissions": {"deny": ["WebSearch"]}}
-        new, changed, _ = config_ops.merge_deny_rules(existing, [], ["WebSearch"])
-        self.assertEqual(changed, ["permissions.deny"])
-        self.assertNotIn("permissions", new)
-
-    def test_object_entries_are_left_alone(self):
-        obj = {"toolName": "Bash", "ruleContent": "rm -rf *"}
-        existing = {"permissions": {"deny": [obj]}}
-        new, _, _ = config_ops.merge_deny_rules(existing, ["WebSearch"], [])
-        self.assertIn(obj, new["permissions"]["deny"])
+        """名单清空后不留空键 —— 别在客户端的配置里留一个空数组。"""
+        existing = {"disabledBuiltinTools": ["WebSearch"]}
+        new, changed, _ = config_ops.merge_client_disabled(existing, [], ["WebSearch"])
+        self.assertEqual(changed, ["disabledBuiltinTools"])
+        self.assertNotIn("disabledBuiltinTools", new)
 
 
-class SyncClientDenyTest(unittest.TestCase):
-    """配置 → 规则 → settings 的整条路（与网关剥离同一份配置）。"""
+class SyncClientDisabledTest(unittest.TestCase):
+    """配置 → 名单 → 3P 配置的整条路（与网关剥离同一份配置）。"""
 
     def test_uses_same_config_as_gateway(self):
         pruning = cfg(strip_web_search_tools=True, strip_web_fetch_tools=True,
                       strip_notebook_tools=True)
-        new, changed, written = config_ops.sync_client_deny({}, pruning, [])
-        self.assertEqual(changed, ["permissions.deny"])
-        self.assertEqual(written, tr.deny_rules(pruning))
-        self.assertEqual(new["permissions"]["deny"], written)
+        new, changed, written = config_ops.sync_client_disabled({}, pruning, [])
+        self.assertEqual(changed, ["disabledBuiltinTools"])
+        self.assertEqual(written, tr.client_disabled_tools(pruning))
+        self.assertEqual(new["disabledBuiltinTools"], written)
 
     def test_turning_category_off_withdraws_rule(self):
         pruning = cfg(strip_web_search_tools=False, strip_web_fetch_tools=False,
                       strip_notebook_tools=False)
-        existing = {"permissions": {"deny": ["WebSearch", "NotebookEdit"]}}
-        new, changed, written = config_ops.sync_client_deny(
+        existing = {"disabledBuiltinTools": ["WebSearch", "NotebookEdit"]}
+        new, changed, written = config_ops.sync_client_disabled(
             existing, pruning, ["WebSearch", "NotebookEdit"])
         self.assertEqual(written, [])
-        self.assertEqual(changed, ["permissions.deny"])
-        self.assertNotIn("permissions", new)
+        self.assertEqual(changed, ["disabledBuiltinTools"])
+        self.assertNotIn("disabledBuiltinTools", new)
 
 
 class ParagraphStillStrippedTest(unittest.TestCase):

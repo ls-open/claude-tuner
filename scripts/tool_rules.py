@@ -230,41 +230,41 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 于是它按 88 个工具估、真实请求只有 27 个 → 一上来显示 8 万，真实用量超过这个地板
 # 才对齐。工具在源头就不发，两边才是同一份账。
 #
-# 但**只有非 MCP 的内置工具走得通**。这条边界是实测撞出来的，别再往下试：
+# 落点：3P 配置的 `disabledBuiltinTools`
+# -------------------------------------
+# 就是客户端 Setup 窗口 Capabilities → TOOLS → 「Disabled built-in tools」那一栏，
+# 写进 `configLibrary/<id>.json`，会话开始时读 —— 工具压根不进 `tools[]`。
 #
-#   手段                                          bare CLI    桌面端 hosted MCP
-#   settings 的 permissions.deny: ["WebSearch"]    生效          生效（实测 88→85）
-#   settings 的 permissions.deny: ["mcp__x"]       生效          不生效（70 个一个没少）
-#   settings 的 permissions.deny: ["mcp__x__t"]    生效          不生效（同上）
-#   settings 的 deniedMcpServers: ["x"]            未测          不生效（同上）
-#   settings 的 disallowedTools                    无效          无效（只认 CLI 参数/SDK 选项）
+# 早先写的是 `~/.claude/settings.json` 的 `permissions.deny`：能用（实测 88→85），
+# 但那是**借权限层的副作用**（语义是「不许调用」，工具不发只是它的实现细节）。换成
+# 客户端自己的字段之后，语义对上了，用户打开 `/permissions` 看到的全是自己写的规则，
+# 名字写错时客户端还会给警告（`web_fetch` 那种小写写法就是它报的）。
 #
-# 原因：桌面端把 hosted MCP 工具按它自己的 `enabledMcpTools`（界面上那套工具开关，
-# 落盘成 mcp-user-tool-toggles.json 的镜像）先筛一遍再交给 CLI，设置层的拒绝规则不参与
-# 那一层。所以 MCP 那部分只能由用户在客户端界面里关，网关的事后剥离照旧兜底。
+# 只有**非 MCP** 的内置工具走得通。桌面端把 hosted MCP 工具按它自己的 `enabledMcpTools`
+# （界面上那套工具开关，落盘成 mcp-user-tool-toggles.json）先筛一遍，配置层不参与那一层
+# —— 所以 MCP 那部分只能由用户在界面里关，网关的事后剥离照旧兜底。
 #
-# 结论：这里只产出**非 MCP** 的规则。多写 MCP 规则不会生效，只会让配置看起来比实际
-# 能做到的多 —— 那比不写更坏。
+# 结论：这里只产出**非 MCP** 的名字。多写不会生效，只会让配置看起来比实际能做到的多
+# —— 那比不写更坏。
 #
 # 和网关剥离是什么关系
 # --------------------
 # **同一份配置、两个投影，解决的是两件不同的事**，不是两套重复的逻辑：
 #   · 网关剥离（`should_strip_tool`）：让请求里真的没有它 —— 省 token，对全部工具生效。
-#   · 客户端拦截（`deny_rules`）：让客户端**知道自己不发** —— 它按手里的工具清单估上下文
-#     占用，我们事后剥它不知道，显示的数字就虚高。
-# 客户端侧生效时网关那半无事可做，属正常分层，**不是空转**：deny 规则由开关推导，
-# 删掉开关会连 deny 一起撤掉，工具立刻回来（哨兵靠 `idle_switches` 分辨这两种"没物可剥"）。
+#   · 客户端拦截（`client_disabled_tools`）：让客户端**知道自己不发** —— 它按手里的工具
+#     清单估上下文占用，我们事后剥它不知道，显示的数字就虚高。
+# 客户端侧生效时网关那半无事可做，属正常分层，**不是空转**：名单由开关推导，删掉开关
+# 会连它一起撤掉，工具立刻回来（哨兵靠 `idle_switches` 分辨这两种"没物可剥"）。
 #
-# 网关那半也不能撤。`permissions.deny` 影响工具清单是客户端**当前的实现细节**，不是承诺：
-# 某版改成「照发、只在调用时拒绝」时，网关剥离就是唯一的保证 —— 而它正是本仓的存在理由。
-# 届时不发会静默失效，靠 `deny_leaks` 把它报出来。
+# 网关那半也不能撤：客户端那套是它自己的行为，某版改了语义时，网关剥离是唯一的保证 ——
+# 而它正是本仓的存在理由。届时失效靠 `client_disabled_leaks` 报出来。
 
 
-def deny_rules(cfg):
-    """能真正让客户端「根本不发」的那几个工具名 —— 只含非 MCP 的内置工具。
+def client_disabled_tools(cfg):
+    """该让客户端「根本不发」的工具名 —— 只含非 MCP 的内置工具。
 
-    口径与 `should_strip_tool` 同源：配置判为要剥、又不是 MCP 工具的，都让客户端别发。
-    MCP 工具一律排除，理由见上面那张实测表。
+    口径与 `should_strip_tool` 同源：配置判为要剥、又不是 MCP 工具的，都写进客户端的
+    `disabledBuiltinTools`。MCP 工具一律排除，理由见上面那段。
     """
     if not tp_flag(cfg, "enabled"):
         return []
@@ -286,18 +286,18 @@ def switch_tools(key):
     return tuple(CATEGORY_NAMES.get(key, ()))
 
 
-def idle_switches(cfg, present_names, deny_rules):
+def idle_switches(cfg, present_names, disabled_names):
     """开着、却一个工具都管不到的开关 —— 按**谁让它不发**分类。
 
     这两种成因的处置正好相反，混成一句「可考虑删掉该开关」会让人删错东西：
-      · `covered` —— 名下工具都在 `deny_rules` 里：它们不发，正是**这个开关**驱动客户端
-        拦截的结果。删开关会把 deny 规则一并撤掉，工具立刻回来。结论是「别动」。
+      · `covered` —— 名下工具都在客户端的 `disabledBuiltinTools` 里：它们不发，正是
+        **这个开关**驱动客户端拦截的结果。删开关会把名单一并撤掉，工具立刻回来。结论是「别动」。
       · `stale` —— 客户端这版本来就不发（特性门 / 该面没这套工具）。删开关是死重清理。
 
-    只要名下**有一条** deny 规则挂着就归 `covered`：宁可不提删，也不给人一个会反噬的建议。
+    只要名下**有一条**挂在客户端名单里就归 `covered`：宁可不提删，也不给人一个会反噬的建议。
     """
     present = set(present_names or ())
-    denied = set(deny_rules or ())
+    denied = set(disabled_names or ())
     covered, stale = {}, []
     for key in list(dict(CATEGORY_NAMESPACES)) + list(CATEGORY_NAMES):
         if not tp_flag(cfg, key) or any(category_for(n) == key for n in present):
@@ -310,13 +310,13 @@ def idle_switches(cfg, present_names, deny_rules):
     return {"covered": covered, "stale": sorted(stale)}
 
 
-def deny_leaks(present_names, deny_rules):
+def client_disabled_leaks(present_names, disabled_names):
     """写着「客户端不发」、报文里却出现了 —— 客户端侧拦截失效，必须报出来。
 
     失效不等于坏事：网关剥离照旧把它们删掉，前缀仍然恒定。报出来是为了让人知道
     「这条保证已经只剩一层了」，而不是等到某天上下文里真的冒出来才发现。
     """
-    denied = set(deny_rules or ())
+    denied = set(disabled_names or ())
     return sorted(n for n in (present_names or ()) if n in denied)
 
 

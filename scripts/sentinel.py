@@ -303,14 +303,14 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
         # 开着、却一个工具都管不到的开关。**两种成因的处置正好相反**，所以分开说：
         # 客户端侧拦截挡住的，开关就是它不发的原因（删了工具回来）；客户端本来就不发的，
         # 删开关才是死重清理。混成一句「可考虑删掉」会让人删错。关着的开关不列。
-        deny = gateway.load_client_deny_rules()
-        idle = tool_rules.idle_switches(cfg, names, deny)
+        disabled = gateway.load_client_disabled_tools()
+        idle = tool_rules.idle_switches(cfg, names, disabled)
         if idle["covered"]:
             print("  ℹ️ %d 个开关开着、名下工具没发过来 —— 是**客户端侧拦截**挡住的（不是空转）："
                   % len(idle["covered"]))
             for key in sorted(idle["covered"]):
                 print("     %s ← %s" % (key, ", ".join(idle["covered"][key])))
-            print("     → 别删这些开关：deny 规则由它们推导，删了工具立刻回来。")
+            print("     → 别删这些开关：客户端的名单由它们推导，删了工具立刻回来。")
             print("       网关剥离留着作兜底（客户端设置只在会话开始时读）。")
         if idle["stale"]:
             print("  ℹ️ %d 个开关开着、但客户端这版根本不发它们名下的工具：" % len(idle["stale"]))
@@ -318,7 +318,7 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
             print("     → 可考虑删掉该开关；若只面向新客户端则纯属死重。")
     # 写着「客户端不发」却出现了：客户端侧拦截失效。网关剥离照旧兜底，所以要报出来
     # 而不是当成故障 —— 但也别静默：这条保证此刻只剩一层了。
-    leaks = tool_rules.deny_leaks(names, gateway.load_client_deny_rules())
+    leaks = tool_rules.client_disabled_leaks(names, gateway.load_client_disabled_tools())
     if leaks:
         print("  ⚠️ %d 个工具写着「客户端不发」却出现在报文里 —— 客户端侧拦截失效：" % len(leaks))
         print("     %s" % ", ".join(leaks))
