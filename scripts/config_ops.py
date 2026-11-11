@@ -114,7 +114,7 @@ def host_ok(host_header, port):
 
 
 def origin_ok(origin, port):
-    """带 Origin 的写请求必须同源；不带 Origin（curl 等本机调用）交由 token 把关。"""
+    """带 Origin 的写请求必须同源；浏览器同源请求之外的跨站写请求一律拒绝。"""
     origin = (origin or "").strip().lower()
     if not origin:
         return True
@@ -443,7 +443,7 @@ UPSTREAM_PRESETS = (
      "url": "https://opencode.ai/zen", "model": "",
      "key_hint": "在 opencode.ai 控制台获取"},
     {"id": "opencode-go", "name": "OpenCode Go（套餐制）",
-     "url": "https://opencode.ai/zen/go", "model": "deepseek-flash",
+     "url": "https://opencode.ai/inference/go/anthropic", "model": "deepseek-v4.1-flash",
      "key_hint": "在 opencode.ai 订阅后获取"},
     {"id": "custom", "name": "其他供应商 / 自建代理",
      "url": "", "model": "", "key_hint": ""},
@@ -453,6 +453,8 @@ UPSTREAM_PRESETS = (
 def find_preset(url):
     """按 URL 反查预设 id，用于页面回显与安装器选默认映射。"""
     norm = (url or "").strip().rstrip("/").lower()
+    if norm.endswith("/v1/messages"):
+        norm = norm[:-len("/v1/messages")]
     for p in UPSTREAM_PRESETS:
         if p["url"] and p["url"].rstrip("/").lower() == norm:
             return p["id"]

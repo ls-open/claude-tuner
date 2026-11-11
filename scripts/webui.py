@@ -9,8 +9,8 @@
 - 上游探测（拉模型列表 / 测试连接）是**直连上游**，不经网关 —— 经网关会被
   探针拦截（max_tokens<=1 本地秒回），测出来的是假结果。
 
-安全：只绑 127.0.0.1 + token 门禁 + Host/Origin 校验（防 DNS rebinding）。
-读接口永不返回完整 Key。
+安全：仅监听 127.0.0.1 + Host/Origin 同源校验（防 DNS rebinding 与跨站写请求）。
+本机直接访问即可打开，读接口永不返回完整 Key。
 """
 import json
 import os
@@ -43,57 +43,8 @@ from common import (  # noqa: E402
 )
 
 HTML_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "webui", "index.html")
-TOKEN_FILE = os.path.join(config_ops.platform_paths()["bridge_home"], "webui.token")
-COOKIE_NAME = "claude_tuner_token"
 
 _html_cache = (0.0, "")
-
-
-# ==============================================================================
-# token
-# ==============================================================================
-
-def ensure_token():
-    """读（缺失则生成）配置台 token：0600，只在本机。"""
-    try:
-        with open(TOKEN_FILE, "r", encoding="utf-8") as fh:
-            token = fh.read().strip()
-        if token:
-            return token
-    except OSError:
-        pass
-    import secrets
-    token = secrets.token_hex(32)
-    os.makedirs(os.path.dirname(TOKEN_FILE), exist_ok=True)
-    fd = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write(token)
-    return token
-
-
-def query_value(query, key):
-    """取一个查询参数。网关传进来的是 parse_qs 的结果（值是列表），这里两种形状都吃。"""
-    value = (query or {}).get(key)
-    if isinstance(value, list):
-        value = value[0] if value else ""
-    return (value or "").strip()
-
-
-def token_from(headers, query):
-    """token 来源优先级：头 > cookie > query。"""
-    direct = headers.get("X-Claude-Tuner-Token")
-    if direct:
-        return direct.strip()
-    cookie = headers.get("Cookie") or ""
-    for part in cookie.split(";"):
-        name, _, value = part.strip().partition("=")
-        if name == COOKIE_NAME:
-            return value.strip()
-    return query_value(query, "token")
-
-
-def authorized(handler, query):
-    return config_ops.constant_time_eq(token_from(handler.headers, query), ensure_token())
 
 
 # ==============================================================================
@@ -505,21 +456,17 @@ def restart_gateway():
 
 
 def config_url():
-    """给用户打开的配置台地址（含 token）。安装脚本靠它拿到那条链接。"""
-    return "http://127.0.0.1:%d/?token=%s" % (_port(), ensure_token())
+    """给用户打开的配置台地址。安装脚本靠它拿到访问链接。"""
+    return "http://127.0.0.1:%d/" % _port()
 
 
 def main(argv=None):
-    """安装脚本要用的两个小入口：拿地址、拿 token。"""
+    """安装脚本要用的小入口：打印配置台访问地址。"""
     import argparse
     parser = argparse.ArgumentParser(description="claude-tuner 配置台")
-    parser.add_argument("--url", action="store_true", help="打印带 token 的配置台地址")
-    parser.add_argument("--token", action="store_true", help="只打印 token")
-    args = parser.parse_args(argv)
-    if args.token:
-        print(ensure_token())
-    else:
-        print(config_url())
+    parser.add_argument("--url", action="store_true", help="打印配置台访问地址")
+    parser.parse_args(argv)
+    print(config_url())
     return 0
 
 
@@ -527,18 +474,12 @@ def main(argv=None):
 # 路由
 # ==============================================================================
 
-def _gate(handler, query, need_token=True):
-    """Host 校验（防 DNS rebinding）+ token 校验。通过返回 None，否则返回错误响应。"""
+def _gate(handler):
+    """Host 校验（防 DNS rebinding）。通过返回 True，否则已写出错误响应。"""
     host = handler.headers.get("Host", "")
     if not config_ops.host_ok(host, handler.server.server_port):
         handler._send_json(421, {"ok": False, "error": {"type": "bad_host",
                                                         "message": "Host 不是本机回环地址"}})
-        return False
-    if not need_token:
-        return True
-    if not authorized(handler, query):
-        handler._send_json(403, {"ok": False, "error": {"type": "forbidden",
-                                                        "message": "token 无效，请用安装时打开的链接访问"}})
         return False
     return True
 
@@ -549,41 +490,10 @@ def handle_get(handler, query):
     if path not in ("/", "/index.html", "/api/config",
                     "/api/upstream-models", "/api/update-check", "/api/stats"):
         return False
-    if not _gate(handler, query, need_token=(path != "/")):
+    if not _gate(handler):
         return True
 
     if path in ("/", "/index.html"):
-        token = query_value(query, "token")
-        if token and config_ops.constant_time_eq(token, ensure_token()):
-            # 带 token 的链接一次性用完就丢：避免 token 留在浏览器历史与 Referer 里
-            handler.send_response(302)
-            handler.send_header("Location", "/")
-            # **必须带 Max-Age**：不带就是会话级 cookie，浏览器一关就没，用户每次都得
-            # 重新去找那个带 token 的链接。带一年：拿链接开一次，之后直接访问端口即可。
-            handler.send_header("Set-Cookie",
-                                "%s=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000"
-                                % (COOKIE_NAME, token))
-            handler.send_header("Referrer-Policy", "no-referrer")
-            handler.end_headers()
-            return True
-        if not authorized(handler, query):
-            handler._send_html(401, """<!doctype html><meta charset=utf-8>
-<title>需要访问令牌</title>
-<style>body{font:14px/1.8 -apple-system,"PingFang SC",system-ui;background:#0b0d11;color:#e8ebf0;
-padding:60px 24px;max-width:640px;margin:0 auto}
-h1{font-size:19px;margin:0 0 14px}code{background:#1a1e26;border:1px solid #262b35;
-border-radius:6px;padding:2px 7px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
-pre{background:#1a1e26;border:1px solid #262b35;border-radius:8px;padding:12px 14px;overflow:auto}
-p{margin:0 0 12px;color:#8b94a7}b{color:#e8ebf0}</style>
-<h1>需要访问令牌</h1>
-<p>这个页面能改你的客户端配置（上游地址、API&nbsp;Key、3P 配置），所以不能任人打开 ——
-浏览器里任何一个网页都可能偷偷对着本机端口发请求。</p>
-<p><b>只需要拿一次链接。</b>用下面这条命令打印出带令牌的地址，打开之后浏览器会记住一年，
-之后直接访问 <code>127.0.0.1:%d</code> 就行。</p>
-<pre>python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url</pre>
-<p>看到这一页通常说明：换了浏览器、清了 Cookie，或者距上次打开已超过一年。</p>"""
-                                    % _port())
-            return True
         handler._send_html(200, load_html())
         return True
 
@@ -618,9 +528,11 @@ def handle_post(handler, query, body):
     path = handler.path.split("?")[0]
     if path not in ("/api/config", "/api/test-upstream", "/api/restart", "/api/update"):
         return False
-    if not _gate(handler, query):
+    if not _gate(handler):
         return True
-    if not config_ops.origin_ok(handler.headers.get("Origin", ""), handler.server.server_port):
+    fetch_site = (handler.headers.get("Sec-Fetch-Site") or "").strip().lower()
+    if fetch_site == "cross-site" or not config_ops.origin_ok(
+            handler.headers.get("Origin", ""), handler.server.server_port):
         handler._send_json(403, {"ok": False, "error": {"type": "bad_origin",
                                                         "message": "跨源请求被拒绝"}})
         return True

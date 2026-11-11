@@ -184,9 +184,9 @@ class TestInstall(BootstrapTestCase):
         self.assertEqual(cfg["upstream_url"], "https://api.deepseek.com/anthropic/v1/messages")
 
     def test_upstream_override(self):
-        self.install("--key", "k", "--upstream", "https://opencode.ai/zen/go")
+        self.install("--key", "k", "--upstream", "https://opencode.ai/inference/go/anthropic")
         cfg = self.read(self.bridge_home / "config.json")
-        self.assertEqual(cfg["upstream_url"], "https://opencode.ai/zen/go/v1/messages")
+        self.assertEqual(cfg["upstream_url"], "https://opencode.ai/inference/go/anthropic/v1/messages")
 
     def test_no_cli_skips_env(self):
         self.install("--key", "k", "--no-cli")
@@ -197,11 +197,11 @@ class TestDefaultMapping(BootstrapTestCase):
     """默认映射只有一条规则：认识这家上游就映射过去，不认识就让代号同名直通。"""
 
     def test_known_preset_maps_two_recommended_codenames(self):
-        self.install("--key", "k", "--upstream", "https://opencode.ai/zen/go")
+        self.install("--key", "k", "--upstream", "https://opencode.ai/inference/go/anthropic")
         cfg = self.read(self.active_3p())
         self.assertEqual([(m["name"], m["labelOverride"]) for m in cfg["inferenceModels"]],
-                         [("claude-opus-5-5", "deepseek-flash"),
-                          ("claude-sonnet-5-5", "deepseek-flash")])
+                         [("claude-opus-5-5", "deepseek-v4.1-flash"),
+                          ("claude-sonnet-5-5", "deepseek-v4.1-flash")])
 
     def test_unknown_upstream_keeps_codenames_identical(self):
         """自填 URL（多半是官方中转站）：代号同名直通，且必须列全 ——

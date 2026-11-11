@@ -64,11 +64,6 @@ claude -p "只回复两个字：成功"
 | **保存后新会话生效** | 客户端设置 / 3P 配置 | 输入联想、自动压缩、高级压缩 / 思考开关、Co-Authored-By、终端联动 |
 | **保存后需重启客户端** | 3P 配置 / 桌面偏好 | API Key、上游模型映射、1M 上下文窗口、缓存保留 1 小时、随附技能、定时任务 |
 
-> 若因清除浏览器缓存需要带 Token 的免密登录链接，可在终端运行：
-> ```bash
-> python3 ~/.claude/skills/claude-tuner/scripts/webui.py --url
-> ```
-
 ## 上游卡住 / 断流：怎么判读日志
 
 `upstream_timeout`（默认 60 秒）是**空闲**读超时：socket 级、按每次读算的 ——

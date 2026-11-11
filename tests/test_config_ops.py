@@ -352,11 +352,12 @@ class TestModelMapping(ConfigOpsTestCase):
                              set(self.EXPECTED_CLIENT_MODELS), pid)
 
     def test_known_upstream_gets_its_model(self):
-        for pid in ("deepseek", "opencode-go"):
+        expected = {"deepseek": "deepseek-flash", "opencode-go": "deepseek-v4.1-flash"}
+        for pid, target in expected.items():
             mapping = self.ops.preset_mapping(pid)
             self.assertEqual([m["name"] for m in mapping],
                              list(self.ops.RECOMMENDED_MODEL_IDS), pid)
-            self.assertTrue(all(m["labelOverride"] == "deepseek-flash" for m in mapping), pid)
+            self.assertTrue(all(m["labelOverride"] == target for m in mapping), pid)
 
     def test_opencode_zen_gets_identity_mapping(self):
         """Zen 提供的是真正的 claude-* 官方模型（84 个里含全套），
@@ -367,11 +368,12 @@ class TestModelMapping(ConfigOpsTestCase):
         self.assertTrue(all(m["name"] == m["labelOverride"] for m in mapping))
 
     def test_opencode_zen_and_go_are_different_endpoints(self):
-        """两家不同的服务：Go 是在 Zen 后面加 /go，填错就调不通。"""
+        """两家不同的服务：Go 使用 /inference/go/anthropic，填错就调不通。"""
         self.assertEqual(self.ops.get_preset("opencode-zen")["url"], "https://opencode.ai/zen")
-        self.assertEqual(self.ops.get_preset("opencode-go")["url"], "https://opencode.ai/zen/go")
+        self.assertEqual(self.ops.get_preset("opencode-go")["url"], "https://opencode.ai/inference/go/anthropic")
         self.assertEqual(self.ops.find_preset("https://opencode.ai/zen"), "opencode-zen")
-        self.assertEqual(self.ops.find_preset("https://opencode.ai/zen/go"), "opencode-go")
+        self.assertEqual(self.ops.find_preset("https://opencode.ai/inference/go/anthropic"), "opencode-go")
+        self.assertEqual(self.ops.find_preset("https://opencode.ai/inference/go/anthropic/v1/messages"), "opencode-go")
 
     def test_explicit_target_beats_preset_default(self):
         mapping = self.ops.preset_mapping("custom", "my-own-model")

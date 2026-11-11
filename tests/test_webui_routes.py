@@ -5,8 +5,8 @@
 ------------------
 配置台挂在网关自己的端口上，和 `/v1/messages` 是同一个 socket。这里要钉住两件事：
 
-1. **门禁真的拦得住** —— 页面手里有用户的 API Key，而 127.0.0.1 上任何本地程序、
-   任何网页都能发请求过来。没 token、Host 是外域名、Origin 跨源，都必须被拒。
+1. **门禁真的拦得住** —— 页面手里有配置写权限，而 127.0.0.1 上任何网页都能尝试跨站发请求。
+   配置台仅允许本机回环地址直接打开，Host 是外域名、Origin 跨源或 `Sec-Fetch-Site: cross-site` 都必须被拒。
 2. **没有把原来的路由挡掉** —— `/v1/models` 与 `/v1/messages` 是客户端的生命线，
    配置台接进 `do_GET` / `do_POST` 之后必须仍然原样工作。
 
@@ -46,13 +46,6 @@ def free_port():
         return s.getsockname()[1]
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """不跟随跳转：要断言 302 与 Set-Cookie，就得看见这一跳本身。"""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 class WebUITestCase(unittest.TestCase):
     """一个测试起一个真网关进程，用完杀干净。"""
 
@@ -79,9 +72,6 @@ class WebUITestCase(unittest.TestCase):
             "inferenceModels": [{"name": "claude-opus-5-5", "labelOverride": "deepseek-flash"}],
         }), encoding="utf-8")
         (cls.config_lib / "_meta.json").write_text(json.dumps({"appliedId": "p"}), encoding="utf-8")
-
-        cls.token = "t" * 64
-        (cls.bridge_home / "webui.token").write_text(cls.token, encoding="utf-8")
 
         # 存到类上：起不来时的重跑探针要用同一份环境，不能指望局部变量能跨方法看见
         # （曾经写成局部 `env`，探针里 NameError，把真正的原因整个吞掉）。
@@ -153,18 +143,14 @@ class WebUITestCase(unittest.TestCase):
 
     # ── 请求帮手 ──
 
-    def request(self, path, method="GET", body=None, headers=None, token=True, follow=True):
+    def request(self, path, method="GET", body=None, headers=None):
         url = "http://127.0.0.1:%d%s" % (self.port, path)
         hdrs = dict(headers or {})
-        if token and "X-Claude-Tuner-Token" not in hdrs:
-            hdrs["X-Claude-Tuner-Token"] = self.token
         data = json.dumps(body).encode() if body is not None else None
         if data:
             hdrs.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(url, data=data, headers=hdrs, method=method)
-        # 默认 opner 会自己跟随 302 且不带 cookie，那样断言到的就是跳转后的结果了
-        opener = urllib.request.build_opener(_NoRedirect if not follow
-                                             else urllib.request.HTTPRedirectHandler)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         try:
             with opener.open(req, timeout=10) as resp:
                 return resp.status, resp.read().decode("utf-8", "replace"), dict(resp.headers)
@@ -173,11 +159,7 @@ class WebUITestCase(unittest.TestCase):
 
 
 class TestGate(WebUITestCase):
-    def test_page_needs_token(self):
-        status, _, _ = self.request("/", token=False)
-        self.assertEqual(status, 401)
-
-    def test_page_renders_with_token(self):
+    def test_page_renders_directly_without_token(self):
         status, body, headers = self.request("/")
         self.assertEqual(status, 200)
         self.assertIn("text/html", headers.get("Content-Type", ""))
@@ -186,49 +168,23 @@ class TestGate(WebUITestCase):
         self.assertEqual(headers.get("Referrer-Policy"), "no-referrer")
         self.assertIn("default-src 'none'", headers.get("Content-Security-Policy", ""))
 
-    def cookie_from_redirect(self):
-        """拿一次跳转返回的 Set-Cookie，原样取出「名字=值」。
-
-        刻意**不写死名字** —— 从响应里取。写死过一次，改名之后测试就红了，
-        而红的原因是「名字变了」而不是「行为坏了」，那对排查毫无帮助。
-        """
-        status, _, headers = self.request("/?token=%s" % self.token, token=False, follow=False)
-        self.assertEqual(status, 302)
-        cookie = headers.get("Set-Cookie", "").split(";")[0].strip()
-        self.assertIn(self.token, cookie, "cookie 里应当带上 token")
-        return cookie
-
-    def test_token_in_query_redirects_and_sets_cookie(self):
-        status, _, headers = self.request("/?token=%s" % self.token, token=False, follow=False)
-        self.assertEqual(status, 302)
-        self.assertEqual(headers.get("Location"), "/")
-        set_cookie = headers.get("Set-Cookie", "")
-        self.assertIn("HttpOnly", set_cookie)
-        # 带 Max-Age 才是「长期」cookie。不带就是个会话级的，浏览器一关就没了 ——
-        # 用户会觉得「为什么不能直接打开」，每次都得重新去找那条带 token 的链接。
-        self.assertIn("Max-Age=", set_cookie)
-        self.assertNotIn(self.token, headers.get("Location", ""))
-
-    def test_cookie_from_that_redirect_opens_the_page(self):
-        """跳转后浏览器带着 cookie 再请求 —— 这条路必须真的通，
-        否则用户点一次链接之后看到的还是 401。"""
-        cookie = self.cookie_from_redirect()
-        status, body, _ = self.request("/", token=False, headers={"Cookie": cookie})
+    def test_page_renders_with_legacy_token_query(self):
+        status, body, _ = self.request("/?token=legacy-bookmark-token")
         self.assertEqual(status, 200)
-        self.assertIn("配置台", body)
+        self.assertIn("claude-tuner 配置台", body)
 
-    def test_wrong_token_is_rejected(self):
-        status, _, _ = self.request("/api/config", headers={"X-Claude-Tuner-Token": "wrong"})
-        self.assertEqual(status, 403)
-
-    def test_api_needs_token(self):
-        status, _, _ = self.request("/api/config", token=False)
-        self.assertEqual(status, 403)
+    def test_api_accessible_without_token(self):
+        status, body, _ = self.request("/api/config")
+        self.assertEqual(status, 200)
+        self.assertTrue(json.loads(body)["ok"])
 
     def test_foreign_host_is_rejected(self):
         """Host 校验挡的是 DNS rebinding：恶意域名解析到 127.0.0.1 后，
         浏览器会带上它自己的 Host 来打这个端口。"""
         status, _, _ = self.request("/api/config", headers={"Host": "evil.example.com"})
+        self.assertEqual(status, 421)
+        status, _, _ = self.request("/api/config", method="POST", body={},
+                                    headers={"Host": "evil.example.com"})
         self.assertEqual(status, 421)
 
     def test_cross_origin_write_is_rejected(self):
@@ -236,8 +192,18 @@ class TestGate(WebUITestCase):
                                     headers={"Origin": "http://evil.example.com"})
         self.assertEqual(status, 403)
 
+    def test_cross_site_fetch_write_is_rejected(self):
+        status, _, _ = self.request("/api/config", method="POST", body={},
+                                    headers={"Sec-Fetch-Site": "cross-site"})
+        self.assertEqual(status, 403)
+
     def test_localhost_host_is_accepted(self):
         status, _, _ = self.request("/api/config", headers={"Host": "localhost:%d" % self.port})
+        self.assertEqual(status, 200)
+        status, _, _ = self.request("/api/config", method="POST", body={},
+                                    headers={"Host": "localhost:%d" % self.port,
+                                             "Origin": "http://localhost:%d" % self.port,
+                                             "Sec-Fetch-Site": "same-origin"})
         self.assertEqual(status, 200)
 
 
@@ -256,13 +222,24 @@ class TestReadConfig(WebUITestCase):
         self.assertEqual(payload["models"][0]["name"], "claude-opus-5-5")
         self.assertEqual(payload["models"][0]["label"], "deepseek-flash")
         self.assertIn("claude-opus-5-5", payload["options"]["client_models"])
+        presets = {p["id"]: p for p in payload["options"]["presets"]}
+        self.assertEqual(presets["opencode-go"]["url"], "https://opencode.ai/inference/go/anthropic")
         # 工具面的主指标由后端算（读日志），没有请求时如实为 None —— 键必须在，
         # 否则页面那条 chip 会永远静默退回数开关。
         self.assertIn("tool_stats", payload)
         self.assertTrue(payload["three_p"]["activated"])
 
-    def test_never_leaks_token(self):
-        self.assertNotIn(self.token, self.request("/api/config")[1])
+    def test_config_url_has_no_token(self):
+        with tempfile.TemporaryDirectory() as td:
+            bh = Path(td) / ".claude-tuner"
+            bh.mkdir(parents=True)
+            (bh / "config.json").write_text(json.dumps({"gateway_port": self.port}), encoding="utf-8")
+            env = _isolated_home.subprocess_env(Path(td), CLAUDE_TUNER_HOME=bh)
+            res = subprocess.run([sys.executable, str(SCRIPTS / "webui.py"), "--url"],
+                                 env=env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(res.stdout.strip(), "http://127.0.0.1:%d/" % self.port)
+        self.assertNotIn("token", res.stdout.lower())
 
 
 class TestWriteConfig(WebUITestCase):
@@ -281,6 +258,19 @@ class TestWriteConfig(WebUITestCase):
         self.assertEqual(bridge["upstream_url"], "https://api.deepseek.com/anthropic/v1/messages")
         three_p = json.loads((self.config_lib / "p.json").read_text(encoding="utf-8"))
         self.assertEqual(three_p["inferenceModels"][0]["labelOverride"], "deepseek-v4-pro")
+
+    def test_opencode_go_upstream_roundtrip(self):
+        status, body, _ = self.request("/api/config", method="POST", body={
+            "upstream_url": "https://opencode.ai/inference/go/anthropic/v1/messages",
+        }, headers={"Origin": "http://127.0.0.1:%d" % self.port})
+        self.assertEqual(status, 200, body)
+        bridge = json.loads((self.bridge_home / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(bridge["upstream_url"], "https://opencode.ai/inference/go/anthropic/v1/messages")
+
+        data = json.loads(self.request("/api/config")[1])["data"]
+        self.assertEqual(data["upstream"]["url"], "https://opencode.ai/inference/go/anthropic")
+        self.assertEqual(data["upstream"]["preset"], "opencode-go")
+        self.assertEqual(data["gateway"]["upstream_url"], "https://opencode.ai/inference/go/anthropic/v1/messages")
 
     def test_models_deletion_and_clear_are_saved(self):
         # 验证删除模型列表（清空为 []）也能正确保存落盘
@@ -348,20 +338,20 @@ class TestOriginalRoutesStillWork(WebUITestCase):
     """配置台接进同一个 Handler 之后，客户端的路不能被挡。"""
 
     def test_models_endpoint(self):
-        status, body, _ = self.request("/v1/models", token=False)
+        status, body, _ = self.request("/v1/models")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["data"][0]["id"], "claude-opus-5-5")
 
     def test_messages_endpoint_still_routes_to_upstream(self):
         # 上游是假的：只断言它没被配置台拦下（会走到转发并因连不上上游而失败），
         # 换句话说不是 404 not found
-        status, body, _ = self.request("/v1/messages", method="POST", token=False, body={
+        status, body, _ = self.request("/v1/messages", method="POST", body={
             "model": "claude-opus-5-5", "max_tokens": 16,
             "messages": [{"role": "user", "content": "hi"}]})
         self.assertNotEqual(status, 404, body)
 
     def test_unknown_path_is_404(self):
-        status, _, _ = self.request("/nope", token=False)
+        status, _, _ = self.request("/nope")
         self.assertEqual(status, 404)
 
 

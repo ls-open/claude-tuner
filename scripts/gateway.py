@@ -1408,7 +1408,7 @@ class Handler(BaseHTTPRequestHandler):
                     ua=ua,
                 )
             return
-        # 配置台：走本地页面那几条路由（自己带 Host/token 门禁），未命中再 404
+        # 配置台：走本地页面那几条路由（带 Host 校验），未命中再 404
         if webui.handle_get(self, parse_qs(urlparse(self.path).query)):
             return
         self._send_json(404, {"error": "not found"})

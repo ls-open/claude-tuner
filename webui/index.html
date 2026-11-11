@@ -1160,11 +1160,20 @@ document.addEventListener('change', ev => {
     }
   }
 
-  updateUnsavedIndicator();
+  updateUnsavedIndicator(300);
 });
 document.addEventListener('input', ev => {
-  if (ev.target.matches('#upstream, #apikey, [data-role=model]')) {
+  if (ev.target.matches('#upstream')) {
+    updateUnsavedIndicator(700);
+  } else if (ev.target.matches('#apikey, [data-role=model]')) {
     updateUnsavedIndicator();
+  }
+});
+
+$('#upstream').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    flushAutoSave();
   }
 });
 
@@ -1173,13 +1182,14 @@ window.addEventListener('keydown', ev => {
     ev.preventDefault();
     const pending = [...document.querySelectorAll('.save-pill')].some(b => !b.hidden);
     if (pending) saveClientSide();
-    else if (_autoTimer) { clearTimeout(_autoTimer); autoSaveImmediate(); }
+    else if (_autoTimer) flushAutoSave();
   }
 });
 
 $('#btnPull').onclick = async () => {
   $('#pullOut').textContent = '正在拉取上游支持的模型……';
   try {
+    await flushAutoSave();
     const r = await api('/api/upstream-models');
     if (!r.ok) { $('#pullOut').textContent = '⚠️ ' + (r.error || '拉取失败'); return; }
     UPSTREAM_MODELS = r.data.models.map(m => m.id);
@@ -1289,18 +1299,54 @@ function collectCurrentFormState(){
   return {models, settings, tool_pruning, rules, on, log_retention_days};
 }
 
+// ── URL 规范化（与后端 common.normalize_upstream / webui.read_config_payload 对齐） ──
+function stripMessagesSuffix(url) {
+  let u = (url || '').trim().replace(/\/+$/, '');
+  if (u.toLowerCase().endsWith('/v1/messages')) u = u.slice(0, -'/v1/messages'.length);
+  return u;
+}
+
+function normalizeUpstreamEndpoint(url) {
+  const u = (url || '').trim().replace(/\/+$/, '');
+  if (!u) return '';
+  if (u.toLowerCase().endsWith('/v1/messages')) return u;
+  if (u.toLowerCase().endsWith('/v1')) return u + '/messages';
+  return u + '/v1/messages';
+}
+
+function isValidUpstreamUrl(url) {
+  const u = (url || '').trim();
+  if (!u) return false;
+  try {
+    const p = new URL(u);
+    if (p.protocol !== 'http:' && p.protocol !== 'https:') return false;
+    return !!p.hostname && (p.hostname.includes('.') || p.hostname === 'localhost' || p.hostname === '[::1]' || !!p.port);
+  } catch {
+    return false;
+  }
+}
+
+function matchPresetId(url) {
+  const norm = stripMessagesSuffix(url).toLowerCase();
+  const hit = (CFG?.options?.presets || []).find(
+    p => p.url && stripMessagesSuffix(p.url).toLowerCase() === norm
+  );
+  return hit ? hit.id : 'custom';
+}
+
 function computePendingDiffs(models, settings, tool_pruning, rules) {
   if (!CFG) return [];
   const diffs = [];
 
   // 1. 上游接口
-  const newUp = ($('#upstream')?.value || '').trim();
-  const oldUp = (CFG.upstream?.url || '').trim();
-  if (newUp !== oldUp) {
+  const rawUp = ($('#upstream')?.value || '').trim();
+  const newUpNorm = normalizeUpstreamEndpoint(rawUp);
+  const oldUpNorm = normalizeUpstreamEndpoint(CFG.upstream?.url || '');
+  if (newUpNorm !== oldUpNorm && isValidUpstreamUrl(rawUp)) {
     diffs.push({
       title: '上游接口地址',
-      from: oldUp || '（未配置）',
-      to: newUp || '（空）',
+      from: oldUpNorm || '（未配置）',
+      to: newUpNorm,
       ...{ when: WHEN.now[0], badge: WHEN.now[1] },
       immediate: true,
     });
@@ -1481,70 +1527,154 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 // **客户端那几本账**（密钥、模型映射、缓存时长、客户端偏好）写的是 3P 配置或客户端
 // 设置文件：客户端开着时会被它覆盖回去，所以不能偷偷写 —— 收进所在区块标题的小按钮，
 // 没有待保存项时那个按钮根本不存在。
-let _autoTimer = null, _autoUndo = null;
+let _autoTimer = null, _autoUndo = null, _autoPromise = null, _autoRerun = false;
+
+function currentValidUpstreamPatch(){
+  const rawUp = ($('#upstream')?.value || '').trim();
+  if (!isValidUpstreamUrl(rawUp)) return null;
+  const newNorm = normalizeUpstreamEndpoint(rawUp);
+  const oldNorm = normalizeUpstreamEndpoint(CFG?.upstream?.url || '');
+  return newNorm !== oldNorm ? rawUp : null;
+}
 
 function immediateState(){
   const st = collectCurrentFormState();
-  return {rules: st.rules, tool_pruning: st.tool_pruning,
-          log_retention_days: st.log_retention_days};
+  const body = {
+    rules: st.rules,
+    tool_pruning: st.tool_pruning,
+    log_retention_days: st.log_retention_days,
+  };
+  const up = currentValidUpstreamPatch();
+  if (up) body.upstream_url = up;
+  return body;
 }
 
-function scheduleAutoSave(){
+function scheduleAutoSave(delay = 300){
   if (_autoTimer) clearTimeout(_autoTimer);
-  _autoTimer = setTimeout(autoSaveImmediate, 300);
+  _autoTimer = setTimeout(autoSaveImmediate, delay);
+}
+
+async function flushAutoSave(){
+  if (_autoTimer) {
+    clearTimeout(_autoTimer);
+    await autoSaveImmediate();
+  } else if (_autoPromise) {
+    await _autoPromise;
+  }
 }
 
 async function autoSaveImmediate(){
   _autoTimer = null;
+  if (_autoPromise) { _autoRerun = true; return _autoPromise; }
+  const {models, settings, tool_pruning, rules} = collectCurrentFormState();
+  const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
+  if (!diffs.some(d => d.immediate)) return;
+
+  const body = immediateState();
+  const hasUpstreamChange = Object.prototype.hasOwnProperty.call(body, 'upstream_url');
   const before = {
     rules: Object.fromEntries(RULES.map(([k]) => [k, !!(CFG?.rules?.[k] ?? CFG?.options?.rules_defaults?.[k])])),
     tool_pruning: Object.fromEntries(PRUNE_KEYS.map(k =>
       [k, !!(CFG?.tool_pruning?.[k] ?? CFG?.options?.pruning_defaults?.[k])])),
     log_retention_days: parseInt(CFG?.gateway?.log_retention_days || 7, 10),
   };
-  const body = immediateState();
-  const r = await api('/api/config', body);
-  if (!r.ok) { say('❌ ' + ((r.error && r.error.message) || '保存失败'), 'err'); return; }
-  CFG.rules = body.rules;
-  CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, body.tool_pruning);
-  if (CFG.gateway) CFG.gateway.log_retention_days = body.log_retention_days;
-  _autoUndo = before;
-  say('');
-  showToast('已保存，立即生效', 'ok', 5000, {
-    label: '撤销',
-    onClick: async () => {
-      const back = _autoUndo;
-      _autoUndo = null;
-      if (!back) return;
-      const rr = await api('/api/config', back);
-      if (!rr.ok) { say('❌ 撤销失败', 'err'); return; }
-      // 只把开关自身的勾选状态改回去，不碰页面上其它正在编辑的输入框
-      RULES.forEach(([k]) => {
-        const el = $(`#ruleBox input[data-rule="${k}"]`);
-        if (el) el.checked = !!back.rules[k];
-      });
-      PRUNE_KEYS.forEach(k => {
-        const el = $(`#pruneBox input[data-tp="${k}"]`);
-        if (el) el.checked = !!back.tool_pruning[k];
-      });
-      CFG.rules = back.rules;
-      CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, back.tool_pruning);
-      if (CFG.gateway) CFG.gateway.log_retention_days = back.log_retention_days;
-      updateUnsavedIndicator();
-      showToast('已撤销', 'warn', 2000);
+  if (hasUpstreamChange && (CFG?.upstream?.url || '').trim()) {
+    before.upstream_url = CFG.upstream.url.trim();
+  }
+
+  const run = (async () => {
+    let r;
+    try {
+      r = await api('/api/config', body);
+    } catch (e) {
+      say('❌ ' + (e.message || '保存失败'), 'err');
+      return;
     }
-  });
-  updateUnsavedIndicator();
+    if (!r.ok) { say('❌ ' + ((r.error && r.error.message) || '保存失败'), 'err'); return; }
+
+    CFG.rules = body.rules;
+    CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, body.tool_pruning);
+    if (CFG.gateway) CFG.gateway.log_retention_days = body.log_retention_days;
+    if (hasUpstreamChange) {
+      const savedFull = normalizeUpstreamEndpoint(body.upstream_url);
+      const savedBase = stripMessagesSuffix(savedFull);
+      if (!CFG.upstream) CFG.upstream = {};
+      CFG.upstream.url = savedBase;
+      CFG.upstream.preset = matchPresetId(savedBase);
+      if (CFG.gateway) CFG.gateway.upstream_url = savedFull;
+      $('#gwUpstream').textContent = savedFull || '未设置';
+      $('#preset').value = CFG.upstream.preset;
+      onPresetChange(false);
+    }
+
+    _autoUndo = before;
+    say('');
+    showToast('已保存，立即生效', 'ok', 5000, {
+      label: '撤销',
+      onClick: async () => {
+        const back = _autoUndo;
+        _autoUndo = null;
+        if (!back) return;
+        const rr = await api('/api/config', back);
+        if (!rr.ok) { say('❌ 撤销失败', 'err'); return; }
+        RULES.forEach(([k]) => {
+          const el = $(`#ruleBox input[data-rule="${k}"]`);
+          if (el) el.checked = !!back.rules[k];
+        });
+        PRUNE_KEYS.forEach(k => {
+          const el = $(`#pruneBox input[data-tp="${k}"]`);
+          if (el) {
+            el.checked = !!back.tool_pruning[k];
+            updateGroupMaster(el);
+          }
+        });
+        const lr = $('#logRetention');
+        if (lr) lr.value = String(back.log_retention_days);
+        CFG.rules = back.rules;
+        CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, back.tool_pruning);
+        if (CFG.gateway) CFG.gateway.log_retention_days = back.log_retention_days;
+        if (Object.prototype.hasOwnProperty.call(back, 'upstream_url')) {
+          const backFull = normalizeUpstreamEndpoint(back.upstream_url);
+          const backBase = stripMessagesSuffix(backFull);
+          $('#upstream').value = backBase;
+          if (!CFG.upstream) CFG.upstream = {};
+          CFG.upstream.url = backBase;
+          CFG.upstream.preset = matchPresetId(backBase);
+          if (CFG.gateway) CFG.gateway.upstream_url = backFull;
+          $('#gwUpstream').textContent = backFull || '未设置';
+          $('#preset').value = CFG.upstream.preset;
+          onPresetChange(false);
+        }
+        updateUnsavedIndicator();
+        showToast('已撤销', 'warn', 2000);
+      }
+    });
+  })();
+
+  _autoPromise = run;
+  try {
+    await run;
+  } finally {
+    _autoPromise = null;
+  }
+
+  if (_autoRerun) {
+    _autoRerun = false;
+    updateUnsavedIndicator(300);
+  } else {
+    updateUnsavedIndicator();
+  }
 }
 
-function updateUnsavedIndicator(){
+function updateUnsavedIndicator(delay = 300){
   if (!CFG) return;
   const {models, settings, tool_pruning, rules} = collectCurrentFormState();
   const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
   const pending = diffs.filter(d => !d.immediate);
 
   // 立即生效的那一类：不等人点，直接写（连续改动由防抖合并成一次）
-  if (diffs.some(d => d.immediate)) scheduleAutoSave();
+  if (diffs.some(d => d.immediate)) scheduleAutoSave(delay);
+  else if (_autoTimer) { clearTimeout(_autoTimer); _autoTimer = null; }
 
   document.querySelectorAll('.save-pill').forEach(btn => {
     const id = btn.dataset.saveSection;
@@ -1552,7 +1682,14 @@ function updateUnsavedIndicator(){
     btn.hidden = n === 0;
     btn.textContent = n ? `保存 ${n} 项` : '';
   });
-  say(pending.length ? `⚡️ ${pending.length} 项待保存（需重启或退出客户端）` : '');
+  const rawUp = ($('#upstream')?.value || '').trim();
+  if (pending.length) {
+    say(`⚡️ ${pending.length} 项待保存（需重启或退出客户端）`);
+  } else if (rawUp && !isValidUpstreamUrl(rawUp)) {
+    say('⚠️ 请输入完整的 http:// 或 https:// 接口地址', 'err');
+  } else {
+    say('');
+  }
 }
 
 async function saveClientSide(){
@@ -1626,7 +1763,13 @@ async function saveClientSide(){
 
   tell(bodyHtml);
   const fresh = await api('/api/config');
-  if (fresh.ok) { CFG = fresh.data; renderGateway(CFG); renderStatus(CFG); renderModels(CFG); }
+  if (fresh.ok) {
+    CFG = fresh.data;
+    $('#preset').value = CFG.upstream.preset;
+    onPresetChange(false);
+    if (document.activeElement !== $('#upstream')) $('#upstream').value = CFG.upstream.url || '';
+    renderGateway(CFG); renderStatus(CFG); renderModels(CFG);
+  }
   updateUnsavedIndicator();
 }
 
