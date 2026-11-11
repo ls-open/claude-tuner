@@ -828,12 +828,23 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
     # 优先用调用方在剥离前记下的那份；没传才退回「当前 tools」——
     # 直接调用本函数（不经 prepare_request）时两者本来就是同一份。
-    _incoming_tools = incoming_tools
-    if _incoming_tools is None and isinstance(parsed.get("tools"), list):
-        _incoming_tools = {t.get("name") for t in parsed["tools"] if isinstance(t, dict) and t.get("name")}
     # 名单必须在**剥离之前**算（见 ghost_tool_names 的说明）：走到这里 tools 已被
     # prepare_request 删过，再按它补齐就只剩下保留的那些，前缀类工具一条都补不到。
     _ghost_names = stripped_names if stripped_names is not None else get_stripped_tool_names(tp)
+    _incoming_tools = incoming_tools
+    if _incoming_tools is None:
+        _incoming_tools = {t.get("name") for t in parsed.get("tools") or []
+                           if isinstance(t, dict) and t.get("name")}
+    # 「这一轮客户端手里有没有这个工具」= 它发过来了 **或** 我们判定它已经被挡掉。
+    # 后者有两条来路：用户在客户端界面里把工具关了，或 tool_rules.deny_rules 写的
+    # settings 规则（目前只覆盖非 MCP 的内置工具）。
+    # 少了后半句就会反噬：客户端一旦不发，这里判空 → 段落不再剥 → 留下指向不存在工具的
+    # 孤句。桌面端那些段落是写死的字符串常量（例如 `After opening a PR, use the ccd_pr
+    # tools:`），跟工具在不在**无关**，所以工具被挡掉时照样得剥。
+    _incoming_tools = set(_incoming_tools) | {
+        n for pair in PROMPT_PAIRS for n in pair["tools"]
+        if should_strip_tool(n, _ghost_names, tp)
+    }
     _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",

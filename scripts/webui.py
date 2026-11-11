@@ -339,8 +339,26 @@ def _apply_patch_unlocked(patch):
             unset_top=patch.get("unset_settings") or ())
         if changed:
             atomic_write_json(paths["claude_settings"], merged)
+            claude_settings = merged
             notes += ["客户端设置 %s" % k for k in changed]
             effects["restart_session"] = True
+
+    # 工具精简的**另一半**：让客户端根本不发这些工具（见 tool_rules.deny_rules）。
+    # 落了盘才让客户端"少拿" —— 这样它自己算的上下文占用才和真实请求是同一份账。
+    # 与上面的设置写在不同键上（permissions.deny），且只增删自己写过的那几条。
+    deny_merged, deny_changed, deny_written = config_ops.sync_client_deny(
+        claude_settings, bridge.get("tool_pruning") or {},
+        bridge.get(config_ops.CLIENT_DENY_KEY) or [])
+    if deny_changed:
+        # 目录可能还不存在（客户端从没在这台机器上落过设置）。这里建出来而不是跳过：
+        # 跳过会让「规则已记下、文件没写」这种半截状态留在配置里。
+        os.makedirs(os.path.dirname(paths["claude_settings"]), exist_ok=True)
+        atomic_write_json(paths["claude_settings"], deny_merged)
+        effects["restart_client"] = True
+        notes.append("客户端侧拦截 %d 条工具规则" % len(deny_written))
+    if deny_written != (bridge.get(config_ops.CLIENT_DENY_KEY) or []):
+        bridge[config_ops.CLIENT_DENY_KEY] = deny_written
+        atomic_write_json(bridge_path(), bridge, indent=1)
 
     if three_p_changed and three_p_path():
         atomic_write_json(three_p_path(), three_p)

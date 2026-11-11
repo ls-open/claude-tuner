@@ -216,6 +216,52 @@ def should_strip_tool(tool_name, stripped_names, cfg):
     return bool(strip_reason(tool_name, stripped_names, cfg))
 
 
+# ==============================================================================
+# 客户端侧拦截：让这些工具**根本不发**，而不是发过来再剥
+# ==============================================================================
+#
+# 为什么值得做
+# ------------
+# 客户端算「上下文占用」时，地板是它自己按**手里的工具清单**做的本地估算，再用上游
+# usage 反推消息部分（max(估算, 真实) + 本轮新增）。我们事后剥工具，客户端并不知道，
+# 于是它按 88 个工具估、真实请求只有 27 个 → 一上来显示 8 万，真实用量超过这个地板
+# 才对齐。工具在源头就不发，两边才是同一份账。
+#
+# 但**只有非 MCP 的内置工具走得通**。这条边界是实测撞出来的，别再往下试：
+#
+#   手段                                          bare CLI    桌面端 hosted MCP
+#   settings 的 permissions.deny: ["WebSearch"]    生效          生效（实测 88→85）
+#   settings 的 permissions.deny: ["mcp__x"]       生效          不生效（70 个一个没少）
+#   settings 的 permissions.deny: ["mcp__x__t"]    生效          不生效（同上）
+#   settings 的 deniedMcpServers: ["x"]            未测          不生效（同上）
+#   settings 的 disallowedTools                    无效          无效（只认 CLI 参数/SDK 选项）
+#
+# 原因：桌面端把 hosted MCP 工具按它自己的 `enabledMcpTools`（界面上那套工具开关，
+# 落盘成 mcp-user-tool-toggles.json 的镜像）先筛一遍再交给 CLI，设置层的拒绝规则不参与
+# 那一层。所以 MCP 那部分只能由用户在客户端界面里关，网关的事后剥离照旧兜底。
+#
+# 结论：这里只产出**非 MCP** 的规则。多写 MCP 规则不会生效，只会让配置看起来比实际
+# 能做到的多 —— 那比不写更坏。
+
+
+def deny_rules(cfg):
+    """能真正让客户端「根本不发」的那几个工具名 —— 只含非 MCP 的内置工具。
+
+    口径与 `should_strip_tool` 同源：配置判为要剥、又不是 MCP 工具的，都让客户端别发。
+    MCP 工具一律排除，理由见上面那张实测表。
+    """
+    if not tp_flag(cfg, "enabled"):
+        return []
+    names = get_stripped_tool_names(cfg)
+    targets = set()
+    for key, group in CATEGORY_NAMES.items():
+        if tp_flag(cfg, key):
+            targets.update(n for n in group if should_strip_tool(n, names, cfg))
+    targets.update(n for n in (cfg.get("custom_strip_tools") or ())
+                   if isinstance(n, str) and should_strip_tool(n, names, cfg))
+    return sorted(n for n in targets if not n.startswith("mcp__"))
+
+
 def ghost_tool_names(tools, cfg):
     """本次请求里**实际会被剥掉**的工具名 —— 孤儿探测与配对判定都按这个口径。
 

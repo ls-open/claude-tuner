@@ -11,6 +11,9 @@ import re
 import sys
 import uuid
 
+# 同层纯函数模块，无环：tool_rules 只 import common。
+import tool_rules
+
 
 # ==============================================================================
 # 平台路径
@@ -265,6 +268,65 @@ def merge_settings(existing, patch, unset_env=(), unset_top=()):
             changed.append(k)
 
     return new, sorted(set(changed))
+
+
+def merge_deny_rules(existing, wanted, previously_written=()):
+    """把「客户端侧该挡的工具」并进 settings 的 `permissions.deny`。
+
+    返回 (新配置, 变动键列表, 本次写进去的规则列表)。
+
+    三条纪律，对应三个真实事故面：
+    - **只回收自己写过的**：`previously_written` 是上一轮写进去的那份，只有它里面的
+      规则才会被删；用户自己在 `/permissions` 里加的一条都不动。
+    - **对象形式的规则不碰**：客户端也接受 `{toolName: ...}` 这类对象规则，那不是我们写的。
+    - **不留空壳**：规则清空后把 `permissions`/`deny` 一并收掉，别在用户的设置里
+      留一个空数组（客户端会把它当"用户设置过权限"来展示）。
+    """
+    new = copy.deepcopy(existing) if isinstance(existing, dict) else {}
+    before = copy.deepcopy(new.get("permissions")) if isinstance(new.get("permissions"), dict) else None
+
+    perms = new.get("permissions")
+    if not isinstance(perms, dict):
+        perms = {}
+    deny = perms.get("deny")
+    if not isinstance(deny, list):
+        deny = []
+
+    prev = {r for r in (previously_written or ()) if isinstance(r, str) and r}
+    want = {r for r in (wanted or ()) if isinstance(r, str) and r}
+
+    kept = [r for r in deny if not (isinstance(r, str) and r in prev and r not in want)]
+    present = {r for r in kept if isinstance(r, str)}
+    kept.extend(sorted(want - present))
+
+    if kept:
+        perms["deny"] = kept
+        new["permissions"] = perms
+    else:
+        perms.pop("deny", None)
+        if perms:
+            new["permissions"] = perms
+        else:
+            new.pop("permissions", None)
+
+    changed = ["permissions.deny"] if new.get("permissions") != before else []
+    return new, changed, sorted(want)
+
+
+# 「本插件写了哪几条 deny 规则」记在网关 config.json 的这个键下 —— 改配置与卸载时
+# 只收回自己写过的那些，用户自己在 /permissions 里加的规则一条都不动。
+CLIENT_DENY_KEY = "client_deny_rules"
+
+
+def sync_client_deny(claude_settings, pruning_cfg, previously_written=()):
+    """把「让客户端根本不发」的那几条并进 settings，返回 (新配置, 变动键, 本次写入的规则)。
+
+    与 `merge_deny_rules` 的分工：那个只管合并纪律（谁的规则、怎么收回），这个回答
+    「该写哪几条」—— 口径来自 `tool_rules.deny_rules`，与网关剥离是同一份配置、
+    同一份判断，不另开一个开关。
+    """
+    return merge_deny_rules(claude_settings, tool_rules.deny_rules(pruning_cfg),
+                            previously_written)
 
 
 def managed_settings_present(existing):
