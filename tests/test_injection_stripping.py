@@ -856,7 +856,22 @@ class TestSentinelClientSurface(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             a = self._capture(tmp, "old.json", "claude-desktop-3p", ["Read"])
             b = self._capture(tmp, "new.json", "claude-desktop-3p", ["Read"])
+            # 两份必须真的不同：完全相同的报文会被「同源比对」守卫拦下，见下一个用例
+            payload = json.loads(Path(b).read_text(encoding="utf-8"))
+            payload["tools"][0]["description"] = "新版说明"
+            Path(b).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
             self.assertNotIn("客户端面不同", self._compare(a, b))
+
+    def test_同一份报文比对被拦下(self):
+        """`latest_*` 只留最近一份：拿它跟今天的归档比，等于跟自己比。
+
+        不拦的话会打出一片「完全一致」，读起来像「客户端这次没变」—— 比报错更误导。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            a = self._capture(tmp, "old.json", "claude-desktop-3p", ["Read"])
+            b = self._capture(tmp, "new.json", "claude-desktop-3p", ["Read"])
+            with self.assertRaises(SystemExit):
+                self._compare(a, b)
 
     def test_入口面取自计费头(self):
         payload = {"system": [{"type": "text", "text":

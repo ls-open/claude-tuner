@@ -16,6 +16,8 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from config_ops import CLIENT_DENY_KEY  # 记账键只写一处，见 config_ops.CLIENT_DENY_KEY
+
 # 不在插件运行目录留 __pycache__：代码以仓库为准且改动频繁，缓存无收益（省几毫秒），
 # 只带来「跑的是不是新代码」的疑问。所有入口脚本（manager/gateway/stats/sentinel）同此。
 sys.dont_write_bytecode = True
@@ -156,6 +158,16 @@ def load_tool_pruning_config():
         merged.update(user_pruning)
         return merged
     return dict(DEFAULT_TOOL_PRUNING_CONFIG)
+
+
+def load_client_deny_rules():
+    """本插件写进客户端 `permissions.deny` 的那几条工具名（记账在 config.json）。
+
+    哨兵用它分辨「开关开着却没物可剥」的两种成因：客户端本来就不发，还是被我们写的
+    deny 挡住的 —— 后者的开关不能删，删了规则跟着撤、工具立刻回来。
+    """
+    cfg = _read_config()
+    return [n for n in (cfg.get(CLIENT_DENY_KEY) or []) if isinstance(n, str)]
 
 
 def load_rules_config():

@@ -642,6 +642,44 @@ class TestToolBlockOrderingSwitch(unittest.TestCase):
         self.assertFalse(any(c.startswith("tool_result_blocks_sorted") for c in changed))
 
 
+class TestIdleSwitchAttribution(unittest.TestCase):
+    """开着却没物可剥的开关：**谁让它不发**决定结论是「别删」还是「可删」。
+
+    这两种成因混成一句「可考虑删掉该开关」会要人命：被客户端侧拦截挡住的那些，
+    删开关会连 deny 规则一起撤掉，工具当场回来。
+    """
+
+    def test_denied_tools_mean_covered_not_stale(self):
+        out = tr.idle_switches(cfg(strip_notebook_tools=True), [], ["NotebookEdit"])
+        self.assertEqual(out["covered"]["strip_notebook_tools"], ["NotebookEdit"])
+        self.assertNotIn("strip_notebook_tools", out["stale"])
+
+    def test_without_deny_rule_it_is_stale(self):
+        out = tr.idle_switches(cfg(strip_notebook_tools=True), [], [])
+        self.assertIn("strip_notebook_tools", out["stale"])
+        self.assertNotIn("strip_notebook_tools", out["covered"])
+
+    def test_present_tool_is_not_idle_at_all(self):
+        out = tr.idle_switches(cfg(strip_notebook_tools=True), ["NotebookEdit"], ["NotebookEdit"])
+        self.assertNotIn("strip_notebook_tools", out["stale"])
+        self.assertNotIn("strip_notebook_tools", out["covered"])
+
+    def test_off_switch_is_never_reported(self):
+        out = tr.idle_switches(cfg(strip_notebook_tools=False), [], [])
+        self.assertNotIn("strip_notebook_tools", out["stale"])
+
+    def test_one_deny_rule_keeps_the_whole_switch(self):
+        # WebFetch 走 deny、同组的 mcp__workspace__web_fetch 不走（MCP 写不进 deny）——
+        # 仍归 covered：删开关会把那一条现成的规则一并带走
+        out = tr.idle_switches(cfg(strip_web_fetch_tools=True), [], ["WebFetch"])
+        self.assertIn("strip_web_fetch_tools", out["covered"])
+        self.assertNotIn("strip_web_fetch_tools", out["stale"])
+
+    def test_deny_leak_detected(self):
+        self.assertEqual(tr.deny_leaks(["NotebookEdit", "Bash"], ["NotebookEdit"]), ["NotebookEdit"])
+        self.assertEqual(tr.deny_leaks(["Bash"], ["NotebookEdit"]), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 

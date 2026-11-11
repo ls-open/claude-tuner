@@ -259,11 +259,6 @@ def unknown_tools(names, cfg):
             and n not in tool_rules.PROTECTED_TOOLS]
 
 
-def _pruning_switch_keys():
-    """配置页上每一个精简开关的键 —— 类别表就是这份名单的唯一来源。"""
-    return {key for key, _ in tool_rules.CATEGORY_NAMESPACES} | set(tool_rules.CATEGORY_NAMES)
-
-
 def _audit_tools(raw, tp_cfg, surface_skipped=False):
     """工具面：剥离多少、保留哪些；只把类别表外的工具列为待判定。
 
@@ -305,18 +300,31 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
         print("       两种都算判过了：表里有了就不再报，也不必每次跟版重判一遍。")
     else:
         print("  ✅ 类别表已覆盖本次出现的全部工具")
-        # 开着、却一个工具都管不到的开关：不是故障（规则本身是好的，只是这一版客户端
-        # 不再发那些工具），但它此刻**什么都不做**。静默无用比报出来更糟 —— 用户会以为
-        # 那一项正在生效。关着的开关不列：它本来就没打算动任何东西。
-        idle = sorted(k for k in _pruning_switch_keys()
-                      if tool_rules.tp_flag(cfg, k)
-                      and not any(tool_rules.category_for(n) == k for n in names))
-        if idle:
-            print("  ℹ️ %d 个开关开着、但本次请求里没有它名下的工具（此刻不做事，非故障）：" % len(idle))
-            print("     %s" % ", ".join(idle))
-            print("     → 客户端不再发这些工具后可考虑删掉该开关；若只面向新客户端则纯属死重。")
+        # 开着、却一个工具都管不到的开关。**两种成因的处置正好相反**，所以分开说：
+        # 客户端侧拦截挡住的，开关就是它不发的原因（删了工具回来）；客户端本来就不发的，
+        # 删开关才是死重清理。混成一句「可考虑删掉」会让人删错。关着的开关不列。
+        deny = gateway.load_client_deny_rules()
+        idle = tool_rules.idle_switches(cfg, names, deny)
+        if idle["covered"]:
+            print("  ℹ️ %d 个开关开着、名下工具没发过来 —— 是**客户端侧拦截**挡住的（不是空转）："
+                  % len(idle["covered"]))
+            for key in sorted(idle["covered"]):
+                print("     %s ← %s" % (key, ", ".join(idle["covered"][key])))
+            print("     → 别删这些开关：deny 规则由它们推导，删了工具立刻回来。")
+            print("       网关剥离留着作兜底（客户端设置只在会话开始时读）。")
+        if idle["stale"]:
+            print("  ℹ️ %d 个开关开着、但客户端这版根本不发它们名下的工具：" % len(idle["stale"]))
+            print("     %s" % ", ".join(idle["stale"]))
+            print("     → 可考虑删掉该开关；若只面向新客户端则纯属死重。")
+    # 写着「客户端不发」却出现了：客户端侧拦截失效。网关剥离照旧兜底，所以要报出来
+    # 而不是当成故障 —— 但也别静默：这条保证此刻只剩一层了。
+    leaks = tool_rules.deny_leaks(names, gateway.load_client_deny_rules())
+    if leaks:
+        print("  ⚠️ %d 个工具写着「客户端不发」却出现在报文里 —— 客户端侧拦截失效：" % len(leaks))
+        print("     %s" % ", ".join(leaks))
+        print("     → 网关剥离仍在兜底（前缀不受影响）。查客户端设置是否被清掉、或该版换了语义。")
     print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
-    return len(pending)
+    return len(pending) + len(leaks)
 
 
 def _audit_system(clean):
@@ -632,6 +640,13 @@ def cmd_compare(key_a, key_b, allow_cross_surface=False):
         print("   用 `sentinel.py list` 查可用取值（会话键 / 模型键 / 也可直接给文件路径）")
         sys.exit(1)
     old, new = _load(pa), _load(pb)
+    if json.dumps(old, sort_keys=True) == json.dumps(new, sort_keys=True):
+        # `latest_raw_inbound*.json` 是「最近一份」的镜像：每抓一次就覆盖同一路径。
+        # 拿它跟今天的会话归档比，等于跟自己比 —— 输出一片「完全一致」，看着像客户端没变。
+        print("⚠️ 两份抓包内容**完全相同**（同一份报文）—— 不是「客户端没变」，是选错了对比对象。")
+        print("   `latest_*` 只留最近一次，`sessions/<键>.json` 也是每轮覆盖（同一个会话")
+        print("   抓到底就只有最近一条）—— 跟版要挑**两个不同会话**的归档。")
+        sys.exit(1)
     d = _diff_captures(old, new)
     ep_old, ep_new = extract_client_entrypoint(old), extract_client_entrypoint(new)
     print("=" * 78)

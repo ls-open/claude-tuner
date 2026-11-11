@@ -107,8 +107,11 @@ CATEGORY_NAMESPACES = (
 # 该不该省由用户自己判断，我们只负责把体积摆出来。
 CATEGORY_NAMES = {
     # 搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
-    "strip_web_search_tools": ("WebSearch", "web_search"),
-    "strip_web_fetch_tools": ("WebFetch", "web_fetch", "mcp__workspace__web_fetch"),
+    # 名字按**报文里的真名**写：3P 面是 `WebSearch` / `WebFetch`，CoWork 面的抓取工具带
+    # `mcp__` 前缀。没有小写形态 —— 归档的 21 份抓包里一次都没出现过（旧硬编码名单里
+    # 抄过来的两个小写名已删，它们会变成 `permissions.deny` 里指向不存在工具的规则）。
+    "strip_web_search_tools": ("WebSearch",),
+    "strip_web_fetch_tools": ("WebFetch", "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
     # 以下按**真实耦合**分组，不是按「感觉像一类」——
     # 真配对的一起进出（ListAgents 存在的意义就是找出能 SendMessage 的对象；
@@ -242,6 +245,19 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 #
 # 结论：这里只产出**非 MCP** 的规则。多写 MCP 规则不会生效，只会让配置看起来比实际
 # 能做到的多 —— 那比不写更坏。
+#
+# 和网关剥离是什么关系
+# --------------------
+# **同一份配置、两个投影，解决的是两件不同的事**，不是两套重复的逻辑：
+#   · 网关剥离（`should_strip_tool`）：让请求里真的没有它 —— 省 token，对全部工具生效。
+#   · 客户端拦截（`deny_rules`）：让客户端**知道自己不发** —— 它按手里的工具清单估上下文
+#     占用，我们事后剥它不知道，显示的数字就虚高。
+# 客户端侧生效时网关那半无事可做，属正常分层，**不是空转**：deny 规则由开关推导，
+# 删掉开关会连 deny 一起撤掉，工具立刻回来（哨兵靠 `idle_switches` 分辨这两种"没物可剥"）。
+#
+# 网关那半也不能撤。`permissions.deny` 影响工具清单是客户端**当前的实现细节**，不是承诺：
+# 某版改成「照发、只在调用时拒绝」时，网关剥离就是唯一的保证 —— 而它正是本仓的存在理由。
+# 届时不发会静默失效，靠 `deny_leaks` 把它报出来。
 
 
 def deny_rules(cfg):
@@ -260,6 +276,48 @@ def deny_rules(cfg):
     targets.update(n for n in (cfg.get("custom_strip_tools") or ())
                    if isinstance(n, str) and should_strip_tool(n, names, cfg))
     return sorted(n for n in targets if not n.startswith("mcp__"))
+
+
+def switch_tools(key):
+    """一个开关名下的工具清单。前缀类开关（会话那一堆）按它登记的前缀元组给。"""
+    for k, prefixes in CATEGORY_NAMESPACES:
+        if k == key:
+            return tuple(prefixes)
+    return tuple(CATEGORY_NAMES.get(key, ()))
+
+
+def idle_switches(cfg, present_names, deny_rules):
+    """开着、却一个工具都管不到的开关 —— 按**谁让它不发**分类。
+
+    这两种成因的处置正好相反，混成一句「可考虑删掉该开关」会让人删错东西：
+      · `covered` —— 名下工具都在 `deny_rules` 里：它们不发，正是**这个开关**驱动客户端
+        拦截的结果。删开关会把 deny 规则一并撤掉，工具立刻回来。结论是「别动」。
+      · `stale` —— 客户端这版本来就不发（特性门 / 该面没这套工具）。删开关是死重清理。
+
+    只要名下**有一条** deny 规则挂着就归 `covered`：宁可不提删，也不给人一个会反噬的建议。
+    """
+    present = set(present_names or ())
+    denied = set(deny_rules or ())
+    covered, stale = {}, []
+    for key in list(dict(CATEGORY_NAMESPACES)) + list(CATEGORY_NAMES):
+        if not tp_flag(cfg, key) or any(category_for(n) == key for n in present):
+            continue
+        owned = switch_tools(key)
+        if any(n in denied for n in owned):
+            covered[key] = sorted(n for n in owned if n in denied)
+        else:
+            stale.append(key)
+    return {"covered": covered, "stale": sorted(stale)}
+
+
+def deny_leaks(present_names, deny_rules):
+    """写着「客户端不发」、报文里却出现了 —— 客户端侧拦截失效，必须报出来。
+
+    失效不等于坏事：网关剥离照旧把它们删掉，前缀仍然恒定。报出来是为了让人知道
+    「这条保证已经只剩一层了」，而不是等到某天上下文里真的冒出来才发现。
+    """
+    denied = set(deny_rules or ())
+    return sorted(n for n in (present_names or ()) if n in denied)
 
 
 def ghost_tool_names(tools, cfg):
