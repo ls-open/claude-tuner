@@ -311,18 +311,22 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
             for key in sorted(idle["covered"]):
                 print("     %s ← %s" % (key, ", ".join(idle["covered"][key])))
             print("     → 别删这些开关：客户端的名单由它们推导，删了工具立刻回来。")
-            print("       网关剥离留着作兜底（客户端设置只在会话开始时读）。")
+            print("       这几条只有客户端这一层（见 tool_rules.CLIENT_LAYER_NAMES）。")
         if idle["stale"]:
             print("  ℹ️ %d 个开关开着、但客户端这版根本不发它们名下的工具：" % len(idle["stale"]))
             print("     %s" % ", ".join(idle["stale"]))
             print("     → 可考虑删掉该开关；若只面向新客户端则纯属死重。")
-    # 写着「客户端不发」却出现了：客户端侧拦截失效。网关剥离照旧兜底，所以要报出来
-    # 而不是当成故障 —— 但也别静默：这条保证此刻只剩一层了。
+    # 写着「客户端不发」却出现了：客户端侧拦截失效。内置工具那几条（CLIENT_LAYER_NAMES）
+    # 没有网关第二层，报出来才是它们唯一的安全网 —— 别当成故障，但也别静默。
     leaks = tool_rules.client_disabled_leaks(names, gateway.load_client_disabled_tools())
     if leaks:
         print("  ⚠️ %d 个工具写着「客户端不发」却出现在报文里 —— 客户端侧拦截失效：" % len(leaks))
         print("     %s" % ", ".join(leaks))
-        print("     → 网关剥离仍在兜底（前缀不受影响）。查客户端设置是否被清掉、或该版换了语义。")
+        naked = [n for n in leaks if n in tool_rules.CLIENT_LAYER_NAMES]
+        if naked:
+            print("     · %s 没有网关第二层，本轮它们真的进了前缀（缓存击穿一次）。"
+                  % ", ".join(naked))
+        print("     → 查客户端设置是否被清掉、或该版换了语义。")
     print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
     return len(pending) + len(leaks)
 

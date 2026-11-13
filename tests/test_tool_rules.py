@@ -256,17 +256,24 @@ class TestStripReason(unittest.TestCase):
             self.assertEqual(tr.strip_reason(tool, names, c), "strip_session_tools", tool)
 
     def test_web_search_and_fetch_are_independent(self):
-        """搜索与抓取是两个独立工具：有人要抓文档但不想要搜索。"""
-        c = cfg(strip_web_search_tools=False, strip_web_fetch_tools=True)
-        names = tr.get_stripped_tool_names(c)
-        self.assertFalse(tr.should_strip_tool("WebSearch", names, c))
-        self.assertTrue(tr.should_strip_tool("WebFetch", names, c))
+        """搜索与抓取是两个独立开关：有人要抓文档但不想要搜索。
+
+        两者都只走客户端层（CLIENT_LAYER_NAMES），所以独立性查的是**写进客户端名单**
+        的那一份，不是网关剥离。
+        """
+        only_fetch = cfg(strip_web_search_tools=False, strip_web_fetch_tools=True,
+                         strip_notebook_tools=False)
+        self.assertEqual(tr.client_disabled_tools(only_fetch), ["WebFetch"])
+        only_search = cfg(strip_web_search_tools=True, strip_web_fetch_tools=False,
+                          strip_notebook_tools=False)
+        self.assertEqual(tr.client_disabled_tools(only_search), ["WebSearch"])
 
     def test_protection_does_not_shadow_optional_categories(self):
         """别把保护名单扩大到「本来就可剥」的工具上 —— 那会把对应开关废掉。"""
-        c = cfg(strip_web_search_tools=True)
+        c = cfg(strip_task_stop_tools=True, strip_report_findings_tools=True,
+                strip_sidebar_tools=True)
         names = tr.get_stripped_tool_names(c)
-        for name in ("NotebookEdit", "WebSearch", "mcp__ccd_sidebar__set_view"):
+        for name in ("TaskStop", "ReportFindings", "mcp__ccd_sidebar__set_view"):
             self.assertTrue(tr.should_strip_tool(name, names, c),
                             "%s 是可选类别，不该被保护名单挡住" % name)
 
@@ -669,8 +676,8 @@ class TestIdleSwitchAttribution(unittest.TestCase):
         self.assertNotIn("strip_notebook_tools", out["stale"])
 
     def test_one_deny_rule_keeps_the_whole_switch(self):
-        # WebFetch 走 deny、同组的 mcp__workspace__web_fetch 不走（MCP 写不进 deny）——
-        # 仍归 covered：删开关会把那一条现成的规则一并带走
+        # WebFetch 进客户端名单、同组的 mcp__workspace__web_fetch 进不去（MCP 写不进）——
+        # 仍归 covered：删开关会把那一条现成的名单一并带走
         out = tr.idle_switches(cfg(strip_web_fetch_tools=True), [], ["WebFetch"])
         self.assertIn("strip_web_fetch_tools", out["covered"])
         self.assertNotIn("strip_web_fetch_tools", out["stale"])
@@ -685,7 +692,11 @@ if __name__ == "__main__":
 
 
 class TestEveryPruningSwitch(unittest.TestCase):
-    """每个精简开关都得真的能剥：单开要剥、单关要不剥，两个方向都成立。
+    """每个精简开关都得真的管用：单开要生效、单关要不生效，两个方向都成立。
+
+    「生效」有两条路，别只认一条：多数开关**剥**（网关侧），内置工具那几条
+    （`CLIENT_LAYER_NAMES`）**写进客户端名单**（客户端侧根本不发）。哪条都行，
+    唯独不许什么都不做 —— 页面上勾得动、报文里毫无变化，是最坏的开关。
 
     为什么拿**类别表自己声明的名字**造样本，而不是钉住真实抓包里的工具名：
     真实工具名随客户端版本漂移，钉住它们等于把用例绑死在某一版上（跟版一变就红，
@@ -711,7 +722,7 @@ class TestEveryPruningSwitch(unittest.TestCase):
                 + ["%s__sample_tool" % p for k, prefixes in tr.CATEGORY_NAMESPACES
                    if k == key for p in prefixes])
 
-    def test_每个开关单独打开都真的剥掉自己那批(self):
+    def test_每个开关单独打开都真的管用(self):
         for key in self._switch_keys():
             with self.subTest(switch=key):
                 samples = self._samples(key)
@@ -719,10 +730,17 @@ class TestEveryPruningSwitch(unittest.TestCase):
                 c = self._all_off()
                 c[key] = True
                 names = tr.get_stripped_tool_names(c)
+                denied = tr.client_disabled_tools(c)
                 for s in samples:
                     self.assertEqual(tr.category_for(s), key, "样本的归属跑到了别的开关上")
-                    self.assertTrue(tr.should_strip_tool(s, set(names), c),
-                                    "这个开关开着却没剥掉它：%s" % s)
+                    if s in tr.CLIENT_LAYER_NAMES:
+                        # 只走客户端层：网关不剥，但开关必须真的写进客户端名单
+                        self.assertFalse(tr.should_strip_tool(s, names, c),
+                                         "客户端层的工具不该被网关剥：%s" % s)
+                        self.assertIn(s, denied, "这个开关开着却没让客户端不发它：%s" % s)
+                    else:
+                        self.assertTrue(tr.should_strip_tool(s, set(names), c),
+                                        "这个开关开着却没剥掉它：%s" % s)
 
     def test_每个开关单独关掉都真的保住自己那批(self):
         """其余全开、只关这一项 —— 更细的开关要能推翻更粗的那条。

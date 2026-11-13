@@ -157,6 +157,8 @@ python install.py
 <summary><strong>Q: 网络搜索（WebSearch / WebFetch）工具到底该开还是该关？</strong></summary>
 
 `WebSearch` 与 `WebFetch` 属于**服务端工具** —— 客户端只负责把工具定义发送出去，真正的检索与抓取动作由**上游服务商**执行。因此，开不开该开关只影响是否占用上下文空间；能否实际生效取决于你的上游模型服务商是否支持该能力。
+
+开关的效果落在**客户端**：勾上后工具名写进 3P 配置的 `disabledBuiltinTools`，客户端组装请求时直接不发（新会话生效）；它同时出现在 Setup 窗口的「Disabled built-in tools」里，那一栏是同一件事。
 </details>
 
 <details>

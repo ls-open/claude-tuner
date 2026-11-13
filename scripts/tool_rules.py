@@ -33,8 +33,8 @@ PROTECTED_TOOLS = frozenset({
     # Task→Agent、TodoWrite/Read→mcp__ccd_turn__update_plan、Glob/Grep/LS→Bash 系命令、
     # MultiEdit→Edit。留着不删是因为它们**是保险不是统计**：哪天客户端回退版本或换了实现
     # 把旧名发回来，保护照样生效；删了则要靠人当时想起来再补。
-    # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 那几个本来就是可剥类别，
-    # 放进保护名单会把对应开关废掉（写完立刻自测发现的）。
+    # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 它们归客户端层
+    # （见 CLIENT_LAYER_NAMES），网关本来就不剥，保护名单管不到这件事。
     "Agent", "Task", "Skill", "AskUserQuestion",
 })
 
@@ -132,6 +132,13 @@ CATEGORY_NAMES = {
     "strip_monitor_tools": ("Monitor",),
 }
 
+# 只走**客户端层**的内置工具（DECISIONS #58）：开关把它们写进 3P 配置的
+# `disabledBuiltinTools`，客户端**根本不发**；网关不再事后剥一层 —— 那层永远无物可剥，
+# 留着还会让「它为什么没发」出现两个口径（哨兵说客户端挡住的、代码说我们会剥）。
+# 名字仍留在 `CATEGORY_NAMES` 里：那张表回答的是「我们给它定过开关没有」，
+# 哨兵 `unknown_tools` 据此认人，删掉它们反而会被当成陌生素材每版重报。
+CLIENT_LAYER_NAMES = frozenset({"WebSearch", "WebFetch", "NotebookEdit"})
+
 
 def get_stripped_tool_names(cfg):
     """根据配置动态计算需要被物理剥离的精确工具名称黑名单集合。"""
@@ -141,7 +148,7 @@ def get_stripped_tool_names(cfg):
 
     for key, names in CATEGORY_NAMES.items():
         if tp_flag(cfg, key):
-            strip_set.update(names)
+            strip_set.update(n for n in names if n not in CLIENT_LAYER_NAMES)
     for ct in cfg.get("custom_strip_tools", []):
         if isinstance(ct, str) and ct:
             strip_set.add(ct)
@@ -202,6 +209,11 @@ def strip_reason(tool_name, stripped_names, cfg):
     if not tp_flag(cfg, "enabled"):
         return "enabled" if tool_name in stripped_names else ""
 
+    if tool_name in CLIENT_LAYER_NAMES:
+        # 归客户端层：类别开关不产生网关剥离（见 CLIENT_LAYER_NAMES）。
+        # 用户显式把它写进 `custom_strip_tools` 时按用户的意思剥 —— 那是第二层要求。
+        return "custom" if tool_name in (cfg.get("custom_strip_tools") or []) else ""
+
     # 先看类别命名空间：它们的归属是确定的，能给出准确原因
     key = category_for(tool_name)
     if key and tp_flag(cfg, key):
@@ -249,22 +261,21 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 #
 # 和网关剥离是什么关系
 # --------------------
-# **同一份配置、两个投影，解决的是两件不同的事**，不是两套重复的逻辑：
-#   · 网关剥离（`should_strip_tool`）：让请求里真的没有它 —— 省 token，对全部工具生效。
-#   · 客户端拦截（`client_disabled_tools`）：让客户端**知道自己不发** —— 它按手里的工具
-#     清单估上下文占用，我们事后剥它不知道，显示的数字就虚高。
-# 客户端侧生效时网关那半无事可做，属正常分层，**不是空转**：名单由开关推导，删掉开关
-# 会连它一起撤掉，工具立刻回来（哨兵靠 `idle_switches` 分辨这两种"没物可剥"）。
+# 内置工具（`WebSearch` / `WebFetch` / `NotebookEdit`）**只有客户端这一层**：
+# 名单由开关推导、写进 3P 配置，客户端不发，请求里就真的没有它们。网关不重复剥一遍 ——
+# 剥一个永远不出现的名字是无物可剥，还会让「它为什么没发」出现两个口径。
+# 其余类别（MCP 工具等）照旧只有网关剥离这一条路：客户端名单管不到它们。
 #
-# 网关那半也不能撤：客户端那套是它自己的行为，某版改了语义时，网关剥离是唯一的保证 ——
-# 而它正是本仓的存在理由。届时失效靠 `client_disabled_leaks` 报出来。
+# 失效靠 `client_disabled_leaks` 报出来：某版客户端不认那个字段，工具立刻回到报文里、
+# 前缀当场涨一截。这一层没有网关兜底 —— 报出来就是为了当场看见（DECISIONS #58）。
 
 
 def client_disabled_tools(cfg):
     """该让客户端「根本不发」的工具名 —— 只含非 MCP 的内置工具。
 
-    口径与 `should_strip_tool` 同源：配置判为要剥、又不是 MCP 工具的，都写进客户端的
-    `disabledBuiltinTools`。MCP 工具一律排除，理由见上面那段。
+    来源是**开关**：类别表里判为要剥的（`should_strip_tool`），外加只走客户端层的
+    那几条（`CLIENT_LAYER_NAMES`，网关不剥但要让客户端不发）。MCP 工具一律排除，
+    理由见上面那段。
     """
     if not tp_flag(cfg, "enabled"):
         return []
@@ -272,7 +283,10 @@ def client_disabled_tools(cfg):
     targets = set()
     for key, group in CATEGORY_NAMES.items():
         if tp_flag(cfg, key):
-            targets.update(n for n in group if should_strip_tool(n, names, cfg))
+            # 不能只问 `should_strip_tool`：只走客户端层的那几条不在剥离名单里，
+            # 那样问会把它们的开关问成空转。
+            targets.update(n for n in group
+                           if n in CLIENT_LAYER_NAMES or should_strip_tool(n, names, cfg))
     targets.update(n for n in (cfg.get("custom_strip_tools") or ())
                    if isinstance(n, str) and should_strip_tool(n, names, cfg))
     return sorted(n for n in targets if not n.startswith("mcp__"))

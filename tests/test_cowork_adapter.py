@@ -89,12 +89,14 @@ class TestCoWorkAdapter(unittest.TestCase):
         ]
         req = {"tools": list(code_tools), "messages": []}
         changed = gateway.prepare_request(req, session_id="test-code")
-        self.assertIn("prune_tools_5", changed)
-        self.assertEqual(len(req["tools"]), 12)
+        # 内置那三个（WebSearch / WebFetch / NotebookEdit）走客户端层，网关不剥 ——
+        # 它们不发是因为客户端名单，不是因为这里（见 DECISIONS #58）。
+        self.assertIn("prune_tools_4", changed)
+        self.assertEqual(len(req["tools"]), 13)
         names = {t["name"] for t in req["tools"]}
         self.assertEqual(names, {
             "Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill", "AskUserQuestion",
-            "WebSearch", "WebFetch", "mcp__terminal__read",
+            "WebSearch", "WebFetch", "NotebookEdit", "mcp__terminal__read",
             "mcp__scheduled-tasks__list_scheduled_tasks",
         })
 
