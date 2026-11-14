@@ -93,6 +93,40 @@ def key_unchanged(submitted, current):
     return submitted == mask_api_key(current)
 
 
+SEALED_KEY_PREFIX = "__sealed__:"
+
+
+def is_sealed_key(key):
+    """这把 Key 是 3P 客户端加密封存后的密文吗（配置台读不到明文，发出去必然 401）。"""
+    return (key or "").strip().startswith(SEALED_KEY_PREFIX)
+
+
+def probe_key(submitted, stored, live=""):
+    """上游探测该用哪把 Key，返回 (key, source)；key 为空串表示没有可用的。
+
+    source：typed 页面刚填的 / stored 配置里的明文 / client 客户端此刻真在用的 /
+            sealed 配置里那把被加密封存且客户端还没发过请求 / missing 压根没填。
+    """
+    submitted = (submitted or "").strip()
+    stored = (stored or "").strip()
+    live = (live or "").strip()
+    if submitted and not key_unchanged(submitted, stored):
+        return submitted, "typed"
+    if stored and not is_sealed_key(stored):
+        return stored, "stored"
+    if live:
+        return live, "client"
+    return "", "sealed" if is_sealed_key(stored) else "missing"
+
+
+def probe_key_error(source):
+    """探测拿不到 Key 时给用户的话：说清为什么、下一步做什么。"""
+    if source == "sealed":
+        return ("API Key 在配置里是加密封存的（__sealed__ 密文），配置台读不到明文，"
+                "没法代你测。打开 Claude 发一条消息后重试，或在密钥框粘贴一次真实 Key 再点「测试连接」")
+    return "还没有填 API Key"
+
+
 def constant_time_eq(a, b):
     """定长比较，避免 token 校验被计时侧信道区分。"""
     import hmac

@@ -38,6 +38,7 @@ from common import (  # noqa: E402
     DEFAULT_TOOL_PRUNING_CONFIG,
     atomic_write_json,
     clamp_retention_days,
+    current_client_key,
     normalize_upstream,
     upstream_client_headers,
 )
@@ -160,6 +161,8 @@ def read_config_payload(handler):
             "preset": config_ops.find_preset(base),
             "api_key_masked": config_ops.mask_api_key(three_p.get("inferenceGatewayApiKey", "")),
             "api_key_set": bool((three_p.get("inferenceGatewayApiKey") or "").strip()),
+            # 加密封存时前缀脱敏串毫无参考价值，页面据此换个说法
+            "api_key_sealed": config_ops.is_sealed_key(three_p.get("inferenceGatewayApiKey", "")),
         },
         "models": [{"name": m.get("name", ""),
                     "label": m.get("labelOverride") or m.get("name", ""),
@@ -324,9 +327,13 @@ def _apply_patch_unlocked(patch):
     linked = patch.get("cli_linked")
     claude_settings = _read(paths["claude_settings"])
     if linked is not None:
-        if linked:
+        stored_key = three_p.get("inferenceGatewayApiKey", "")
+        if linked and config_ops.is_sealed_key(stored_key):
+            # 密文塞进 ANTHROPIC_AUTH_TOKEN，CLI 会原样当 Key 发上去 —— 必然 401。
+            notes.append("CLI 联动需要明文 Key：配置里那把已被客户端加密封存，请先在密钥框填入真实 Key")
+        elif linked:
             settings_patch["env"] = config_ops.cli_env(
-                "http://127.0.0.1:%d" % _port(), three_p.get("inferenceGatewayApiKey", ""),
+                "http://127.0.0.1:%d" % _port(), stored_key,
                 _primary_model(three_p))
         else:
             claude_settings, changed = config_ops.merge_settings(
@@ -523,7 +530,9 @@ def handle_get(handler, query):
 
     if path == "/api/upstream-models":
         bridge_cfg = _read(bridge_path())
-        result = list_upstream_models(bridge_cfg.get("upstream_url", ""), _current_key())
+        key, source = config_ops.probe_key("", _current_key(), current_client_key())
+        result = (list_upstream_models(bridge_cfg.get("upstream_url", ""), key) if key
+                  else {"ok": False, "error": config_ops.probe_key_error(source)})
         handler._send_json(200, result)
         return True
 
@@ -559,11 +568,19 @@ def handle_post(handler, query, body):
     if path == "/api/test-upstream":
         url = (body or {}).get("upstream_url") or _upstream_base(
             _read(bridge_path()).get("upstream_url", ""))
-        key = (body or {}).get("api_key") or ""
-        if config_ops.key_unchanged(key, _current_key()):
-            key = _current_key()
-        handler._send_json(200, test_upstream(url.strip(), key.strip(),
-                                              ((body or {}).get("model") or "").strip()))
+        # 配置里存的可能是客户端加密封存的密文，拿它去测必然 401 —— 见 config_ops.probe_key
+        key, source = config_ops.probe_key((body or {}).get("api_key"), _current_key(),
+                                          current_client_key())
+        if not key:
+            # 带 key_source：页面据此区分「没 Key 可用」与「模型/上游不通」，别把前者
+            # 显示成一串模型 ❌ 再加一句「请确认上游是否支持 Anthropic 协议」的误导结论。
+            handler._send_json(200, {"ok": False, "error": config_ops.probe_key_error(source),
+                                     "key_source": source})
+            return True
+        result = test_upstream(url.strip(), key, ((body or {}).get("model") or "").strip())
+        if result.get("ok"):
+            result["data"]["key_source"] = source
+        handler._send_json(200, result)
         return True
 
     if path == "/api/update":

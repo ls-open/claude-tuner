@@ -36,6 +36,7 @@ from common import (
     atomic_write_json,
     ensure_config_initialized,
     client_api_key,
+    remember_client_key,
     extract_session_id,
     estimate_tokens,
     is_opencode_upstream,
@@ -1506,6 +1507,9 @@ class Handler(BaseHTTPRequestHandler):
         if err:
             return
 
+        # 客户端每轮都带着真实上游 Key 打进来，而配置里那份已被客户端加密封存。
+        # 配置台的「测试连接」要靠这份内存副本，否则只能拿到密文去撞 401。
+        remember_client_key(client_api_key(self.headers))
         original = parsed.get("model", "")
         session_id = extract_session_id(parsed)
         x_opencode_session = "claude-" + (session_id or "unknown")

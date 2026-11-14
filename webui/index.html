@@ -1039,8 +1039,10 @@ function renderGateway(d){
     const sel = $('#logRetention');
     if (sel) sel.value = String(d.gateway.log_retention_days);
   }
-  $('#apikey').placeholder = d.upstream.api_key_masked
-    ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填入 API Key';
+  $('#apikey').placeholder = d.upstream.api_key_sealed
+    ? '已填（客户端加密封存，配置台读不到明文），留空表示不修改'
+    : d.upstream.api_key_masked
+      ? `已填（${d.upstream.api_key_masked}），留空表示不修改` : '填入 API Key';
 }
 
 const num = n => (n||0).toLocaleString('zh-CN');
@@ -1203,6 +1205,7 @@ $('#btnTest').onclick = async () => {
   const wanted = [...new Set([...document.querySelectorAll('#models tr')].map(modelValue).filter(Boolean))];
   if (!wanted.length) { $('#testOut').textContent = '⚠️ 映射表中尚未填写上游模型名'; return; }
   const out = [];
+  let usedClientKey = false;
   for (const model of wanted) {
     $('#testOut').textContent = `正在测试连接并校验模型 ${model} ……（共 ${wanted.length} 个）`;
     let line;
@@ -1210,11 +1213,21 @@ $('#btnTest').onclick = async () => {
       const r = await api('/api/test-upstream', {
         upstream_url: $('#upstream').value.trim(), api_key: $('#apikey').value.trim(), model,
       });
+      if (!r.ok && r.key_source) {
+        // 没 Key 可用（配置里的被客户端加密封存）—— 与模型无关，说一次就够
+        out.push('⚠️ ' + esc(r.error));
+        $('#testOut').innerHTML = out.join('<br>');
+        return;
+      }
+      if (r.data && r.data.key_source === 'client') usedClientKey = true;
       line = r.ok ? `✅ ${esc(model)} · 耗时 ${r.data.ms} ms${r.data.reply ? ' · 响应：' + esc(r.data.reply) : ''}`
                   : `❌ ${esc(model)} · ${esc(r.error)}`;
     } catch (e) { line = `❌ ${esc(model)} · ${esc(e.message)}`; }
     out.push(line);
     $('#testOut').innerHTML = out.join('<br>');
+  }
+  if (usedClientKey) {
+    out.push('<br>🔑 配置里的 Key 已被客户端加密封存，本次用的是 Claude 正在使用的那把。');
   }
   const bad = out.filter(l => l.startsWith('❌')).length;
   out.push(bad ? `<br>⚠️ 有 ${bad} 个模型测试失败 —— 请确认上游是否支持 Anthropic Messages 协议（不支持纯 OpenAI 协议）或模型名是否有误。`

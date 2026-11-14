@@ -69,6 +69,39 @@ class TestMaskApiKey(ConfigOpsTestCase):
         self.assertFalse(self.ops.key_unchanged("sk-a-brand-new-key-value", key))
 
 
+class TestProbeKey(ConfigOpsTestCase):
+    """上游探测用哪把 Key。
+
+    3P 客户端把配置里的 Key 加密封存了，密文发出去必然 401 Invalid credential ——
+    这条判据就是为它立的。端到端行为见 test_webui_routes.py 的 SealedKeyCase。
+    """
+
+    SEALED = "__sealed__:v1:ZmFrZS1zZWFsZWQ="
+    KEY = "sk-1234567890abcdefghij"
+
+    def test_sealed_detection(self):
+        self.assertTrue(self.ops.is_sealed_key(self.SEALED))
+        self.assertTrue(self.ops.is_sealed_key(" " + self.SEALED))
+        self.assertFalse(self.ops.is_sealed_key(self.KEY))
+        self.assertFalse(self.ops.is_sealed_key(""))
+
+    def test_typed_key_wins(self):
+        self.assertEqual(self.ops.probe_key("sk-new-key-typed", self.SEALED, "sk-live"),
+                         ("sk-new-key-typed", "typed"))
+        # 页面只是把脱敏串 / 空值回传，等于「没改」—— 不能当成新 Key
+        self.assertEqual(self.ops.probe_key(self.ops.mask_api_key(self.KEY), self.KEY, ""),
+                         (self.KEY, "stored"))
+
+    def test_sealed_falls_back_to_the_client_live_key(self):
+        self.assertEqual(self.ops.probe_key("", self.SEALED, "sk-live"), ("sk-live", "client"))
+        self.assertEqual(self.ops.probe_key(self.ops.mask_api_key(self.SEALED), self.SEALED, ""),
+                         ("", "sealed"))
+
+    def test_error_text_names_the_reason(self):
+        self.assertIn("密封", self.ops.probe_key_error("sealed"))
+        self.assertIn("API Key", self.ops.probe_key_error("missing"))
+
+
 class TestGate(ConfigOpsTestCase):
     def test_constant_time_eq(self):
         self.assertTrue(self.ops.constant_time_eq("abc", "abc"))

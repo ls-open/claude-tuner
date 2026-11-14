@@ -479,6 +479,26 @@ def client_api_key(headers):
     return ""
 
 
+# ── 客户端此刻正在用的上游 Key（仅进程内存）────────────────────────────
+# 3P 客户端会把配置里的 Key 加密封存（存的是 `__sealed__:v1:` 密文），配置台读不到明文；
+# 但客户端每一轮请求都带着真实 Key 打进来。留一份内存副本，配置台的「测试连接 / 拉模型
+# 列表」就能直接用客户端真在用的那把，不必让用户重新粘贴。
+# 只活在进程里：不落盘、不进日志、不返回给页面。
+_last_client_key = ""
+
+
+def remember_client_key(value):
+    global _last_client_key
+    value = (value or "").strip()
+    if value:
+        _last_client_key = value
+
+
+def current_client_key():
+    """最近一次客户端请求带来的上游 Key；网关上还没跑过对话时为空串。"""
+    return _last_client_key
+
+
 def extract_session_id(parsed):
     """从 metadata 中提取 session_id（兼容 session_id 字段与 user_id 嵌套 JSON）。"""
     try:

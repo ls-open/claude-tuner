@@ -18,12 +18,14 @@
     python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tools/test_webui_routes.py
 """
+import http.server
 import json
 import os
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -49,6 +51,9 @@ def free_port():
 class WebUITestCase(unittest.TestCase):
     """一个测试起一个真网关进程，用完杀干净。"""
 
+    THREE_P_KEY = "sk-super-secret-key-123456"
+    EXTRA_ENV = {}   # 子类要往网关进程里补的环境变量（如假上游地址）
+
     @classmethod
     def setUpClass(cls):
         cls._tmp = tempfile.TemporaryDirectory()
@@ -68,7 +73,7 @@ class WebUITestCase(unittest.TestCase):
             "inferenceProvider": "gateway",
             "inferenceCredentialKind": "static",
             "inferenceGatewayBaseUrl": "http://127.0.0.1:%d" % cls.port,
-            "inferenceGatewayApiKey": "sk-super-secret-key-123456",
+            "inferenceGatewayApiKey": cls.THREE_P_KEY,
             "inferenceModels": [{"name": "claude-opus-5-5", "labelOverride": "deepseek-flash"}],
         }), encoding="utf-8")
         (cls.config_lib / "_meta.json").write_text(json.dumps({"appliedId": "p"}), encoding="utf-8")
@@ -81,6 +86,7 @@ class WebUITestCase(unittest.TestCase):
             CLAUDE_TUNER_HOME=cls.bridge_home,
             CLAUDE_TUNER_PORT=cls.port,
         )
+        env.update(cls.EXTRA_ENV)
         # 把网关的输出留下来：起不来时它是唯一的线索（曾经在 CI 上只看到
         # 「15 秒内没起来」而没有任何原因，只能靠猜）。
         cls._log_path = cls.bridge_home / "gateway.test.log"
@@ -353,6 +359,136 @@ class TestOriginalRoutesStillWork(WebUITestCase):
     def test_unknown_path_is_404(self):
         status, _, _ = self.request("/nope")
         self.assertEqual(status, 404)
+
+
+class FakeUpstream:
+    """假上游：记下每次请求带的 x-api-key，回一份最小 Anthropic 响应。
+
+    只有它才能回答「配置台的探测到底把哪把 Key 发出去了」—— 真上游那边看不出来。
+    """
+
+    def __init__(self):
+        outer = self
+        self.seen_keys = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def _send(self, payload):
+                body = json.dumps(payload).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                self._send({"object": "list",
+                            "data": [{"id": "fake-model", "object": "model"}]})
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                self.rfile.read(length)
+                outer.seen_keys.append(self.headers.get("x-api-key") or "")
+                self._send({"id": "msg_fake", "type": "message", "role": "assistant",
+                            "model": "fake-model",
+                            "content": [{"type": "text", "text": "ok"}],
+                            "stop_reason": "end_turn",
+                            "usage": {"input_tokens": 1, "output_tokens": 1}})
+
+            def log_message(self, *args):
+                pass
+
+        self._srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._srv.server_address[1]
+        threading.Thread(target=self._srv.serve_forever, daemon=True).start()
+
+    @property
+    def url(self):
+        return "http://127.0.0.1:%d" % self.port
+
+    def stop(self):
+        self._srv.shutdown()
+        self._srv.server_close()
+
+
+# 与客户端写进 3P 配置的形态一致。内容无所谓 —— 它永远不该被当成 Key 发出去。
+SEALED_KEY = "__sealed__:v1:ZmFrZS1zZWFsZWQtYmxvYg=="
+
+
+class SealedKeyCase(WebUITestCase):
+    """3P 客户端会把配置里的 Key 加密封存，配置台读不到明文。
+
+    这就是「点了测试连接说 401 Invalid credential、真实对话却正常」的全部原因：
+    探测把密文当 Key 发了出去，而客户端每轮请求带的是明文，网关只做转发。
+    """
+
+    THREE_P_KEY = SEALED_KEY
+
+    @classmethod
+    def setUpClass(cls):
+        cls.upstream = FakeUpstream()
+        cls.EXTRA_ENV = {"CLAUDE_TUNER_UPSTREAM_URL": cls.upstream.url + "/v1/messages"}
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+        cls.upstream.stop()
+
+    def probe(self, model="fake-model"):
+        status, body, _ = self.request("/api/test-upstream", method="POST", body={
+            "upstream_url": self.upstream.url + "/v1/messages", "model": model})
+        self.assertEqual(status, 200, body)
+        return json.loads(body)
+
+
+class TestSealedKeyWithoutClientTraffic(SealedKeyCase):
+    """网关上还没跑过对话 —— 没有明文可借，必须明说原因，不许拿密文去撞 401。"""
+
+    def test_config_says_sealed(self):
+        data = json.loads(self.request("/api/config")[1])["data"]
+        self.assertTrue(data["upstream"]["api_key_set"])
+        self.assertTrue(data["upstream"]["api_key_sealed"])
+
+    def test_密文一个字节都不发往上游(self):
+        payload = self.probe()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["key_source"], "sealed")
+        self.assertIn("密封", payload["error"])
+        self.assertEqual(self.upstream.seen_keys, [])
+
+
+class TestSealedKeyReusesLiveClientKey(SealedKeyCase):
+    """客户端跑过一轮之后，探测要用客户端真在用的那把 Key —— 否则用户只能重贴一遍。"""
+
+    LIVE_KEY = "sk-live-key-client-is-actually-using"
+
+    def test_探测复用客户端正在用的_key(self):
+        # 1) 客户端带明文 Key 打一轮（网关转发到假上游）
+        status, body, _ = self.request("/v1/messages", method="POST", headers={
+            "x-api-key": self.LIVE_KEY, "Content-Type": "application/json"}, body={
+            "model": "claude-opus-5-5", "max_tokens": 16,
+            "messages": [{"role": "user", "content": "hi"}]})
+        self.assertNotEqual(status, 404, body)
+        self.assertIn(self.LIVE_KEY, self.upstream.seen_keys, "客户端那轮没到上游")
+
+        # 2) 配置台探测既没让用户重贴 Key，也不能发密文
+        payload = self.probe()
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["data"]["key_source"], "client")
+        self.assertEqual(self.upstream.seen_keys[-1], self.LIVE_KEY)
+
+    def test_页面填了新_key_就用新的(self):
+        self.probe()   # 先让网关手里有客户端那把
+        status, body, _ = self.request("/api/test-upstream", method="POST", body={
+            "upstream_url": self.upstream.url + "/v1/messages", "model": "fake-model",
+            "api_key": "sk-typed-in-the-panel"})
+        self.assertEqual(status, 200, body)
+        payload = json.loads(body)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["data"]["key_source"], "typed")
+        self.assertEqual(self.upstream.seen_keys[-1], "sk-typed-in-the-panel")
 
 
 if __name__ == "__main__":
