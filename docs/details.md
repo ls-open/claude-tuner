@@ -103,8 +103,6 @@ claude -p "只回复两个字：成功"
 
 请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条：
 
-请求本身走本地网关：网关挂了，你连这条消息都发不出去。所以记住这两条：
-
 ```bash
 python3 ~/.claude/skills/claude-tuner/scripts/manager.py ensure
 python3 ~/.claude/skills/claude-tuner/scripts/bootstrap.py doctor
