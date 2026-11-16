@@ -510,7 +510,6 @@ class TestPairAnchorTolerance(unittest.TestCase):
 
     def test_哨兵与网关用同一份判据(self):
         c = cfg()
-        names = tr.get_stripped_tool_names(c)
         ids = lambda t, cc: [m["id"] for m in tr.missing_pair_paragraphs(t, cc, tr.get_stripped_tool_names(cc))]
         self.assertIn("ccd_pr", ids("无关正文。", c))
         self.assertNotIn("ccd_pr", ids(PR_HEAD, c))
@@ -551,12 +550,6 @@ class TestOrphanDetection(unittest.TestCase):
             "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
             "tools": [{"name": "mcp__ccd_pr__get_status"}, {"name": "mcp__ccd_pr__bind_pr"}],
         }
-        logged = []
-
-        class Sink:
-            def write(self, _): pass
-            def flush(self): pass
-
         import contextlib, io
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):

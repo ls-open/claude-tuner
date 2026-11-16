@@ -6,7 +6,6 @@ import json
 import os
 import re
 import sys
-import socket
 import socketserver
 import threading
 import time
@@ -33,7 +32,6 @@ from common import (
     DEFAULT_RULES,
     DEFAULT_TOOL_PRUNING_CONFIG,
     DEFAULT_UPSTREAM_TIMEOUT,
-    atomic_write_json,
     ensure_config_initialized,
     client_api_key,
     remember_client_key,
@@ -199,7 +197,7 @@ def load_rules_config():
 from tool_rules import (  # noqa: E402
     PROMPT_PAIRS,
     active_pairs,
-    category_for,
+    category_for,  # noqa: F401 —— 再导出：哨兵按 gateway.category_for 取用，别删
     get_stripped_tool_names,
     ghost_tool_names,
     orphan_mentions,
@@ -207,7 +205,6 @@ from tool_rules import (  # noqa: E402
     pair_paragraph_predicate,
     pruning_cfg_for_surface,
     should_strip_tool,
-    strip_reason,
     tp_flag as _tp_flag,
 )
 
@@ -764,7 +761,7 @@ def _guard_rule(name, fn):
     return wrapper
 
 
-def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None, incoming_tools=None):
+def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None, incoming_tools=None, kind=None):
     """Stabilize cache-relevant bytes without touching semantic content.
 
     `stripped_names`：本次请求**实际被剥**的工具名集合，由调用方在剥离之前用
@@ -777,6 +774,9 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     """
     changed = []
     r = rules or load_rules_config()
+    # 客户端面要**在剥计费头之前**定型：判据就在那行头里（见 classify_kind）。
+    # 只有「配对段落缺失」这条报警用它，见下文 4.5。
+    _kind = kind or classify_kind(parsed)
     if tool_pruning_cfg is not None:
         tp = dict(DEFAULT_TOOL_PRUNING_CONFIG)
         tp.update(tool_pruning_cfg)
@@ -854,17 +854,17 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     # 名单必须在**剥离之前**算（见 ghost_tool_names 的说明）：走到这里 tools 已被
     # prepare_request 删过，再按它补齐就只剩下保留的那些，前缀类工具一条都补不到。
     _ghost_names = stripped_names if stripped_names is not None else get_stripped_tool_names(tp)
-    _incoming_tools = incoming_tools
-    if _incoming_tools is None:
-        _incoming_tools = {t.get("name") for t in parsed.get("tools") or []
-                           if isinstance(t, dict) and t.get("name")}
-    # 「这一轮客户端手里有没有这个工具」= 它发过来了 **或** 我们判定它已经被挡掉。
+    _client_tools = incoming_tools
+    if _client_tools is None:
+        _client_tools = {t.get("name") for t in parsed.get("tools") or []
+                         if isinstance(t, dict) and t.get("name")}
+    # 剥的口径：「这一轮客户端手里有没有这个工具」= 它发过来了 **或** 我们判定它已经被挡掉。
     # 后者有两条来路：用户在客户端界面里把工具关了，或 tool_rules.client_disabled_tools
     # 写进 3P 配置的 `disabledBuiltinTools`（目前只覆盖非 MCP 的内置工具）。
     # 少了后半句就会反噬：客户端一旦不发，这里判空 → 段落不再剥 → 留下指向不存在工具的
     # 孤句。桌面端那些段落是写死的字符串常量（例如 `After opening a PR, use the ccd_pr
     # tools:`），跟工具在不在**无关**，所以工具被挡掉时照样得剥。
-    _incoming_tools = set(_incoming_tools) | {
+    _strip_tools = set(_client_tools) | {
         n for pair in PROMPT_PAIRS for n in pair["tools"]
         if should_strip_tool(n, _ghost_names, tp)
     }
@@ -872,14 +872,23 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
                             lambda t, legacy: strip_ghost_tool_instructions(
-                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_incoming_tools)),
+                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_strip_tools)),
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
     # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
-    # 别让它静默过去，但也别拿假报警淹掉它。传入 _incoming_tools 杜绝非 Code 模式虚报缺失。
-    report_missing_pair_paragraphs(
-        [p["id"] for p in active_pairs(tp, _ghost_names, incoming_tools=_incoming_tools) if p["id"] not in _pair_found])
+    # 别让它静默过去，但也别拿假报警淹掉它。
+    #
+    # 报警比剥严格一档，两道闸（少一道就成天喊狼来了，真改了措辞反倒没人看）：
+    # ① 用**客户端原始**且**发过**的工具清单（`_client_tools`），不是上面那个并集 ——
+    #    并集里有「我们判定被挡掉」的工具，而会话标题生成这类零工具的后台请求根本
+    #    不带那段说明，拿并集判会把它们全报成失配；
+    # ② 子代理面不研判：它的 system 是另一份精简提示词，82 个工具照发、这六段本就不在
+    #    里面（实测抓包），判定依据不成立。见 DECISIONS #62。
+    if _kind not in SUBAGENT_KINDS:
+        report_missing_pair_paragraphs(
+            [p["id"] for p in active_pairs(tp, _ghost_names, incoming_tools=_client_tools)
+             if p["id"] not in _pair_found])
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     for _guideline in GUIDELINE_PARAGRAPHS:
@@ -1085,6 +1094,10 @@ KIND_SUFFIX = {
     "cowork_subagent": "_cowork_subagent",
 }
 
+# 子代理面：system 是另一份精简提示词 —— 工具照发，但「解释某个工具」的那几段不在里面。
+# 所以凡以「这段本该在报文里」为前提的判据，都要先排除它（见 canonicalize 4.5）。
+SUBAGENT_KINDS = ("subagent", "cowork_subagent")
+
 
 def session_capture_key(parsed, kind=None):
     """本次请求在会话归档里的键；取不到会话 id 时返回 None。
@@ -1159,7 +1172,7 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     ghost = ghost_tool_names(parsed.get("tools"), tp_cfg)
     changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
     changed += canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg,
-                            stripped_names=ghost, incoming_tools=incoming)
+                            stripped_names=ghost, incoming_tools=incoming, kind=kind)
     return changed
 
 
@@ -1472,7 +1485,7 @@ class Handler(BaseHTTPRequestHandler):
             with open(model_path, "w", encoding="utf-8") as fh:
                 json.dump(parsed, fh, ensure_ascii=False, indent=2)
             # 2. 同时更新一份全局主会话最新快照 (仅非子代理更新，CoWork/CoWork子代理另存一份专属最新快照)
-            if kind not in ("subagent", "cowork_subagent"):
+            if kind not in SUBAGENT_KINDS:
                 latest_path = os.path.join(capture_dir, "latest_raw_inbound.json")
                 with open(latest_path, "w", encoding="utf-8") as fh:
                     json.dump(parsed, fh, ensure_ascii=False, indent=2)
@@ -1594,7 +1607,7 @@ class Handler(BaseHTTPRequestHandler):
             # 发版号只落在这里与配置页：UA 里放的是身份代号，不随发版号变。
             "plugin": plugin_version(),
         }
-        if kind in ("subagent", "cowork_subagent"):
+        if kind in SUBAGENT_KINDS:
             sub_id, sub_task = extract_subagent_fingerprint(parsed)
             entry["subagent_id"] = sub_id
             entry["subagent_task"] = sub_task

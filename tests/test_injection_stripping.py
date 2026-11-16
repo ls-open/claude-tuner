@@ -522,6 +522,12 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         "attached terminal snippet gave you, never one you made up.",
     )
     _ORPHANED_IDS = {"ccd_pr", "ccd_settings", "ccd_host_sync", "ccd_window_split", "ccd_terminal_link"}
+    # 五对工具各取一个代表名 —— 「客户端发没发过」按工具名判，发一个就算发过
+    _ORPHANED_TOOLS = [{"name": n} for n in (
+        "mcp__ccd_pr__get_status", "mcp__ccd_settings__get_settings",
+        "mcp__ccd_host__sync_with_base_branch", "mcp__ccd_window__open_session_in",
+        "mcp__terminal__open_terminal_tab")]
+    _STRIP_HOST_TERMINAL = {"enabled": True, "strip_host_tools": True, "strip_terminal_tools": True}
 
     def _capture_missing(self):
         """替换掉上报函数，截获 canonicalize 每次上报的失配清单（绕开进程级去重 memo）。"""
@@ -539,23 +545,54 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         （见 DECISIONS「配对段落失配的按块假报警」）。这里钉住真形态下零误报。
         """
         big = "\n\n".join(self._PAIR_PARAS)
-        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": big}]}
+        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": big}],
+                  "tools": self._ORPHANED_TOOLS}
         calls = self._capture_missing()
         gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
-                             tool_pruning_cfg={"enabled": True})
+                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
         self.assertEqual(calls, [[]], "段落都在正文里，一处失配都不该报（按块判会误报这 5 项）")
 
     def test_段落真被改写时如实报失配(self):
         """反向守卫：锚点全失配时必须报出来 —— 别把假报警修成哑巴。"""
-        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": "正文里没有这些配对段落。"}]}
+        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": "正文里没有这些配对段落。"}],
+                  "tools": self._ORPHANED_TOOLS}
         calls = self._capture_missing()
         # 显式剥掉 host/terminal：_ORPHANED_IDS 是「这五对全剥」时的集合，
         # 别依赖它们各自的默认值（默认保留时它们本来就不该报）
         gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
-                             tool_pruning_cfg={"enabled": True,
-                                               "strip_host_tools": True, "strip_terminal_tools": True})
+                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
         self.assertEqual(len(calls), 1)
         self.assertEqual(set(calls[0]), self._ORPHANED_IDS)
+
+    def test_没发工具的后台请求不判失配(self):
+        """零工具的辅助请求（会话标题生成那类）不该被当成锚点失配。
+
+        它的 system 里本来就没有这些段落，而「我们判定义被剥的工具」会让配对仍算 active ——
+        判据必须只认**客户端真发过**的工具。曾因此刷出 8 次假 WARN（见 DECISIONS #62）。
+        """
+        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": "写个标题。"}]}
+        calls = self._capture_missing()
+        gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
+                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL),
+                             incoming_tools=set())
+        self.assertEqual(calls, [[]], "客户端一个工具都没发，谈不上「该删的段落没删掉」")
+
+    def test_子代理面不判失配(self):
+        """子代理的 system 是另一份精简提示词：工具照发，这几段本就不在里面。
+
+        拿主会话的判据去量它，每份子代理请求都会报 5 项假失配（见 DECISIONS #62）。
+        """
+        parsed = {
+            "system": [{"type": "text",
+                        "text": "x-anthropic-billing-header: cc_version=2.1.295.1fa; "
+                                "cc_is_subagent=true; cc_entrypoint=claude-desktop-3p;"},
+                       {"type": "text", "text": "子代理的 system，没有工具说明段落。"}],
+            "tools": self._ORPHANED_TOOLS,
+        }
+        calls = self._capture_missing()
+        gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
+                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
+        self.assertEqual(calls, [], "子代理面根本不承载这些段落，不该走配对缺失判据")
 
     def test_splitview段落随会话管理开关原子联动(self):
         """整段可剥的形态：`ccd_window` 的说明段落随 strip_window_tools 同进同退。

@@ -456,7 +456,10 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         found = [t for t in ({name, name.split("__")[-1]}) if len(t) >= 6 and _has_identifier(text, t)]
         if found:
             hits.append((name, sorted(found)))
-    missing = tool_rules.missing_pair_paragraphs(
+    # 子代理面不研判缺失：它的 system 是另一份精简提示词，工具照发、这几段本就不在里面，
+    # 「该删的整段没删掉」这个前提不成立。网关侧同一道闸见 DECISIONS #62。
+    is_subagent = gateway.classify_kind(raw) in gateway.SUBAGENT_KINDS
+    missing = [] if is_subagent else tool_rules.missing_pair_paragraphs(
         "\n".join(extract_system_texts(raw)), cfg, stripped_names,
         incoming_tools=extract_tool_names(raw))
     print()
@@ -470,8 +473,12 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         print("     → 工具没了、说明还在，模型会被引到一个不存在的工具上。改 tool_rules.PROMPT_PAIRS")
         print("       里这条的 anchor 即可（只取段首一小截，段落后面怎么改都还认得出）。")
     if not hits and not missing:
-        print("  ✅ %s" % ("没有工具被剥（该面整面不剥），提示词与工具表不会脱节" if not gone
-                          else "被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone)))
+        if is_subagent:
+            print("  ✅ 子代理面：system 是精简提示词，本就不含工具说明段落，配对缺失不研判")
+        elif not gone:
+            print("  ✅ 没有工具被剥（该面整面不剥），提示词与工具表不会脱节")
+        else:
+            print("  ✅ 被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone))
     if hits:
         print("  ℹ️ 以下工具已被剥掉，但正文仍在引用：")
         for name, tokens in hits:

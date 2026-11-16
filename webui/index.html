@@ -37,8 +37,6 @@
     --warn-dim:rgba(180, 83, 9, 0.09);
     --warn-line:rgba(180, 83, 9, 0.25);
     --err:#b91c1c;
-    --err-dim:rgba(185, 28, 28, 0.09);
-    --err-line:rgba(185, 28, 28, 0.25);
     /* toast 底在任何主题下都是深色，圆点固定用亮色值，不跟随上面三项 */
     --toast-ok:#22c55e; --toast-warn:#f59e0b; --toast-err:#ef4444;
     --toast-bg:#141413; --toast-fg:#FAF9F5; --toast-line:rgba(255, 255, 255, 0.12);
@@ -82,8 +80,6 @@
       --warn-dim:rgba(251, 191, 36, 0.15);
       --warn-line:rgba(251, 191, 36, 0.32);
       --err:#f87171;
-      --err-dim:rgba(248, 113, 113, 0.15);
-      --err-line:rgba(248, 113, 113, 0.32);
       --btn-primary-bg:#FAF9F5;
       --btn-primary-fg:#141413;
       --btn-primary-hover:#FFFFFF;
@@ -118,7 +114,6 @@
     --warn:#fbbf24;
     --warn-dim:rgba(251, 191, 36, 0.15);
     --err:#f87171;
-    --err-dim:rgba(248, 113, 113, 0.15);
     --btn-primary-bg:#FAF9F5;
     --btn-primary-fg:#141413;
     --btn-primary-hover:#FFFFFF;
@@ -198,10 +193,6 @@
        justify-content:center;font-size:12px;font-weight:700}
   .step-txt b{display:block;font-size:12.5px;margin-bottom:2px;color:var(--fg)}
   .step-txt small{color:var(--dim);font-size:11.5px;line-height:1.45;display:block}
-  .onboard-notice{margin-top:14px;padding:10px 14px;background:var(--panel2);border-radius:var(--radius-sm);
-       border-left:3px solid var(--accent);font-size:12px;color:var(--dim);line-height:1.6}
-  .onboard-notice b{color:var(--fg)}
-
   /* ── 卡片 ───────────────────────────────────────────── */
   section{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
           margin-bottom:26px;overflow:hidden;scroll-margin-top:122px;
@@ -223,7 +214,6 @@
   .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
   .field{display:flex;flex-direction:column;gap:6px;flex:1 1 220px;min-width:0}
   label{font-size:12px;color:var(--dim);font-weight:500;height:20px;line-height:20px;display:flex;align-items:center;gap:6px}
-  .field-tip{font-size:11px;color:var(--accent);font-weight:400}
   input,select,button{box-sizing:border-box;height:38px;font:inherit;font-size:13px;color:var(--fg);background:var(--panel);
         border:1px solid var(--line2);border-radius:var(--radius-sm);
         padding:8px 12px;outline:none;transition:border-color .15s,background .15s,box-shadow .15s}
@@ -334,7 +324,7 @@
   .stat .k b{display:block;font-size:24px;font-weight:600;letter-spacing:-.03em;
        font-variant-numeric:tabular-nums;line-height:1.2;font-family:var(--font-serif)}
   .stat .k small{color:var(--dim);font-size:11.5px;line-height:1.55;display:block;margin-top:4px}
-  .stat .k.ok b{color:var(--ok)} .stat .k.mute b{color:var(--dim)}
+  .stat .k.ok b{color:var(--ok)}
 
   /* ── 提示对话框 ─────────────────────────────────────── */
   dialog{background:var(--panel);color:var(--fg);border:1px solid var(--line2);
@@ -358,13 +348,6 @@
   .claude-toast.ok .toast-dot{background:var(--toast-ok)}
   .claude-toast.warn .toast-dot{background:var(--toast-warn)}
   .claude-toast.err .toast-dot{background:var(--toast-err)}
-
-  .kbd-pill{display:inline-flex;align-items:center;padding:1px 5px;font-size:10px;font-family:var(--mono);
-       background:rgba(255,255,255,0.18);color:inherit;border-radius:4px;margin-left:6px;font-weight:600;line-height:1.2}
-  :root[data-theme="dark"] .primary .kbd-pill{background:rgba(0,0,0,0.15)}
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]) .primary .kbd-pill{background:rgba(0,0,0,0.15)}
-  }
 
   /* 区块内的「保存 N 项」：只有该区块真有未保存的客户端改动时才出现。
      页头不再挂常驻保存按钮 —— 立即生效的那一类改完就存，不需要按钮。 */

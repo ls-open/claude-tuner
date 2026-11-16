@@ -347,7 +347,8 @@ class TestBackupPruning(unittest.TestCase):
         return path
 
     def test_keeps_newest_and_deletes_the_rest(self):
-        paths = [self._make("plugin-%02d" % i, 1000 + i) for i in range(8)]
+        for i in range(8):
+            self._make("plugin-%02d" % i, 1000 + i)
         removed = common.prune_backups(self.dir, 3, prefix="plugin-")
         self.assertEqual(sorted(os.path.basename(p) for p in removed),
                          ["plugin-00", "plugin-01", "plugin-02", "plugin-03", "plugin-04"])

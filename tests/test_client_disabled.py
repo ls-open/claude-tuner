@@ -18,7 +18,6 @@
     python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
     python3 tests/test_client_deny.py
 """
-import json
 import os
 import sys
 import tempfile
