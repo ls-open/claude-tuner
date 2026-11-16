@@ -108,6 +108,25 @@ class ResidueTest(unittest.TestCase):
         self.assertNotIn("strip_date", changed)
         self.assertIn("rule_residue_strip_date", changed)
 
+    def test_容器之外的日期不算残留(self):
+        """真实踩到过：长对话的压缩摘要把整段历史塞进一条 user 消息，容器**之外**的正文里
+        写着 `token-counting-2024-11-01` 这类字面量。旧判据是「这条消息里有容器就扫全文」，
+        于是每个长对话的每一轮都报一次残留 —— 生产日志实测 2068 次。常红的线等于没有线。
+        """
+        long_body = ("<system-reminder>\n# gitStatus\nOn branch main\n</system-reminder>\n"
+                     "上一轮的摘要：`POST /v1/messages/count_tokens`"
+                     "（beta `token-counting-2024-11-01`）是预检端点。")
+        parsed = payload("干净的 system。", reminder=long_body)
+        changed = gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES))
+        self.assertNotIn("rule_residue_strip_date", changed)
+
+    def test_容器内的日期仍算残留(self):
+        """反向守卫：注入容器里真留着日期，必须照样报出来 —— 别把假警报修成哑巴。"""
+        parsed = payload("干净的 system。",
+                         reminder="<system-reminder>\nCurrent date: 2026-11-04.\n</system-reminder>")
+        changed = gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES))
+        self.assertIn("rule_residue_strip_date", changed)
+
     def test_正常报文不该有残留标记(self):
         """真实形态的注入：剥干净之后一条残留都不许有（假警报比不报警更糟）。"""
         parsed = payload(

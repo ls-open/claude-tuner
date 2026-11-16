@@ -891,9 +891,10 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     # ① 用**客户端原始**且**发过**的工具清单（`_client_tools`），不是上面那个并集 ——
     #    并集里有「我们判定被挡掉」的工具，而会话标题生成这类零工具的后台请求根本
     #    不带那段说明，拿并集判会把它们全报成失配；
-    # ② 子代理面不研判：它的 system 是另一份精简提示词，82 个工具照发、这六段本就不在
-    #    里面（实测抓包），判定依据不成立。见 DECISIONS #62。
-    if _kind not in SUBAGENT_KINDS:
+    # ② 只认主会话面：子代理与 CoWork 的 system 是另外两份提示词，工具照发、这几段本就
+    #    不在里面（实测抓包），「该删的段落没删掉」这个前提不成立。见 DECISIONS #62。
+    #    「只有 main 面成立」比逐个排除更结实 —— 将来多一个面，默认不会误报。
+    if _kind == "main":
         report_missing_pair_paragraphs(
             [p["id"] for p in active_pairs(tp, _ghost_names, incoming_tools=_client_tools)
              if p["id"] not in _pair_found])

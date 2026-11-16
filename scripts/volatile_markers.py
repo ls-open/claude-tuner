@@ -29,8 +29,8 @@ import re
 SYSTEM_SCOPE = "system"
 BODY_SCOPE = "body"
 
-# 正文面只在这里面找注入标记：容器之外的一律不认。
-REMINDER_OPEN = "<system-reminder>"
+# 正文面只在 `<system-reminder>` 容器**内部**找注入标记：容器之外的一律不认。
+REMINDER_BLOCK = re.compile(r"<system-reminder>([\s\S]*?)</system-reminder>")
 
 # 规则键 → [(面, 正则)]。每个正则都必须**只匹配该规则真会处理的形态**：
 # 宽一个词，就会换来源源不断的假警报。
@@ -116,10 +116,29 @@ def collect_texts(parsed):
     return "\n".join(system_field), system_msgs, body
 
 
+def _reminder_contents(texts, limit=None):
+    """正文里 `<system-reminder>` 容器的**内容**，不含容器外的正文。
+
+    必须只取容器内容：一条长 user 消息里可能既有注入容器、又有把整段历史塞进来的压缩摘要，
+    摘要里出现 `token-counting-2024-11-01` 这种字面量完全正常 —— 按「这条消息里有容器
+    就扫全文」判，每个长对话的每一轮都会报一次假残留（生产日志实测 2068 次，等于把这条
+    报警线常年点亮，真失配那天没人看）。
+
+    `limit` 给残留扫描用：超过这个长度的容器是转储，不是注入。
+    """
+    out = []
+    for text in texts:
+        for m in REMINDER_BLOCK.finditer(text):
+            inner = m.group(1)
+            if limit is None or len(inner) <= limit:
+                out.append(inner)
+    return out
+
+
 def _match(patterns, system_field, system_msg_texts, body_texts, msg_limit=None):
     """按面逐条匹配。`msg_limit` 给残留扫描用：超过这个长度的 role:system 消息是转储，
     不是注入 —— 拿它对残留报假警报，一天能报几十条（实测 24 KB 的文档转储里就有日期）。"""
-    guarded = [t for t in body_texts if REMINDER_OPEN in t]
+    guarded = _reminder_contents(body_texts, msg_limit)
     msgs = system_msg_texts if msg_limit is None else [t for t in system_msg_texts if len(t) <= msg_limit]
     for rule, checks in patterns.items():
         for scope, regex in checks:
