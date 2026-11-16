@@ -114,6 +114,40 @@ class TestCoWorkAdapter(unittest.TestCase):
         self.assertFalse([c for c in changed if c.startswith("prune_tools_")], changed)
         self.assertEqual([t["name"] for t in req["tools"]], names)
 
+    def test_cowork_surface_leaves_prompt_untouched(self):
+        """CoWork 面只做模型名转换：计费头、日期、模型宣称一律不洗，原样透传。
+
+        这个面用得少，不值得为它维护一套要跟着客户端跟版的规则；真在那儿失配也只影响那一面。
+        与「同一条路」的 Code 面对照见下一条。
+        """
+        sys_text = ("x-anthropic-billing-header: cc_version=2.1.325.9d3; "
+                    "cc_entrypoint=local-agent;\n\n"
+                    "# Environment\n - Today's date is 2026-11-16.\n\n"
+                    "You are a Claude agent.")
+        parsed = {
+            "system": [{"type": "text", "text": sys_text}],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+            "tools": [{"name": "mcp__plugins__list_plugins"}, {"name": "Bash"}],
+        }
+        changed = gateway.stabilize_request(
+            parsed, "sid", kind="cowork", rules=dict(common.DEFAULT_RULES),
+            tool_pruning_cfg=dict(common.DEFAULT_TOOL_PRUNING_CONFIG))
+        self.assertEqual(changed, [])
+        self.assertEqual(gateway._system_text(parsed), sys_text, "CoWork 面的提示词必须一字不动")
+        self.assertEqual(len(parsed["tools"]), 2)
+
+    def test_cowork_still_splits_mixed_user_message(self):
+        """结构修正不跟着一起关：混合 user 消息上游会回 400，这一条是「不做就用不了」。"""
+        parsed = {"messages": [{"role": "user", "content": [
+            {"type": "text", "text": "x"},
+            {"type": "tool_result", "tool_use_id": "t1", "content": "r"},
+        ]}]}
+        changed = gateway.stabilize_request(
+            parsed, "sid", kind="cowork", rules=dict(common.DEFAULT_RULES),
+            tool_pruning_cfg=dict(common.DEFAULT_TOOL_PRUNING_CONFIG))
+        self.assertIn("split_mixed_user_msg", changed)
+        self.assertEqual(len(parsed["messages"]), 2)
+
     def test_other_surfaces_still_prune(self):
         """按面跳过只认 CoWork：同一份 cfg 在 Code 面照旧剥"""
         tp = gateway.pruning_cfg_for_surface(dict(common.DEFAULT_TOOL_PRUNING_CONFIG), "main")

@@ -195,6 +195,7 @@ def load_rules_config():
 # 页面显示的「按现在的配置会不会剥」与实际发生的事必然是同一个判断。
 # 这里 import 进来再导出，sentinel.py 等既有调用方无需改动。
 from tool_rules import (  # noqa: E402
+    COWORK_KINDS,
     PROMPT_PAIRS,
     active_pairs,
     category_for,  # noqa: F401 —— 再导出：哨兵按 gateway.category_for 取用，别删
@@ -775,8 +776,15 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     changed = []
     r = rules or load_rules_config()
     # 客户端面要**在剥计费头之前**定型：判据就在那行头里（见 classify_kind）。
-    # 只有「配对段落缺失」这条报警用它，见下文 4.5。
+    # 配对段落的报警判据与 CoWork 面的「原样透传」都用它。
     _kind = kind or classify_kind(parsed)
+    # CoWork 面（非主力面）只做**结构修正**，清洗规则一律不跑：这个面用得少，不值得为它
+    # 维护一套要跟着客户端跟版的规则；也不做工具精简（`pruning_cfg_for_surface` 已关）。
+    # 留下的两条都是「不做会 400」的：拆混合 user 消息、工具块排序（在 prepare_request 里）。
+    # 见 DECISIONS #46。
+    if _kind in COWORK_KINDS:
+        r = dict.fromkeys(r, False)
+        r["split_mixed_user_messages"] = True
     if tool_pruning_cfg is not None:
         tp = dict(DEFAULT_TOOL_PRUNING_CONFIG)
         tp.update(tool_pruning_cfg)
@@ -948,7 +956,9 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     #    前者是「洗完触发物还在、却没有任何规则认领」，后者是「洗完还有易变痕」
     #    （客户端把锚点改了措辞时，前者跟着一起瞎）。必须排在所有规则之后：
     #    这是判据，不是改写器。
-    changed.extend(volatile_markers.rule_markers(parsed, r, changed))
+    #    CoWork 面不跑规则，也就不存在「哑火」—— 跑一遍判据只会给每条规则各报一次假哑火。
+    if _kind not in COWORK_KINDS:
+        changed.extend(volatile_markers.rule_markers(parsed, r, changed))
 
     return changed
 
@@ -1157,7 +1167,7 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     """按生产顺序跑一遍稳定化，返回 changed 列表（原地修改 parsed）。
 
     顺序是这里定的，别在别处复刻：
-    1. 按客户端面定型剥离口径（CoWork 面整面不剥）
+    1. 按客户端面定型剥离口径（CoWork 面原样透传，见 DECISIONS #46）
     2. **剥离之前**记下会被剥的工具名与客户端原始工具名 —— 剥完就再也算不出来
     3. prepare_request 剥工具、排 tool_result
     4. canonicalize 清洗易变前缀；配对段落用它需要的那两份名单

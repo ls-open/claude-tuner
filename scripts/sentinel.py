@@ -279,9 +279,10 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
     print("  %d 个工具 → 剥离 %d，保留 %d" % (len(names), len(names) - len(kept), len(kept)))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
     if surface_skipped:
-        print("  ℹ️ 该客户端面整面不剥工具（CoWork 面按策略整面不剥）：")
-        print("     体积由该面自己承担，换掉的是「每个命名空间逐个判定」的维护成本；")
-        print("     工具剥离对前缀恒定零贡献，所以缓存侧没有损失。")
+        print("  ℹ️ CoWork 面按策略**原样透传**：不剥工具，也不跑任何清洗规则，只做模型名映射。")
+        print("     体积与前缀稳定性都由该面自己承担，换掉的是「每个命名空间逐个判定」的维护成本。")
+        print("     ⚠️ 下面 System / 消息面报出的易变残留属于**预期**（那一面本来就不洗），")
+        print("        不要据此补规则；要判定的是 Code 面（`--model <模型>` 不带 _cowork 后缀）。")
     elif pending:
         mcp_ns, native = {}, []
         for n in pending:
@@ -476,7 +477,7 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         if is_subagent:
             print("  ✅ 子代理面：system 是精简提示词，本就不含工具说明段落，配对缺失不研判")
         elif not gone:
-            print("  ✅ 没有工具被剥（该面整面不剥），提示词与工具表不会脱节")
+            print("  ✅ 没有工具被剥（CoWork 面原样透传），提示词与工具表不会脱节")
         else:
             print("  ✅ 被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone))
     if hits:
@@ -488,11 +489,14 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     return hits, len(missing)
 
 
-def _audit_rule_health(changed):
+def _audit_rule_health(changed, skipped=False):
     """④.5 规则哑火：触发物还在却没动手 / 洗完还有易变痕。
 
     单份抓包就能判 —— 它问的是「这份请求里有没有该被处理却没处理的东西」，
     与版本无关。判据在 `volatile_markers`（网关每轮用的是同一份）。
+
+    `skipped`：该客户端面根本不跑规则（CoWork 原样透传）。此时没有「哑火」可言，
+    报「无残留」会和上面 ② 面报出的残留自相矛盾。
     """
     silent = [c[len("rule_silent_"):] for c in changed if c.startswith("rule_silent_")]
     residue = [c[len("rule_residue_"):] for c in changed if c.startswith("rule_residue_")]
@@ -500,6 +504,9 @@ def _audit_rule_health(changed):
     print("─" * 78)
     print("④.5 规则哑火")
     print("─" * 78)
+    if skipped:
+        print("  ✅ 该客户端面不跑清洗规则（原样透传），不存在哑火判定")
+        return
     if not silent and not residue:
         print("  ✅ 该动手的规则都动手了，清洗后无易变残留")
         return
@@ -516,7 +523,7 @@ def cmd_audit(model, session=None, last=False):
         _die_no_capture(model, session)
 
     raw = _load(cur)
-    # 剥离口径走生产同一个函数（`_stabilize` 里那次调用的入口）：CoWork 面整面不剥。
+    # 剥离口径走生产同一个函数（`_stabilize` 里那次调用的入口）：CoWork 面原样透传。
     base_cfg = gateway.load_tool_pruning_config()
     tp_cfg = gateway.pruning_cfg_for_surface(base_cfg, gateway.classify_kind(raw))
     surface_skipped = tp_cfg is not base_cfg
@@ -542,14 +549,18 @@ def cmd_audit(model, session=None, last=False):
     findings += injected
     _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
     findings += pair_findings
-    _audit_rule_health(changed)
+    _audit_rule_health(changed, skipped=surface_skipped)
     findings += sum(1 for c in changed if c.startswith(("rule_silent_", "rule_residue_")))
 
     print()
     print("─" * 78)
     print("⑤ 结论")
     print("─" * 78)
-    if findings == 0:
+    if surface_skipped:
+        print("  ℹ️ CoWork 面**原样透传**（不洗、不剥，只做模型名映射）：上面 System / 消息面"
+              "报出的残留是预期内的，不构成待办。")
+        print("     要判注入面请审 Code 面那份（`--model <模型>` 不带 _cowork 后缀）。")
+    elif findings == 0:
         print("  ✅ 当前注入面已被现有规则完全吸收，本次升级无需动作。")
     else:
         print("  ⚠️ 发现 %d 处待处理的注入面 —— 按上面各条的说明处理：工具没开关的补进类别表"
