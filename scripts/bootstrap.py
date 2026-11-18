@@ -506,13 +506,6 @@ def cmd_uninstall(args):
         unset_env=config_ops.SETTINGS_ENV_KEYS, unset_top=("promptCacheTtl",
                                                             "subagentPromptCacheTtl",
                                                             "autoCompactEnabled"))
-    # 旧落点（permissions.deny）的残留：换实现之前写进去的规则仍在用户的 /permissions 里
-    legacy = (state["bridge_cfg"] or {}).get(config_ops.LEGACY_DENY_KEY) or []
-    if legacy:
-        merged, dropped = config_ops.drop_legacy_deny(merged, legacy)
-        if dropped:
-            changed = sorted(set(changed) | {"permissions"})
-            log("  旧版权限规则将收回：%s" % ", ".join(dropped))
     # 客户端侧拦截写在 3P 配置的 disabledBuiltinTools 里 —— 卸载时只删自己写过的那些，
     # 用户自己在 Setup 窗口加的条目原样留着。
     three_p_bundle, disabled_changed, _ = config_ops.merge_client_disabled(
