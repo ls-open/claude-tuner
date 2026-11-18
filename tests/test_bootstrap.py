@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-tuner/scripts/bootstrap.py 的端到端测试。
+"""scripts/bootstrap.py 的端到端测试。
 
 为什么需要这个文件
 ------------------
@@ -12,13 +12,13 @@
 - 连跑两次，第二次必须零写入；
 - 改已有的文件前必须留下备份。
 
-**在子进程里真跑**（本仓铁律：命令行入口必须在子进程验）：bootstrap 的入口就是命令行，import 后调函数
+**在子进程里真跑**：bootstrap 的入口就是命令行，import 后调函数
 够不到 `main()` 与 `sys.argv`，而 `--dry-run` / `--no-restart` 恰恰只在那里成立。
 HOME / CLAUDE_TUNER_3P_DIR / CLAUDE_TUNER_HOME 全部指向临时目录，不碰真实的 ~/Library 与 ~/.claude。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tools/test_bootstrap.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_bootstrap.py
 """
 import json
 import os

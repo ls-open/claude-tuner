@@ -8,7 +8,7 @@
 症状是「点停止停不下来」或「停止后端口还占着」—— 两个平台都会中招，本机还不一定复现。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
+    python3 -m unittest discover -s tests -p "test_*.py"
 """
 import os
 import socket

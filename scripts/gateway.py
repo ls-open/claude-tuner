@@ -736,7 +736,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
 
     `stripped_names`：**判定为不该留**的工具名集合，由调用方用 `ghost_tool_names()` 算好
     传进来。不传就只认配置里的精确名 —— 前缀类工具（`mcp__ccd_session*` 等）会漏在探测之外。
-    名字里的「剥」是历史叫法：网关已不从报文里删工具（DECISIONS #61）。
+    名字里的「剥」是历史叫法：网关已不从报文里删工具。
 
     `incoming_tools`：客户端**本轮真发来**的工具名集合。段落删不删由它决定 ——
     这一对里的工具一个都没发 → 段落是孤句（见 `tool_rules.pair_is_orphaned`）。
@@ -749,7 +749,6 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     # CoWork 面（非主力面）只做**结构修正**，清洗规则一律不跑：这个面用得少，不值得为它
     # 维护一套要跟着客户端跟版的规则；也不做工具精简（`pruning_cfg_for_surface` 已关）。
     # 留下的两条都是「不做会 400」的：拆混合 user 消息、工具块排序（在 prepare_request 里）。
-    # 见 DECISIONS #46。
     if _kind in COWORK_KINDS:
         r = dict.fromkeys(r, False)
         r["split_mixed_user_messages"] = True
@@ -842,7 +841,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「配对段落没找到」不再单独报警：判据改成缺席驱动之后，「工具没发 + 段落不在」是
-    # **正常态**（客户端本来就可能不拼那段），不再是「锚点被改写」的证据（DECISIONS #62）。
+    # **正常态**（客户端本来就可能不拼那段），不再是「锚点被改写」的证据。
     # 真正的悬空指引由 `report_orphan_mentions` 抓：洗完还残留被挡工具的名字就报出来。
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
@@ -1114,9 +1113,9 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     """按生产顺序跑一遍稳定化，返回 changed 列表（原地修改 parsed）。
 
     顺序是这里定的，别在别处复刻：
-    1. 按客户端面定型判定口径（CoWork 面原样透传，见 DECISIONS #46）
+    1. 按客户端面定型判定口径（CoWork 面原样透传）
     2. 记下「判定为不该留」的工具名与客户端原始工具名
-    3. prepare_request 排 tool_result（**不删工具**，工具由客户端在源头挡，见 #61）
+    3. prepare_request 排 tool_result（**不删工具**，工具由客户端在源头挡）
     4. canonicalize 清洗易变前缀；配对段落用它需要的那两份名单
 
     第 2 步是这套配合的关键：第 4 步判断「这段该不该删」靠的是「客户端这一轮发了哪些工具」。
@@ -1136,7 +1135,7 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
     """主请求前置稳定化预处理：
     1. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
     2. 工具精简不在网关做：开关推导出的名单由配置台写成客户端的 `disabledBuiltinTools`，
-       客户端根本不发（DECISIONS #61）—— 这里不删任何工具。
+       客户端根本不发 —— 这里不删任何工具。
     """
     changed = []
     r = rules or load_rules_config()

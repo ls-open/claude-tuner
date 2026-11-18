@@ -92,7 +92,7 @@ class TestCoWorkAdapter(unittest.TestCase):
         req = {"tools": list(code_tools), "messages": []}
         changed = gateway.prepare_request(req, session_id="test-code")
         # 精简已经整层搬给客户端（`disabledBuiltinTools`），网关不再从报文里删工具：
-        # 「不发」只有客户端一个来源（见 DECISIONS #61）。
+        # 「不发」只有客户端一个来源。
         self.assertFalse([c for c in changed if c.startswith("prune_tools_")])
         self.assertEqual(len(req["tools"]), len(code_tools))
         names = {t["name"] for t in req["tools"]}

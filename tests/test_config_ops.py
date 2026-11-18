@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-tuner/scripts/config_ops.py 的单测：把「写用户配置」的判定钉死。
+"""scripts/config_ops.py 的单测：把「写用户配置」的判定钉死。
 
 为什么需要这个文件
 ------------------
@@ -12,8 +12,8 @@
 引用的就是它们），不是复刻件。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tools/test_config_ops.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_config_ops.py
 """
 import importlib.util
 import os
@@ -103,11 +103,6 @@ class TestProbeKey(ConfigOpsTestCase):
 
 
 class TestGate(ConfigOpsTestCase):
-    def test_constant_time_eq(self):
-        self.assertTrue(self.ops.constant_time_eq("abc", "abc"))
-        self.assertFalse(self.ops.constant_time_eq("abc", "abd"))
-        self.assertFalse(self.ops.constant_time_eq("", "abc"))
-
     def test_host_must_be_loopback(self):
         ok = ("127.0.0.1:8789", "localhost:8789", "127.0.0.1", "localhost",
               "LOCALHOST:8789")

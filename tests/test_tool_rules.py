@@ -15,8 +15,8 @@
 配对里只剥掉一部分时段落必须原样保留（那时段落仍然成立）。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tools/test_tool_rules.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_tool_rules.py
 """
 import importlib.util
 import os
@@ -44,7 +44,7 @@ tr = _load("tool_rules_under_test", "tool_rules.py")
 gw = _load("gateway_under_test_toolrules", "gateway.py")
 
 # 运行目录指向临时目录（模块级，覆盖整个文件）：prepare_request 里的抓包路径会往
-# BASE_DIR 落盘，不隔开就会写进真实 HOME（铁律：测试不碰真实 HOME）
+# BASE_DIR 落盘，不隔开就会写进真实 HOME
 _ISOLATED_HOME = tempfile.mkdtemp(prefix="claude-tuner-test-")
 gw.BASE_DIR = _ISOLATED_HOME
 gw.CONFIG_FILE = os.path.join(_ISOLATED_HOME, "config.json")
@@ -74,7 +74,6 @@ def dflt(**over):
 
 
 CCD_PR_PAIR = next(p for p in tr.PROMPT_PAIRS if p["id"] == "ccd_pr")
-SHOW_PANE_PAIR = next(p for p in tr.PROMPT_PAIRS if p["id"] == "ccd_view_show_pane")
 
 # 一段真实的系统提示词片段（取自抓包，逐字）
 PR_HEAD = ("After opening a PR, use the ccd_pr tools: call `get_status` and, if it does not "
@@ -98,7 +97,7 @@ CI_MONITOR = ("The desktop app may send this session `<ci-monitor-event>` messag
 # 客户端真实发送的终端工具名（2026-10-13 从桌面端 3P 的真实请求里读出来的）。
 # **这是清单不是猜测** —— 配对表曾经写成 `create_terminal`，一个不存在的名字，
 # 见下面那条回归测试。要重新核对这份清单：开 `capture_raw_inbound` 抓一份报文，
-# 跑 `python3 claude-tuner/scripts/sentinel.py audit` —— 它会列出这次请求带的全部工具。
+# 跑 `python3 scripts/sentinel.py audit` —— 它会列出这次请求带的全部工具。
 REAL_TERMINAL_TOOLS = frozenset({
     "mcp__terminal__open_terminal_tab", "mcp__terminal__list_terminal_tabs",
     "mcp__terminal__read_terminal", "mcp__terminal__run_in_terminal",
@@ -302,7 +301,7 @@ class TestCategoryFor(unittest.TestCase):
             self.assertFalse(tr.should_strip_tool(name, names, c), name)
 
     def test_workflow_has_no_gateway_switch(self):
-        """Workflow 不再由网关剥 —— 它归客户端的 enableWorkflows 管（DECISIONS #34）。
+        """Workflow 不再由网关剥 —— 它归客户端的 enableWorkflows 管。
 
         它曾跟跨会话消息、任务停止、结果上报捆在一个开关里，后来拆开各归各；现在连
         网关开关本身都撤了：客户端自己的设置就能把工具从源头拿掉，我们事后剥是重复劳动，
@@ -376,7 +375,7 @@ class TestPairing(unittest.TestCase):
 
 
 class TestGhostInstructionStripping(unittest.TestCase):
-    """网关真的把那几段删掉 —— 用生产同一形态调用（铁律 6）。"""
+    """网关真的把那几段删掉 —— 用生产同一形态调用。"""
 
     def test_category_switch_removes_paragraph(self):
         out, hit = gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=cfg())
@@ -489,8 +488,8 @@ class TestGhostInstructionStripping(unittest.TestCase):
     def test_网关不再从报文里删工具(self):
         """迁移的底线：工具精简整层在客户端，网关一个工具都不许删。
 
-        哪天有人「顺手补一层兜底」把它加回来，「它为什么没发」就又有两个口径了
-        （DECISIONS #61）。这条用例就是那根桩。
+        哪天有人「顺手补一层兜底」把它加回来，「它为什么没发」就又有两个口径了。
+        这条用例就是那根桩。
         """
         parsed = {
             "model": "claude-opus-5-5",

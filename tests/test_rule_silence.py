@@ -13,8 +13,8 @@
 - `rule_residue_<规则>`：清洗之后易变痕还在 —— 客户端把锚点本身改了措辞。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 claude-tuner/tests/test_rule_silence.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_rule_silence.py
 """
 import os
 import sys

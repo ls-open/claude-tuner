@@ -257,7 +257,6 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     # 一个开关 = 一种能力（或提示词里的一整段）。**全部默认关**：新装用户拿到的是
     # 工具全在场，想省哪一类自己勾 —— 剥什么不该由我们替他决定。
     # 分组判据：能力相同才合成一组，不为了少几个按钮把不相干的东西捆在一起。
-    # 取舍见 DECISIONS #61。
     "strip_sidebar_tools": False,          # 侧栏：分组、置顶、未读、整组移动
     "strip_window_tools": False,           # 窗口：分屏、侧栏折叠
     "strip_view_tools": False,             # 呈现面板：diff / 文件 / 终端 / 预览

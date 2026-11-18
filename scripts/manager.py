@@ -235,7 +235,7 @@ def gateway_alive():
 def is_installed_copy():
     """判断当前 manager 是否运行在客户端安装目录（skills/<name>）下。
 
-    仅安装副本允许接管运行时并写入 runtime_script_dir，防止在源码目录直接执行时污染线上网关与 sync.py 推送目标。
+    仅安装副本允许接管运行时并写入 runtime_script_dir，防止在源码目录直接执行时污染线上网关与开发同步的推送目标。
     """
     try:
         here = os.path.abspath(SCRIPT_DIR)

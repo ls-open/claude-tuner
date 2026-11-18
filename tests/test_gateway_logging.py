@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""网关结构化日志的几条不变量（`claude-tuner/scripts/gateway.py`）。
+"""网关结构化日志的几条不变量（`scripts/gateway.py`）。
 
 - `request_id` 只能由 `log_event` 注入，调用点不得自己写这个键（写一个空值就会把它顶掉）。
 - 上游失败事件必须带 `headers_sent`：响应头一旦发出就无法重发，只有它为 false 的失败
@@ -8,7 +8,7 @@
 
 这两条都是踩过坑才定下来的；这里只留规则与断言。
 
-运行：python3 tools/test_gateway_logging.py
+运行：python3 tests/test_gateway_logging.py
 """
 import contextlib
 import importlib.util
@@ -345,7 +345,7 @@ class TestLogRetentionConfig(unittest.TestCase):
 
 
 class TestUpstreamTiming(unittest.TestCase):
-    """上游「首字节 / 最长静默」必须落盘：只有它能区分空等与半路哑（契约 D-1.2）。"""
+    """上游「首字节 / 最长静默」必须落盘：只有它能区分空等与半路哑。"""
 
     def setUp(self):
         self.gw = load_gateway()

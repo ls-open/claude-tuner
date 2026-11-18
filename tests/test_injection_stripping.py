@@ -356,7 +356,7 @@ class TestSentinelMatchesGateway(unittest.TestCase):
     def test_用户正文里的裸形态降级为存疑不计结论(self):
         """注入形态落在 user 消息的裸正文里 —— 那是我们在讨论它，不是客户端在注入。
 
-        判据是「落在哪种块里」（承 DECISIONS #18/#27）：注入面 = role:system 消息，
+        判据是「落在哪种块里」：注入面 = role:system 消息，
         或 user 消息里带 `<system-reminder>` 容器的块。裸形态降级成存疑，但**照样打印**，
         免得客户端真改了注入形态时静悄悄给一个 ✅。
         """

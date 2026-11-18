@@ -229,7 +229,7 @@ def restart_gateway():
     """换完代码要重启网关 —— 它自己不会重启自己。"""
     manager = os.path.join(SCRIPT_DIR, "manager.py")
     # `start_new_session` 是 POSIX 专有语义，Windows 上被静默忽略：换完代码重启的网关
-    # 会跟这个即将退出的更新进程绑在一起。统一走 platform_support（铁律 7）。
+    # 会跟这个即将退出的更新进程绑在一起。统一走 platform_support。
     subprocess.Popen([sys.executable, manager, "restart"], stdin=subprocess.DEVNULL,
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      **platform_support.detached_kwargs())

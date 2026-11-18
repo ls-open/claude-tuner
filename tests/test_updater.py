@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""claude-tuner/scripts/updater.py 的单测：自更新这条路上最怕的那几件事。
+"""scripts/updater.py 的单测：自更新这条路上最怕的那几件事。
 
 为什么需要这个文件
 ------------------
@@ -13,8 +13,8 @@
 3. 任何一步失败，**正在用的那份保持原样**，且失败原因如实报出。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tools/test_updater.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_updater.py
 """
 import importlib.util
 import io

@@ -11,8 +11,8 @@
 命中部分扔掉了），甚至算出大于 100% 的数。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tools/test_live_stats.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_live_stats.py
 """
 import importlib.util
 import json
@@ -42,10 +42,6 @@ ls = load("live_stats_under_test", "live_stats.py")
 def ok_line(usage, ts="2026-10-13T10:00:00+0800", model="deepseek-flash"):
     return json.dumps({"event": "upstream_ok", "usage": usage, "ts": ts,
                        "model_mapped": model})
-
-
-def canon_line(changes):
-    return json.dumps({"event": "canonicalized", "changes": changes})
 
 
 class TestEmptyAndBroken(unittest.TestCase):

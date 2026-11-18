@@ -127,12 +127,6 @@ def probe_key_error(source):
     return "还没有填 API Key"
 
 
-def constant_time_eq(a, b):
-    """定长比较，避免 token 校验被计时侧信道区分。"""
-    import hmac
-    return hmac.compare_digest((a or "").encode("utf-8"), (b or "").encode("utf-8"))
-
-
 def _local_host_names():
     return ("127.0.0.1", "localhost", "[::1]")
 
@@ -227,11 +221,10 @@ SETTINGS_TOP_KEYS = (
     "promptCacheTtl",
     "subagentPromptCacheTtl",
     "autoCompactEnabled",
-    "autoMemoryEnabled",
     "includeCoAuthoredBy",
-    "attribution",
-    # 下面四个已从页面撤掉（判据见 DECISIONS #63），仍留在白名单里是为了卸载时
-    # 能把我们当年写进去的值一起收回 —— 留在清单外的话它们就成了没人认领的残留键。
+    # 下面四个已从页面撤掉：`precomputeCompactionEnabled` 在我们默认关掉自动压缩时恒为空转；
+    # 另三个有效但副作用没写进页面（关掉思考摘要会连对话里的摘要一起消失、禁用思考会掉质量）。
+    # 仍留在白名单里是为了卸载时能把当年写进去的值一起收回 —— 留在清单外就成了没人认领的残留键。
     "idleCompaction",              # 会话空闲时自动压缩长对话
     "precomputeCompactionEnabled", # 后台预生成压缩摘要（只在自动压缩开着时有意义）
     "showThinkingSummaries",       # 请服务端额外生成一份思考摘要
@@ -240,6 +233,8 @@ SETTINGS_TOP_KEYS = (
 )
 # 注：`disableBundledSkills` **不在这里** —— 它是 3P 配置的键（客户端设置页也写那儿），
 # 归 `build_3p_bundle` 的 `bundled_skills` 管。写到这个清单里等于永不生效。
+# 同理，`autoMemoryEnabled` / `attribution` 也不在这里：客户端设置页各有自己的开关，
+# 我们不重复实现，也就不该有覆盖它们的权力（进了白名单就意味着一个补丁能把它改掉）。
 
 
 def cli_env(base_url, api_key, model, one_m=True):

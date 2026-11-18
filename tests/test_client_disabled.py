@@ -15,8 +15,8 @@
 所以配对段落仍然必须剥（见 ParagraphStillStrippedTest）。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 claude-tuner/tests/test_client_disabled.py
+    python3 -m unittest discover -s tests -p "test_*.py"
+    python3 tests/test_client_disabled.py
 """
 import os
 import sys
@@ -34,7 +34,7 @@ import gateway  # noqa: E402
 import tool_rules as tr  # noqa: E402
 
 # 运行目录指向临时目录（模块级，覆盖整个文件）：canonicalize 里的告警会落盘，
-# 不隔开就会写进真实 HOME（铁律：测试不碰真实 HOME）
+# 不隔开就会写进真实 HOME
 _ISOLATED_HOME = tempfile.mkdtemp(prefix="claude-tuner-test-")
 gateway.BASE_DIR = _ISOLATED_HOME
 gateway.CONFIG_FILE = os.path.join(_ISOLATED_HOME, "config.json")

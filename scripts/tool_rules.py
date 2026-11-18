@@ -10,7 +10,7 @@
 所以规则只在这里写一份：网关 import 它，配置页也 import 它。
 
 它是**纯函数层**（同 config_ops.py）：打进去一份 cfg，返回判断结果，不读盘不写盘。
-纯函数的好处是能被测试以生产同一形态直接调用（铁律 6），不必起进程、不必造假文件。
+纯函数的好处是能被测试以生产同一形态直接调用，不必起进程、不必造假文件。
 """
 from common import DEFAULT_TOOL_PRUNING_CONFIG
 
@@ -41,7 +41,7 @@ PROTECTED_TOOLS = frozenset({
 # 与任何开关无关、恒定剥离的名单。WaitForMcpServers 是客户端等待 MCP 就绪的内部工具，
 # 对模型毫无意义，任何配置下都不该占一份上下文。
 # 名字必须与客户端的内置工具表**逐字一致**：客户端不认的名字写进 `disabledBuiltinTools`
-# 一条都挡不住，还会在 Setup 窗口挂一条配置告警（见 #58）。
+# 一条都挡不住，还会在 Setup 窗口挂一条配置告警。
 ALWAYS_STRIPPED = ("WaitForMcpServers",)
 
 # 类别键 → 前缀（**只用于认人**：某个工具属于哪一组）。顺序即优先级。
@@ -152,7 +152,7 @@ CATEGORY_KNOWN_TOOLS = {
     ),
 }
 
-# 只走**客户端层**的内置工具（DECISIONS #58）：开关把它们写进 3P 配置的
+# 只走**客户端层**的内置工具：开关把它们写进 3P 配置的
 # `disabledBuiltinTools`，客户端**根本不发**；网关不再事后剥一层 —— 那层永远无物可剥，
 # 留着还会让「它为什么没发」出现两个口径（哨兵说客户端挡住的、代码说我们会剥）。
 # 名字仍留在 `CATEGORY_NAMES` 里：那张表回答的是「我们给它定过开关没有」，
@@ -182,7 +182,7 @@ COWORK_KINDS = ("cowork", "cowork_subagent")
 def pruning_cfg_for_surface(cfg, kind):
     """按客户端面给出**实际生效**的剥离配置。
 
-    CoWork 面**整面原样透传**（见 DECISIONS #46）：返回一份 `enabled=False` 的副本，
+    CoWork 面**整面原样透传**：返回一份 `enabled=False` 的副本，
     于是 `strip_reason` / 配对段落与孤儿探测全部自动跟着走 —— 判一遍面就够，
     不必让每个下游函数各学一个新参数。网关那边另有一道：`canonicalize` 对同一批 kind
     连文本清洗规则也不跑。
@@ -216,8 +216,8 @@ def category_for(tool_name):
 def strip_reason(tool_name, stripped_names, cfg):
     """这个工具为什么会被剥掉？返回原因（类别配置键 / 'custom' / 'builtin'），不剥返回空串。
 
-    之所以要连原因一起给出来：配置页要把「哪些是预设规则替你剥的、哪些是你自己勾的」
-    分开显示 —— 只说剥了不说谁剥的，用户看到一个自己没勾过的勾会以为是界面出错。
+    返回原因而不是布尔：`should_strip_tool` 取它的真假，而「是谁剥的」是排查时第一个
+    要问的 —— 预设规则剥的和用户自己勾的，出问题时的处置完全不同。
     """
     if tool_name in PROTECTED_TOOLS:
         return ""   # 底线：任何配置都剥不动
@@ -268,7 +268,7 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 名字写错时客户端还会给警告（`web_fetch` 那种小写写法就是它报的）。
 #
 # MCP 工具同样走得通：名单里既有非 MCP 的内置工具，也有 `mcp__*` 的精确名。
-# 早先按公开 issue 判定「客户端侧没有出路」，实测（客户端 2.1.326）推翻了 —— 见 #61。
+# 早先按公开 issue 判定「客户端侧没有出路」，实测（客户端 2.1.326）推翻了。
 #
 # 和网关是什么关系
 # ----------------
@@ -277,7 +277,7 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 出现两个口径。
 #
 # 失效靠 `client_disabled_leaks` 报出来：某版客户端不认那个字段，工具立刻回到报文里、
-# 前缀当场涨一截。这一层没有网关兜底 —— 报出来就是为了当场看见（DECISIONS #58 / #61）。
+# 前缀当场涨一截。这一层没有网关兜底 —— 报出来就是为了当场看见。
 
 
 def client_disabled_tools(cfg):
@@ -370,7 +370,7 @@ def client_disabled_leaks(present_names, disabled_names):
     """写着「客户端不发」、报文里却出现了 —— 客户端侧拦截失效，必须报出来。
 
     这一层**没有兜底**：网关已不再从报文里删工具，泄漏就是真进了上下文、前缀当场涨一截。
-    报出来是为了让人当场看见，而不是等到账单变贵才发现（DECISIONS #58 / #61）。
+    报出来是为了让人当场看见，而不是等到账单变贵才发现。
     """
     denied = set(disabled_names or ())
     return sorted(n for n in (present_names or ()) if n in denied)
@@ -414,7 +414,7 @@ def ghost_tool_names(tools, cfg):
 # 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
 # 锚点必须取短、只留段首特征：段落后面怎么改写都还认得出。拿「首句 + 末句逐字
 # 全等」当判据会在客户端改一个标点时静默失配 —— 工具照剥、段落留下，成了比不剥
-# 更糟的孤句。锚点失配**不再单独报警**：工具没发 + 段落不在是正常态（#62），
+# 更糟的孤句。锚点失配**不再单独报警**：工具没发 + 段落不在是正常态，
 # 真留下悬空指引由 `orphan_mentions()` 按工具名抓。
 PROMPT_PAIRS = (
     {
@@ -481,7 +481,7 @@ def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
     if incoming_tools is not None:
         if not incoming_tools:
             # 零工具的辅助请求（会话标题生成那类）：这一面判断不了，不删也不报。
-            # 曾把这类请求当成「段落失配」刷出 8 次假 WARN（DECISIONS #62）。
+            # 曾把这类请求当成「段落失配」刷出 8 次假 WARN。
             return False
         return not any(t in incoming_tools for t in pair["tools"])
     return all(should_strip_tool(name, stripped_names or (), cfg) for name in pair["tools"])

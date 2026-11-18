@@ -17,10 +17,10 @@
 发过至少一条消息（探针请求不抓）。
 
 用法：
-    python3 claude-tuner/scripts/sentinel.py capture on|off|status   # 抓包开关
-    python3 claude-tuner/scripts/sentinel.py audit [--model <模型>] [--session <会话>] [--last]
-    python3 claude-tuner/scripts/sentinel.py list
-    python3 claude-tuner/scripts/sentinel.py compare <旧抓包> <新抓包>   # 客户端这次动了什么
+    python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture on|off|status   # 抓包开关
+    python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py audit [--model <模型>] [--session <会话>] [--last]
+    python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py list
+    python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py compare <旧抓包> <新抓包>   # 客户端这次动了什么
 """
 import argparse
 import copy
@@ -202,7 +202,7 @@ def cleaned_copy(payload, tp_cfg=None, with_changed=False):
 
     不能只调 `canonicalize`：生产走的是 `stabilize_request`（按面定型 → 记下工具名 →
     排序 → 清洗），少了前两步，哨兵看到的字节与真发出去的不是同一份 —— 段落该删没删
-    这种故障会被它报成 ✅（铁律 6）。
+    这种故障会被它报成 ✅。
     """
     p = copy.deepcopy(payload)
     changed = []
@@ -447,7 +447,7 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     所以只报出来给人看。
 
     反方向（「工具没发、说明段落也不在」）**不再报** —— 那是正常态：客户端本来就可能
-    不拼那段（DECISIONS #62）。真正留下悬空指引时，工具名会在这里被逮到。
+    不拼那段。真正留下悬空指引时，工具名会在这里被逮到。
 
     只扫**顶层 system 面**，不扫 messages —— messages 是对话正文，讨论到某个工具名是常态。
     """
@@ -464,7 +464,7 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         if found:
             hits.append((name, sorted(found)))
     # 只认主会话面：子代理与 CoWork 的 system 是另外两份提示词，工具照发、这几段本就不在
-    # 里面，这里报什么都是噪声。网关侧同一道闸见 DECISIONS #62。
+    # 里面，这里报什么都是噪声。网关侧同一道闸只看同一批面。
     kind = gateway.classify_kind(raw)
     print()
     print("─" * 78)
@@ -567,7 +567,7 @@ def cmd_audit(model, session=None, last=False):
               "挪进了正文且不再带容器，这里会降级 —— 人工扫一眼再收工。" % suspect)
     print()
     print("  提示：确认无误后可关闭抓包以恢复零 I/O 开销：")
-    print("        python3 claude-tuner/scripts/sentinel.py capture off")
+    print("        python3 ~/.claude/skills/claude-tuner/scripts/sentinel.py capture off")
 
 
 def cmd_list():
@@ -754,7 +754,7 @@ def cmd_capture(action="status"):
         with open(path, encoding="utf-8") as fh:
             cfg = json.load(fh)
     except FileNotFoundError:
-        print("❌ 找不到配置文件：%s（先跑 claude-tuner/scripts/manager.py ensure 把网关装好）" % path)
+        print("❌ 找不到配置文件：%s（先跑 ~/.claude/skills/claude-tuner/scripts/manager.py ensure 把网关装好）" % path)
         sys.exit(1)
     except json.JSONDecodeError as exc:
         print("❌ 配置文件不是合法 JSON：%s（%s）" % (path, exc))

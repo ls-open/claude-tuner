@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""`claude-tuner/scripts/stats.py` 读底稿时的两个口径。
+"""`scripts/stats.py` 读底稿时的两个口径。
 
 这两条都是**数字错了没人会发现**的类型 —— 面板照常打印、格式也好看，
 只是把 content block 数当成了调用次数、把压缩当成了缓存被破坏。
@@ -7,7 +7,7 @@
 底稿的真实形态（实测）：一次 API 响应被写成**多行**，每个 content block 一行，
 `usage` 逐行原样重复，同属一个 `message.id`。
 
-运行：python3 tools/test_stats.py
+运行：python3 tests/test_stats.py
 """
 import json
 import os

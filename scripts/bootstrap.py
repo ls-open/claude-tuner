@@ -503,9 +503,11 @@ def cmd_uninstall(args):
     state = gather_state(paths)
     merged, changed = config_ops.merge_settings(
         state["claude_settings"], {},
-        unset_env=config_ops.SETTINGS_ENV_KEYS, unset_top=("promptCacheTtl",
-                                                            "subagentPromptCacheTtl",
-                                                            "autoCompactEnabled"))
+        # 收回的顶层键**直接取白名单本身**：白名单的定义就是「我们可能会写的那批键」，
+        # 另抄一份清单迟早漏（漏过：页面撤掉的四个、页面仍能写的 Co-Authored-By 与
+        # enableWorkflows 都曾被漏在清单外，用户卸载后残留一堆不是自己设过的值）。
+        unset_env=config_ops.SETTINGS_ENV_KEYS,
+        unset_top=config_ops.SETTINGS_TOP_KEYS)
     # 客户端侧拦截写在 3P 配置的 disabledBuiltinTools 里 —— 卸载时只删自己写过的那些，
     # 用户自己在 Setup 窗口加的条目原样留着。
     three_p_bundle, disabled_changed, _ = config_ops.merge_client_disabled(
@@ -547,8 +549,8 @@ def cmd_uninstall(args):
 # 早先把改写写在 install.py 里，只在安装那一刻生效 —— 下次点「检查更新」整棵树被覆盖，
 # 适配就没了，Hook 静默失效、网关再也拉不起来。
 # 所以适配必须做成**幂等的收尾步骤**，由所有「往插件目录写文件」的入口调用：
-# bootstrap install（首次安装，install.py 转交给它）、updater.py（检查更新）、
-# tools/sync.py（开发同步）。
+# bootstrap install（首次安装，install.py 转交给它）、updater.py（检查更新），
+# 以及开发者的同步脚本。
 PYTHON_CANDIDATES = ("python3", "python", "py")
 
 

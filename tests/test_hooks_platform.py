@@ -25,7 +25,7 @@ exec form 之下这个失败模式从构造上不存在，不需要有台 Window
 被替换成真实路径、替换后的 `manager.py ensure --quiet` 真的执行成功、退出码 0。
 
 跑法：
-    python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
+    python3 -m unittest discover -s tests -p "test_*.py"
 """
 import json
 import os
