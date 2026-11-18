@@ -413,15 +413,14 @@
     <a href="#s2"><span class="nav-ico">②</span>模型映射</a>
 
     <div class="grp">核心调优</div>
-    <a href="#s3"><span class="nav-ico">③</span>上下文缓存</a>
+    <a href="#s3"><span class="nav-ico">③</span>客户端设置</a>
     <a href="#s4"><span class="nav-ico">④</span>请求稳定化</a>
     <a href="#s5"><span class="nav-ico">⑤</span>工具精简</a>
-    <a href="#s6"><span class="nav-ico">⑥</span>客户端偏好</a>
 
     <div class="grp">运维与状态</div>
-    <a href="#s7"><span class="nav-ico">⑦</span>用量统计</a>
-    <a href="#s8"><span class="nav-ico">⑧</span>网关状态</a>
-    <a href="#s9"><span class="nav-ico">⑨</span>版本与更新</a>
+    <a href="#s6"><span class="nav-ico">⑥</span>用量统计</a>
+    <a href="#s7"><span class="nav-ico">⑦</span>网关状态</a>
+    <a href="#s8"><span class="nav-ico">⑧</span>版本与更新</a>
   </nav>
 
   <main>
@@ -509,54 +508,41 @@
     </section>
 
     <section id="s3">
-      <div class="head"><span class="num">③</span><h2>上下文缓存</h2>
+      <div class="head"><span class="num">③</span><h2>客户端设置</h2>
         <span class="who">Claude 官方设置</span>
         <button class="save-pill" data-save-section="s3" hidden></button></div>
       <div class="body">
-        <p class="lead">控制客户端缓存保留时长与历史压缩。延长至 1 小时可显著提高连续对话命中率；按需关闭自动压缩可避免前缀频繁重建失效。</p>
         <div id="moneyBox"></div>
+        <div id="prefBox"></div>
       </div>
     </section>
 
     <section id="s4">
-      <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
-        <button class="save-pill" data-save-section="s4" hidden></button></div>
+      <div class="head"><span class="num">④</span><h2>请求稳定化</h2></div>
       <div class="body">
         <p class="lead">发往模型前的请求优化与前缀清洗通道，最大化命中 Prompt 缓存。</p>
         <div id="ruleBox"></div>
-        <p class="note">工具说明段落的删留不在这里：它跟着 ⑤ 工具精简的开关走 —— 某组工具不再发送时，解释它的提示词段落会自动一起移除，免得留下指向不存在工具的指引。</p>
       </div>
     </section>
 
     <section id="s5">
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
-        <span class="tag" id="pruneTag" style="display:none"></span>
-        <button class="save-pill" data-save-section="s5" hidden></button></div>
+        <span class="tag" id="pruneTag" style="display:none"></span></div>
       <div class="body">
         <div id="pruneBox"></div>
       </div>
     </section>
 
     <section id="s6">
-      <div class="head"><span class="num">⑥</span><h2>客户端偏好</h2>
-        <span class="who">Claude 官方设置</span><span class="tag" id="clientTag"></span>
-        <button class="save-pill" data-save-section="s6" hidden></button></div>
-      <div class="body">
-        <p class="lead">控制 Claude 桌面端的各项原生偏好（Git 提交签名、终端联动、随附技能与定时任务）。</p>
-        <div id="prefBox"></div>
-      </div>
-    </section>
-
-    <section id="s7">
-      <div class="head"><span class="num">⑦</span><h2>用量统计</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
+      <div class="head"><span class="num">⑥</span><h2>用量统计</h2><span class="tag">数字来自上游真实响应，非估算</span></div>
       <div class="body">
         <p class="lead">缓存命中率越高，实际费用越省、首字响应越快。</p>
         <div id="statBox"></div>
       </div>
     </section>
 
-    <section id="s8">
-      <div class="head"><span class="num">⑧</span><h2>网关状态</h2><span class="tag" id="gwTag"></span></div>
+    <section id="s7">
+      <div class="head"><span class="num">⑦</span><h2>网关状态</h2><span class="tag" id="gwTag"></span></div>
       <div class="body">
         <div class="row">
           <div class="hint" style="margin:0;flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -582,8 +568,8 @@
       </div>
     </section>
 
-    <section id="s9">
-      <div class="head"><span class="num">⑨</span><h2>版本与更新</h2><span class="tag" id="verTag"></span></div>
+    <section id="s8">
+      <div class="head"><span class="num">⑧</span><h2>版本与更新</h2><span class="tag" id="verTag"></span></div>
       <div class="body">
         <div id="verBox"></div>
         <div class="row" style="margin-top:14px">
@@ -657,15 +643,10 @@ const CUSTOM = '__custom__';
 // 说不准就不说 —— 逐条写一个含糊的「大概」，比不写更容易被当成准数。
 // 这个开关组在干什么，由上面那段小节说明交代。
 const MONEY = [
-  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）'],
-  ['autoCompactEnabled', '关闭会话自动压缩（减少压缩次数）'],
-];
-
-const ADVANCED = [
-  ['idleCompaction', 'off', '禁止空闲时压缩会话', '会话闲置后客户端会静默重写，缓存就断了'],
-  ['precomputeCompactionEnabled', 'off', '禁止后台预生成压缩摘要', ''],
-  ['showThinkingSummaries', 'off', '不请求额外思考摘要', ''],
-  ['alwaysThinkingEnabled', 'off', '关闭强制深度思考', '省 Token，但复杂推理会变差'],
+  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）',
+   '1 小时的缓存写入按更高价计费；上游不认 TTL 时等于没开（自动缓存型上游多半如此）'],
+  ['autoCompactEnabled', '关闭会话自动压缩（减少压缩次数）',
+   '压缩会重写历史、已有前缀缓存随之失效；关掉后上下文满了需手动 /compact'],
 ];
 
 const RULE_GROUPS = [
@@ -718,10 +699,14 @@ const PRUNING_GROUPS = [
 // 免得又把 `enabled` / `custom_strip_tools` 算进来。
 const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, , items]) => items.map(([k]) => k));
 
+// 生效时机**只有两档**，判断依据是「谁读这份配置」，不是「这个键碰巧在哪一级生效」：
+//   · 网关自己读的 → 保存即生效，下一轮请求就按新配置走；
+//   · 写进客户端配置的（3P 配置 / ~/.claude/settings.json）→ 重启客户端。
+// 曾经还有第三档「新会话生效」（settings.json 的进程级键），看着更精细，代价是用户得自己
+// 记住哪个键是进程级、哪个是会话级 —— 而重启一定能覆盖它，多一档只换来一张要背的表。
 const WHEN = {
-  now:     ['保存后即生效', 'gateway'],
-  session: ['保存后新会话生效', 'session'],
-  restart: ['保存后需重启客户端', 'restart'],
+  now:     ['保存即生效（网关）', 'gateway'],
+  restart: ['重启客户端后生效', 'restart'],
 };
 
 const CORE_CACHE_RULES = new Set([
@@ -817,29 +802,19 @@ function addModelRow(d, name, label, oneM){
 }
 
 function renderSwitches(d){
-  $('#moneyBox').innerHTML = MONEY.map(([k, label, why]) =>
-    SW(label, why, `data-key="${k}"`, k === 'promptCacheTtl' ? 'restart' : 'session')).join('');
+  $('#moneyBox').innerHTML =
+    '<div class="subgrp">缓存与压缩</div>' +
+    MONEY.map(([k, label, why]) =>
+      SW(label, why, `data-key="${k}"`, 'restart')).join('');
   const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
   check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
   check('autoCompactEnabled', d.settings.autoCompactEnabled === false);
 
-  const advOn = ADVANCED.some(([k, kind]) => {
-    const val = d.settings[k];
-    return kind === 'off' ? val === false : val === true;
-  });
-  $('#moneyBox').insertAdjacentHTML('beforeend',
-    `<details style="margin-top:14px"${advOn ? ' open' : ''}>
-       <summary style="font-size:12.5px;color:var(--dim2);cursor:pointer">更多实验性高级设置（默认保持官方行为）</summary>
-       <div style="margin-top:10px">` +
-    ADVANCED.map(([k, kind, label, why]) => {
-      const val = d.settings[k];
-      const checked = kind === 'off' ? val === false : val === true;
-      return SW(label, why, `data-adv="${k}" data-kind="${kind}" ${checked ? 'checked' : ''}`, 'session');
-    }).join('') +
-    `</div></details>`);
-
   // 整组同一种生效时机，就只在组头说一次 —— 25 行各挂一枚「保存后即生效」是纯噪音。
-  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存后即生效：下一轮请求起按新配置执行，不需要重启网关。</div>';
+  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存即生效（网关）：下一轮请求起按新配置执行，不用重启任何东西。</div>';
+  // 工具精简的开关写的是客户端名单，生效边界和上面那组**正好相反** —— 一行说清楚，
+  // 别让 17 个开关各挂一枚徽标。
+  const RESTART_NOTE = '<div class="hint" style="margin:0 2px 14px">勾选后名字写进客户端配置，<b>重启客户端</b>才生效；不再发送的工具，解释它的提示词段落会自动一起移除。</div>';
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
   $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, note, items]) =>
@@ -860,7 +835,7 @@ function renderSwitches(d){
   ).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = SAVED_NOTE + PRUNING_GROUPS.map(([title, note, items], gIdx) => {
+  $('#pruneBox').innerHTML = RESTART_NOTE + PRUNING_GROUPS.map(([title, note, items], gIdx) => {
     const total = items.length;
     const checkedCount = items.filter(([k]) => !!(tp[k] ?? defs[k])).length;
     const allChecked = checkedCount === total && total > 0;
@@ -895,18 +870,16 @@ function renderSwitches(d){
     if (tag) tag.textContent = `最近一次请求：剥掉 ${ts.stripped} / ${ts.incoming} 个工具`;
   }
 
-  const running = d.client.running;
-  const tag = $('#clientTag');
-  tag.textContent = running ? '客户端正在运行' : '';
-  tag.style.display = running ? '' : 'none';
   $('#prefBox').innerHTML =
+    '<div class="subgrp">会话与终端</div>' +
+    SW('终端里的 Claude Code 也走本网关',
+       '往 ~/.claude/settings.json 的 env 写 9 个变量（接口地址、Key、模型名等），让命令行里的 Claude Code 用同一套上游；客户端本身不受影响。Key 被客户端加密封存时这一项不可用',
+       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'restart') +
     SW('Git 提交不带 Claude 联署签名', '',
-       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'session') +
-    SW('终端 Claude Code 同样走本网关', '',
-       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'session') +
+       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'restart') +
     `<div class="subgrp">客户端自带能力</div>` +
     SW('关闭客户端自带默认技能与工作流', '',
-       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'session') +
+       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'restart') +
     SW('关闭客户端定时任务（Scheduled Tasks）', '',
        `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart');
 }
@@ -1266,11 +1239,6 @@ function collectCurrentFormState(){
     settings.enableWorkflows = false;
   }
   const tool_pruning = {}, rules = {};
-  ADVANCED.forEach(([k, kind]) => {
-    const el = $(`#moneyBox input[data-adv="${k}"]`);
-    if (!el) return;
-    settings[k] = kind === 'off' ? !el.checked : el.checked;
-  });
   document.querySelectorAll('#pruneBox input[data-tp]').forEach(el => tool_pruning[el.dataset.tp] = el.checked);
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
   tool_pruning.custom_strip_tools = (CFG?.tool_pruning?.custom_strip_tools || []);
@@ -1409,24 +1377,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         title: label,
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
-        when: k === 'promptCacheTtl' ? '保存后需重启客户端' : '保存后新会话生效',
-        badge: k === 'promptCacheTtl' ? 'restart' : 'session',
-        section: 's3'
-      });
-    }
-  });
-
-  ADVANCED.forEach(([k, kind, label]) => {
-    const oldVal = kind === 'off' ? (CFG.settings && CFG.settings[k] === false) : !!(CFG.settings && CFG.settings[k]);
-    const el = $(`#moneyBox input[data-adv="${k}"]`);
-    const newVal = el ? el.checked : false;
-    if (oldVal !== newVal) {
-      diffs.push({
-        title: label,
-        from: oldVal ? '开' : '关',
-        to: newVal ? '开' : '关',
-        when: '保存后新会话生效',
-        badge: 'session',
+        when: WHEN.restart[0],
+        badge: WHEN.restart[1],
         section: 's3'
       });
     }
@@ -1437,12 +1389,12 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
   const newCo = $('#coauthor') ? $('#coauthor').checked : false;
   if (oldCo !== newCo) {
     diffs.push({
-      title: '去除 Co-Authored-By 署名',
+      title: 'Git 提交不带 Claude 联署签名',
       from: oldCo ? '开' : '关',
       to: newCo ? '开' : '关',
-      when: '保存后新会话生效',
-      badge: 'session',
-      section: 's6'
+      when: WHEN.restart[0],
+      badge: WHEN.restart[1],
+      section: 's3'
     });
   }
 
@@ -1450,12 +1402,12 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
   const newCli = $('#cliLinked') ? $('#cliLinked').checked : false;
   if (oldCli !== newCli) {
     diffs.push({
-      title: '终端 Claude Code 环境变量联动',
+      title: '终端里的 Claude Code 也走本网关',
       from: oldCli ? '开' : '关',
       to: newCli ? '开' : '关',
-      when: '保存后新会话生效',
-      badge: 'session',
-      section: 's6'
+      when: WHEN.restart[0],
+      badge: WHEN.restart[1],
+      section: 's3'
     });
   }
 
@@ -1476,7 +1428,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         to: newVal ? '开' : '关',
         when: '保存后需重启客户端',
         badge: 'restart',
-        section: 's6'
+        section: 's3'
       });
     }
   });
@@ -1676,19 +1628,27 @@ async function saveClientSide(){
   const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
 
   say('正在保存设置……');
+  // 三个「只在用户真的动了它才发」的开关。无条件发有两个后果，都是真的踩过：
+  // 把用户自己在 settings.json 里设的 TTL 删掉；把 3P 里本来没有的 scheduledTasksEnabled 写成 true。
+  const ttlOff = CFG.settings?.promptCacheTtl === '1h' && !on('promptCacheTtl');
+  const bundleNow = !!$('#bundledSkills')?.checked;
+  const bundleChanged = (CFG.client?.bundled_skills === true) !== bundleNow;
+  const schedNow = !!$('#schedTasks').checked;
+  const schedChanged = (CFG.client?.scheduled_tasks === false) !== schedNow;
+
   const r = await api('/api/config', {
     upstream_url: $('#upstream').value.trim(),
     api_key: $('#apikey').value.trim(),
     models, settings, tool_pruning, rules,
     unset_settings: [
-      ...(on('promptCacheTtl') ? [] : ['promptCacheTtl', 'subagentPromptCacheTtl']),
+      ...(ttlOff ? ['promptCacheTtl', 'subagentPromptCacheTtl'] : []),
       // 没勾「关闭随附技能与工作流」就把这个键撤掉，别给客户端留一个写死的值
-      ...($('#bundledSkills')?.checked ? [] : ['enableWorkflows']),
+      ...(bundleChanged && !bundleNow ? ['enableWorkflows'] : []),
     ],
     // 另一半在 3P 配置里（客户端设置页也写那儿）—— 见 config_ops.build_3p_bundle
-    bundled_skills: !!$('#bundledSkills')?.checked,
+    bundled_skills: bundleChanged ? bundleNow : undefined,
     cli_linked: $('#cliLinked').checked,
-    scheduled_tasks: !$('#schedTasks').checked,
+    scheduled_tasks: schedChanged ? !schedNow : undefined,
     log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
@@ -1716,18 +1676,13 @@ async function saveClientSide(){
   }
 
   // 生效指引判定
-  const hasRestart = diffs.some(d => d.badge === 'restart') || fx.restart_client;
-  const hasSession = diffs.some(d => d.badge === 'session') || fx.restart_session;
+  const hasRestart = diffs.some(d => d.badge === 'restart')
+    || fx.restart_client || fx.restart_session;
 
   if (hasRestart) {
     bodyHtml += `
       <div class="banner warn">
-        <b>⚠️ 需重启生效：</b>本次改动包含模型映射、密钥或客户端底层偏好，必须<b>完全退出并重新打开 Claude</b>（菜单「退出」，非关闭窗口）方可生效。
-      </div>`;
-  } else if (hasSession) {
-    bodyHtml += `
-      <div class="banner info">
-        <b>💡 新会话生效：</b>本次改动已写入，新开一个对话窗口即可应用新配置。
+        <b>⚠️ 需重启生效：</b>本次改动写的是客户端配置，必须<b>完全退出并重新打开 Claude</b>（菜单「退出」，非关闭窗口）方可生效。
       </div>`;
   } else if (diffs.length > 0) {
     bodyHtml += `
@@ -1736,6 +1691,9 @@ async function saveClientSide(){
       </div>`;
   }
 
+  if (r.data.notes && r.data.notes.length) {
+    bodyHtml += `<div style="margin-top:10px;font-size:12px;color:var(--dim)">${r.data.notes.map(esc).join('；')}</div>`;
+  }
   if (r.data.problems && r.data.problems.length) {
     bodyHtml += `<div style="margin-top:10px;font-size:12px;color:var(--err)">⚠️ 注意：${r.data.problems.map(esc).join('；')}</div>`;
   }

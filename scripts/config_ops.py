@@ -230,12 +230,13 @@ SETTINGS_TOP_KEYS = (
     "autoMemoryEnabled",
     "includeCoAuthoredBy",
     "attribution",
-    # 更激进的省法：会改变客户端行为，默认不动，页面里单独一组
+    # 下面四个已从页面撤掉（判据见 DECISIONS #63），仍留在白名单里是为了卸载时
+    # 能把我们当年写进去的值一起收回 —— 留在清单外的话它们就成了没人认领的残留键。
     "idleCompaction",              # 会话空闲时自动压缩长对话
     "precomputeCompactionEnabled", # 后台预生成压缩摘要（只在自动压缩开着时有意义）
     "showThinkingSummaries",       # 请服务端额外生成一份思考摘要
-    "enableWorkflows",             # 动态工作流（Workflow 工具）总开关
     "alwaysThinkingEnabled",       # 支持思考的模型是否自动思考
+    "enableWorkflows",             # 动态工作流（Workflow 工具）总开关
 )
 # 注：`disableBundledSkills` **不在这里** —— 它是 3P 配置的键（客户端设置页也写那儿），
 # 归 `build_3p_bundle` 的 `bundled_skills` 管。写到这个清单里等于永不生效。
