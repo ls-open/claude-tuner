@@ -40,7 +40,9 @@ PROTECTED_TOOLS = frozenset({
 
 # 与任何开关无关、恒定剥离的名单。WaitForMcpServers 是客户端等待 MCP 就绪的内部工具，
 # 对模型毫无意义，任何配置下都不该占一份上下文。
-ALWAYS_STRIPPED = ("WaitForMcpServers", "wait_for_mcp_servers")
+# 名字必须与客户端的内置工具表**逐字一致**：客户端不认的名字写进 `disabledBuiltinTools`
+# 一条都挡不住，还会在 Setup 窗口挂一条配置告警（见 #58）。
+ALWAYS_STRIPPED = ("WaitForMcpServers",)
 
 # 类别键 → 前缀（**只用于认人**：某个工具属于哪一组）。顺序即优先级。
 CATEGORY_NAMESPACES = (
