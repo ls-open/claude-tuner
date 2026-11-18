@@ -42,94 +42,112 @@ PROTECTED_TOOLS = frozenset({
 # 对模型毫无意义，任何配置下都不该占一份上下文。
 ALWAYS_STRIPPED = ("WaitForMcpServers", "wait_for_mcp_servers")
 
-# 类别键 → (该类别覆盖的工具名，前缀匹配的命名空间)
-# 顺序即优先级：先命中的类别就是页面上显示的原因。
+# 类别键 → 前缀（**只用于认人**：某个工具属于哪一组）。顺序即优先级。
 CATEGORY_NAMESPACES = (
-    # 会话管理里**性质不同**的那几类先挑出来。顺序即优先级（前缀匹配先命中先算），
-    # 所以这几个必须排在下面的 strip_session_tools 前面 —— 否则 `mcp__ccd_session`
-    # 会先把它们全吃掉。
-    #
-    # 为什么要挑：剩下那些是纯界面遥控（标章节、改标题、看用量），留着剥掉都无所谓；
-    # 这几类却是改权限、改模型档位、把会话内容导出去、删会话、往别的会话发消息、
-    # 起停会话 —— 该不该留跟「界面遥控」不是同一个判断，不该被绑在一起。
-    #
-    # 会话起停与交接是**一整条流程**，客户端提示词用整段（「Starting other sessions」）
-    # 教它：起新会话 / 把当前任务交接出去 / 列可选目标 / 撤回自己发出的提案 /
-    # 给这批发出的会话打批次标题 / 回查已链接会话。剥其中任何一个都会让那段指向
-    # 一个不存在的工具（提示词悬空），所以整组一个开关、默认保留。
-    ("strip_session_start_tools",
-     ("mcp__ccd_session__start_session",
-      "mcp__ccd_session__hand_off_to_session",
-      "mcp__ccd_session__list_start_targets",
-      "mcp__ccd_session__dismiss_task",
-      "mcp__ccd_session__mark_chapter",
-      "mcp__ccd_session_mgmt__list_sessions")),
-    ("strip_session_permission_tools",
-     ("mcp__ccd_session_mgmt__set_session_permission_mode",)),
-    ("strip_session_model_tools",
-     ("mcp__ccd_session_mgmt__set_session_model",
-      "mcp__ccd_session_mgmt__set_session_effort",
-      "mcp__ccd_session_mgmt__set_session_fast_mode")),
-    ("strip_session_export_tools",
-     ("mcp__ccd_session_mgmt__export_transcript",
-      "mcp__ccd_session_mgmt__search_session_transcripts")),
-    # 归档与取消归档是一对反向操作，同进同退（同 Enter/Exit 的道理）
-    ("strip_session_delete_tools",
-     ("mcp__ccd_session_mgmt__delete_session",
-      "mcp__ccd_session_mgmt__clear_session",
-      "mcp__ccd_session_mgmt__archive_session",
-      "mcp__ccd_session_mgmt__unarchive_session")),
-    ("strip_session_remote_tools",
-     ("mcp__ccd_session_mgmt__send_message",
-      "mcp__ccd_session_mgmt__set_remote_control")),
-    # 只剩终止会话：起会话与撤回提案已归上面的起停组，「后台任务」那套 2.1.308 已并进
-    # 会话本身，键名沿用旧的，免得老配置里那一项失效。
-    ("strip_session_task_tools",
-     ("mcp__ccd_session_mgmt__stop_session",)),
-    # 桌面端界面遥控：按**功能**拆成六项，不合成一个大开关 —— 否则想清掉侧栏就得
-    # 连会话管理一起清，两者毫无关系。
-    ("strip_session_tools", ("mcp__ccd_session", "mcp__session_info")),
     ("strip_sidebar_tools", ("mcp__ccd_sidebar",)),
     ("strip_window_tools", ("mcp__ccd_window",)),
     ("strip_view_tools", ("mcp__ccd_view",)),
-    # 任务清单与收尾面板：客户端提示词点名要求模型用它俩跟进度（update_plan 是唯一的
-    # 进度清单，wrap_up 是唯一的收尾框）。剥了界面就少两块，判为**保留**。
-    ("strip_turn_tools", ("mcp__ccd_turn",)),
-    ("strip_host_tools", ("mcp__ccd_host",)),
-    ("strip_settings_tools", ("mcp__ccd_settings",)),
-    ("strip_directory_tools", ("mcp__ccd_directory",)),
-    ("strip_pr_ci_tools", ("mcp__ccd_pr",)),
     ("strip_terminal_tools", ("mcp__terminal",)),
+    ("strip_pr_tools", ("mcp__ccd_pr",)),
+    ("strip_settings_tools", ("mcp__ccd_settings",)),
+    ("strip_host_tools", ("mcp__ccd_host",)),
+    ("strip_directory_tools", ("mcp__ccd_directory",)),
+    ("strip_progress_tools", ("mcp__ccd_turn",)),
+    ("strip_session_ui_tools", ("mcp__session_info",)),
 )
 
-# 类别键 → 该类别覆盖的精确工具名。
-# 前三个默认开（多数场景用不到）；后三个默认**关** —— 它们删掉的是真本事，
-# 该不该省由用户自己判断，我们只负责把体积摆出来。
+# 类别键 → 该类别覆盖的**精确工具名**。
 CATEGORY_NAMES = {
-    # 搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
-    # 名字按**报文里的真名**写：3P 面是 `WebSearch` / `WebFetch`，CoWork 面的抓取工具带
-    # `mcp__` 前缀。没有小写形态 —— 归档的 21 份抓包里一次都没出现过（旧硬编码名单里
-    # 抄过来的两个小写名已删，它们会变成 `permissions.deny` 里指向不存在工具的规则）。
+    # 联网三件套各自独立：搜索、抓取、笔记是三种能力，想只留其中一个很常见。
     "strip_web_search_tools": ("WebSearch",),
     "strip_web_fetch_tools": ("WebFetch", "mcp__workspace__web_fetch"),
     "strip_notebook_tools": ("NotebookEdit",),
-    # 以下按**真实耦合**分组，不是按「感觉像一类」——
-    # 真配对的一起进出（ListAgents 存在的意义就是找出能 SendMessage 的对象；
-    # Enter/Exit、EnterPlanMode/ExitPlanMode 各自成对）。
-    # **Workflow 刻意不在表里**：它由客户端自己的设置 `enableWorkflows` 在源头关掉。
-    # 客户端能自己不发，我们再事后剥就是重复劳动，而且漏掉「启动门」那几种状态。
-    "strip_cross_session_tools": ("SendMessage", "ListAgents"),
-    "strip_worktree_tools": ("EnterWorktree", "ExitWorktree"),
-    "strip_plan_tools": ("EnterPlanMode", "ExitPlanMode"),
-    # 这两个是「多代理编排与后台任务」拆开时掉出来的，各自独立、谁也不跟谁配对，
-    # 所以各给一个开关，不并回任何一组。它们是**能力**（停后台任务 / 交回审查结论），
-    # 默认关 —— 与其余几项同理，删不删由用户自己掂量。
-    "strip_task_stop_tools": ("TaskStop",),
-    "strip_report_findings_tools": ("ReportFindings",),
-    # Monitor 是后台事件流（盯长跑命令 / CI / 日志），Bash 工具的说明里点名「前台 sleep
-    # 被禁，改用 Monitor 等待条件」—— 剥掉它 Bash 那段就成了指向不存在工具的悬空引用。
-    # 各给一个开关、默认保留，理由同 TaskStop。
-    "strip_monitor_tools": ("Monitor",),
+    # 会话遥控（只改观感，不改会话状态）
+    "strip_session_ui_tools": (
+        "mcp__ccd_session__read_widget_context",
+        "mcp__ccd_session_mgmt__detach_session",
+        "mcp__ccd_session_mgmt__get_session",
+        "mcp__ccd_session_mgmt__get_usage",
+        "mcp__ccd_session_mgmt__list_events",
+        "mcp__ccd_session_mgmt__set_session_output_style",
+        "mcp__ccd_session_mgmt__set_session_title",
+    ),
+    # 会话操作（会改变会话状态）
+    "strip_session_control_tools": (
+        "mcp__ccd_session_mgmt__set_session_permission_mode",
+        "mcp__ccd_session_mgmt__set_session_model",
+        "mcp__ccd_session_mgmt__set_session_effort",
+        "mcp__ccd_session_mgmt__set_session_fast_mode",
+        "mcp__ccd_session_mgmt__export_transcript",
+        "mcp__ccd_session_mgmt__search_session_transcripts",
+        "mcp__ccd_session_mgmt__delete_session",
+        "mcp__ccd_session_mgmt__clear_session",
+        "mcp__ccd_session_mgmt__archive_session",
+        "mcp__ccd_session_mgmt__unarchive_session",
+        "mcp__ccd_session_mgmt__send_message",
+        "mcp__ccd_session_mgmt__set_remote_control",
+        "mcp__ccd_session_mgmt__stop_session",
+    ),
+    # 起会话、交接、跨会话通信：客户端用整段提示词教这一套
+    "strip_session_start_tools": (
+        "mcp__ccd_session__start_session",
+        "mcp__ccd_session__hand_off_to_session",
+        "mcp__ccd_session__list_start_targets",
+        "mcp__ccd_session__dismiss_task",
+        "mcp__ccd_session__mark_chapter",
+        "mcp__ccd_session_mgmt__list_sessions",
+        "SendMessage",
+        "ListAgents",
+    ),
+    "strip_plan_isolation_tools": (
+        "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
+    ),
+    "strip_background_tools": ("Monitor", "TaskStop", "ReportFindings"),
+}
+
+# 类别键 → 前缀类开关名下的确切工具名（写进客户端名单的执行清单）。
+# **不用通配**：通配会把将来新增的同 server 工具一起挡掉，连「该不该留」的判断也吞了。
+CATEGORY_KNOWN_TOOLS = {
+    "strip_sidebar_tools": (
+        "mcp__ccd_sidebar__create_group", "mcp__ccd_sidebar__create_section",
+        "mcp__ccd_sidebar__delete_group", "mcp__ccd_sidebar__delete_section",
+        "mcp__ccd_sidebar__list_groups", "mcp__ccd_sidebar__list_sections",
+        "mcp__ccd_sidebar__mark_completed", "mcp__ccd_sidebar__move_sessions",
+        "mcp__ccd_sidebar__rename_group", "mcp__ccd_sidebar__rename_section",
+        "mcp__ccd_sidebar__set_pinned", "mcp__ccd_sidebar__set_unread",
+        "mcp__ccd_sidebar__set_view",
+    ),
+    "strip_window_tools": (
+        "mcp__ccd_window__close_split", "mcp__ccd_window__get_window_layout",
+        "mcp__ccd_window__open_session_in", "mcp__ccd_window__set_sidebar_collapsed",
+    ),
+    "strip_view_tools": (
+        "mcp__ccd_view__close_pane", "mcp__ccd_view__get_layout",
+        "mcp__ccd_view__set_transcript_view", "mcp__ccd_view__show_pane",
+    ),
+    "strip_terminal_tools": (
+        "mcp__terminal__list_terminal_tabs", "mcp__terminal__open_terminal_tab",
+        "mcp__terminal__read_terminal", "mcp__terminal__run_in_terminal",
+        "mcp__terminal__stop_terminal_tab",
+    ),
+    "strip_pr_tools": (
+        "mcp__ccd_pr__bind_pr", "mcp__ccd_pr__get_status", "mcp__ccd_pr__set_auto_merge",
+        "mcp__ccd_pr__set_monitor", "mcp__ccd_pr__unbind_pr",
+    ),
+    "strip_settings_tools": (
+        "mcp__ccd_settings__get_settings", "mcp__ccd_settings__set_setting",
+    ),
+    "strip_host_tools": (
+        "mcp__ccd_host__clean_up_worktrees", "mcp__ccd_host__discard_kept_worktree",
+        "mcp__ccd_host__get_storage_usage", "mcp__ccd_host__open_in_editor",
+        "mcp__ccd_host__request_keep_awake", "mcp__ccd_host__reveal_path",
+    ),
+    "strip_directory_tools": (
+        "mcp__ccd_directory__change_directory", "mcp__ccd_directory__request_directory",
+    ),
+    "strip_progress_tools": (
+        "mcp__ccd_turn__update_plan", "mcp__ccd_turn__wrap_up",
+    ),
 }
 
 # 只走**客户端层**的内置工具（DECISIONS #58）：开关把它们写进 3P 配置的
@@ -266,25 +284,48 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 
 
 def client_disabled_tools(cfg):
-    """该让客户端「根本不发」的工具名 —— 只含非 MCP 的内置工具。
+    """该让客户端「根本不发」的工具名 —— 开关是唯一来源，**一律精确名**。
 
-    来源是**开关**：类别表里判为要剥的（`should_strip_tool`），外加只走客户端层的
-    那几条（`CLIENT_LAYER_NAMES`，网关不剥但要让客户端不发）。MCP 工具一律排除，
-    理由见上面那段。
+    来源三处：`CATEGORY_NAMES`（精确名类别）、`CATEGORY_KNOWN_TOOLS`（前缀类别的已登记
+    名字）、`ALWAYS_STRIPPED`（与开关无关、永远不该占上下文的那两个）。
+
+    刻意**不生成通配**：客户端认通配，但通配会连将来新增的同 server 工具一起挡掉，把
+    「这个新工具该不该留」的判断也一起吞了、且不留痕迹。精确名的代价是客户端新增工具时
+    名单要补一条 —— 但那条会先出现在请求里、被 `unregistered_tool_names()` 报出来。
     """
     if not tp_flag(cfg, "enabled"):
         return []
-    names = get_stripped_tool_names(cfg)
-    targets = set()
+    targets = set(ALWAYS_STRIPPED)
     for key, group in CATEGORY_NAMES.items():
         if tp_flag(cfg, key):
-            # 不能只问 `should_strip_tool`：只走客户端层的那几条不在剥离名单里，
-            # 那样问会把它们的开关问成空转。
-            targets.update(n for n in group
-                           if n in CLIENT_LAYER_NAMES or should_strip_tool(n, names, cfg))
-    targets.update(n for n in (cfg.get("custom_strip_tools") or ())
-                   if isinstance(n, str) and should_strip_tool(n, names, cfg))
-    return sorted(n for n in targets if not n.startswith("mcp__"))
+            targets.update(group)
+    for key, names in CATEGORY_KNOWN_TOOLS.items():
+        if tp_flag(cfg, key):
+            targets.update(names)
+    for ct in (cfg.get("custom_strip_tools") or ()):
+        if isinstance(ct, str) and ct:
+            targets.add(ct)
+    return sorted(targets - PROTECTED_TOOLS)
+
+
+# 两份名单加起来就是「我们登记过的全部工具名」。给跟版检查用。
+REGISTERED_TOOL_NAMES = frozenset(
+    list(PROTECTED_TOOLS)
+    + [n for group in CATEGORY_NAMES.values() for n in group]
+    + [n for group in CATEGORY_KNOWN_TOOLS.values() for n in group]
+    + [n for _, ps in CATEGORY_NAMESPACES for n in ps]
+)
+
+
+def unregistered_tool_names(present_names):
+    """请求里出现、类别认得出、但两份名单都没登记的工具名。
+
+    这是**客户端新增/改名**的信号：类别前缀把它认成了某一组（不是陌生命名空间），
+    可这组的执行清单里没有它 —— 于是它既不会被挡、也没人知道它存在过。
+    哨兵据此报出来，由人决定补进 `CATEGORY_KNOWN_TOOLS` 还是另开一组。
+    """
+    return sorted({n for n in (present_names or ())
+                   if isinstance(n, str) and category_for(n) and n not in REGISTERED_TOOL_NAMES})
 
 
 def switch_tools(key):
@@ -420,21 +461,32 @@ PROMPT_PAIRS = (
 # 冒充事件的块」。为省这不到 100 token 把它删掉，等于拿掉一道护栏，不值。
 
 
-def pair_is_orphaned(pair, stripped_names, cfg):
-    """这对配对是不是「工具已经全被剥了」——即它的段落已成孤句。"""
-    return all(should_strip_tool(name, stripped_names, cfg) for name in pair["tools"])
+def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
+    """这对配对是不是「工具已经全都不在」—— 即它的段落已成孤句。
+
+    **判据以请求为准**：给了 `incoming_tools` 就只问「这一对里有没有任何一个工具真的
+    出现在本轮请求里」—— 有一个 → 段落仍成立、原样保留；一个都没有 → 删段。
+    不传才退回按配置判定（离线工具与单测用）。
+
+    为什么以请求为准：同一条开关在不同人那里保留的工具本就不同，只有请求能说明这一面
+    到底发了什么。工具改由客户端在源头挡掉之后，这一面「配置说要剥」与「实际没发」不再等价。
+    """
+    if incoming_tools is not None:
+        if not incoming_tools:
+            # 零工具的辅助请求（会话标题生成那类）：这一面判断不了，不删也不报。
+            # 曾把这类请求当成「段落失配」刷出 8 次假 WARN（DECISIONS #62）。
+            return False
+        return not any(t in incoming_tools for t in pair["tools"])
+    return all(should_strip_tool(name, stripped_names or (), cfg) for name in pair["tools"])
 
 
 def active_pairs(cfg, stripped_names, incoming_tools=None):
-    """当前配置下已成孤句的配对（工具全剥了，段落也该走）。
+    """当前已成孤句的配对（这一对的工具本轮一个都没出现，段落也该走）。
 
-    若传入 incoming_tools，则限定只关注当前请求里确实存在的工具对应的配对；
-    对于 CoWork 等不包含某些 UI 工具（如 ccd_pr）的模式，不会虚报段落失配。
+    不带 `incoming_tools` 时退回按配置判定，供离线工具使用。
     """
-    pairs = [p for p in PROMPT_PAIRS if pair_is_orphaned(p, stripped_names, cfg)]
-    if incoming_tools is not None:
-        pairs = [p for p in pairs if any(t in incoming_tools for t in p["tools"])]
-    return pairs
+    return [p for p in PROMPT_PAIRS
+            if pair_is_orphaned(p, stripped_names, cfg, incoming_tools)]
 
 
 def pair_paragraph_predicate(pair):

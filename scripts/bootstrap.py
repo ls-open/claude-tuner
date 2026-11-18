@@ -164,7 +164,7 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
         (state["bridge_cfg"] or {}).get(config_ops.CLIENT_DISABLED_KEY) or [])
     if disabled_changed:
         changed = sorted(set(list(changed) + disabled_changed))
-        notes.append("  客户端侧拦截 %d 个工具（新会话生效）" % len(disabled_written))
+        notes.append("  客户端侧拦截 %d 个工具（**重启客户端后生效**）" % len(disabled_written))
     actions.append(_write_action(three_p_path, bundle,
                                  "3P 推理配置（连接本地网关 + 模型映射 + 客户端侧工具拦截）"))
     notes.append("  上游预设：%s → %s" % (preset_info["name"], upstream))

@@ -254,44 +254,28 @@ DEFAULT_RULES = {
 # 这份默认值就是新装用户开箱即用的那一组；界面不另设档位，改这里即改默认。
 DEFAULT_TOOL_PRUNING_CONFIG = {
     "enabled": True,                      # 工具精简总开关
-    # 联网：搜索与抓取是两个独立工具，分开 —— 有人要抓取文档但不想要搜索。
-    # 默认**保留**：它俩是服务端工具，上游实现了才有用，纯代码/离线场景用户可自己关。
-    "strip_web_search_tools": False,      # WebSearch
-    "strip_web_fetch_tools": False,       # WebFetch
-    # 桌面端界面遥控：按**功能**拆成六项 —— 合成一个键的话，想清掉侧栏就得连会话管理
-    # 一起清，两者毫无关系。**不含 ccd_view**：那是呈现工具，客户端提示词要求模型用它。
-    # 会话管理里性质不同的几类单独成项（除起停外默认全开）：它们不是界面遥控，而是
-    # 改权限 / 改模型档位 / 导出数据 / 删会话 / 跨会话发消息 / 终止会话。
-    "strip_session_tools": True,          # mcp__ccd_session* / mcp__session_info*（纯界面遥控那部分）
-    "strip_session_start_tools": False,   # 起会话 / 交接 / 列目标 / 撤回提案 / 批次标题 / 回查已链接会话（提示词整段教这套，默认保留）
-    "strip_session_permission_tools": True,   # 改会话权限模式
-    "strip_session_model_tools": True,        # 改会话模型 / 思考档位 / fast 模式
-    "strip_session_export_tools": True,       # 导出会话、检索历史
-    "strip_session_delete_tools": True,       # 删除 / 清空 / 归档 / 取消归档会话
-    "strip_session_remote_tools": True,       # 向其他会话发消息、开远程控制
-    "strip_session_task_tools": True,         # 终止会话
-    "strip_sidebar_tools": True,          # mcp__ccd_sidebar*
-    "strip_window_tools": True,           # mcp__ccd_window*
-    "strip_view_tools": False,            # mcp__ccd_view*（diff／文件／终端／浏览器预览面板，默认保留）
-    "strip_turn_tools": False,            # mcp__ccd_turn*（进度清单 update_plan／收尾框 wrap_up，默认保留）
-    "strip_host_tools": False,            # mcp__ccd_host*（编辑器、存储、保持唤醒）
-    "strip_settings_tools": True,         # mcp__ccd_settings*
-    "strip_directory_tools": True,        # mcp__ccd_directory*
-    "strip_pr_ci_tools": True,            # 剥离 GitHub PR 关联与 CI 监控自动化 (mcp__ccd_pr__*)
-    "strip_terminal_tools": False,        # 桌面右侧终端面板读取工具 (mcp__terminal__*)
-    "strip_notebook_tools": True,         # 剥离 Jupyter Notebook 单元格编辑工具 (NotebookEdit)
-    "custom_strip_tools": [],             # 自定义额外剥离工具名列表
-    # 以下几项默认**关**：删掉的是真本事（跨会话协作 / 工作树隔离 / 计划模式），
-    # 不该由我们替用户决定。页面上把各自的体积标出来，让用户自己掂量。
-    # 按真实耦合分组：独立的独立，配对的成对（见 tool_rules.CATEGORY_NAMES 的注释）
-    "strip_cross_session_tools": False,   # SendMessage / ListAgents
-    "strip_worktree_tools": False,        # EnterWorktree / ExitWorktree
-    "strip_plan_tools": False,            # EnterPlanMode / ExitPlanMode
-    # 默认保留：TaskStop 用来终止跑飞的后台任务，ReportFindings 是 code-review 那套
-    # 技能把结论交回界面的通道 —— 都是有实际用途的能力，不是死重。
-    "strip_task_stop_tools": False,       # TaskStop
-    "strip_report_findings_tools": False, # ReportFindings
-    "strip_monitor_tools": False,         # Monitor（后台事件流；Bash 说明里点名用它，剥了会悬空）
+    # 一个开关 = 一种能力（或提示词里的一整段）。**全部默认关**：新装用户拿到的是
+    # 工具全在场，想省哪一类自己勾 —— 剥什么不该由我们替他决定。
+    # 分组判据：能力相同才合成一组，不为了少几个按钮把不相干的东西捆在一起。
+    # 取舍见 DECISIONS #61。
+    "strip_sidebar_tools": False,          # 侧栏：分组、置顶、未读、整组移动
+    "strip_window_tools": False,           # 窗口：分屏、侧栏折叠
+    "strip_view_tools": False,             # 呈现面板：diff / 文件 / 终端 / 预览
+    "strip_terminal_tools": False,         # 用户可见的 Terminal 面板
+    "strip_pr_tools": False,               # GitHub PR 关联与 CI 监控
+    "strip_settings_tools": False,         # Code 标签页偏好
+    "strip_session_ui_tools": False,       # 会话遥控：改标题/输出风格、查用量、列事件、脱离
+    "strip_session_control_tools": False,  # 会话操作：改权限/模型档位、导出、删除、终止
+    "strip_session_start_tools": False,    # 起会话 / 交接 / 列目标 / 撤回 / 跨会话发消息
+    "strip_plan_isolation_tools": False,   # 计划模式 + Git 工作树隔离
+    "strip_web_search_tools": False,       # WebSearch
+    "strip_web_fetch_tools": False,        # WebFetch
+    "strip_notebook_tools": False,         # NotebookEdit
+    "strip_host_tools": False,             # 本机联动：编辑器、Finder、存储清理、防休眠
+    "strip_directory_tools": False,        # 工作目录边界：申请访问、切换项目
+    "strip_progress_tools": False,         # 进度清单 update_plan / 收尾框 wrap_up
+    "strip_background_tools": False,       # 后台：Monitor / TaskStop / ReportFindings
+    "custom_strip_tools": [],              # 自定义额外要客户端不发的工具名
 }
 
 

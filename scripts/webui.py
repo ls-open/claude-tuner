@@ -359,7 +359,7 @@ def _apply_patch_unlocked(patch):
     if disabled_changed:
         three_p_changed = True
         effects["restart_client"] = True
-        notes.append("客户端侧拦截 %d 个工具" % len(disabled_written))
+        notes.append("已写入客户端名单 %d 个工具（**重启客户端后生效**）" % len(disabled_written))
     if disabled_written != (bridge.get(config_ops.CLIENT_DISABLED_KEY) or []):
         bridge[config_ops.CLIENT_DISABLED_KEY] = disabled_written
         atomic_write_json(bridge_path(), bridge, indent=1)

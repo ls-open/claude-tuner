@@ -556,7 +556,7 @@ class TestEnsureConfigInitialized(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump({
                 "tool_pruning": {"strip_design_sync_tools": True,
-                                 "strip_notebook_tools": False,   # 用户关掉的，必须保住
+                                 "strip_web_search_tools": True,   # 用户打开的，必须保住（默认是关）
                                  "custom_strip_tools": ["Foo"]},
                 "rules": {"strip_date": False, "strip_old_gone_rule": True},
                 "upstream_url": "https://example.test/v1/messages",
@@ -566,10 +566,10 @@ class TestEnsureConfigInitialized(unittest.TestCase):
             cfg = json.load(fh)
         self.assertNotIn("strip_design_sync_tools", cfg["tool_pruning"])
         self.assertNotIn("strip_old_gone_rule", cfg["rules"])
-        self.assertFalse(cfg["tool_pruning"]["strip_notebook_tools"], "用户关掉的开关不能被改回默认")
+        self.assertTrue(cfg["tool_pruning"]["strip_web_search_tools"], "用户打开的开关不能被改回默认")
         self.assertEqual(cfg["tool_pruning"]["custom_strip_tools"], ["Foo"])
         self.assertFalse(cfg["rules"]["strip_date"])
         self.assertEqual(cfg["upstream_url"], "https://example.test/v1/messages")
         # 缺的键照旧补齐
-        self.assertIn("strip_pr_ci_tools", cfg["tool_pruning"])
+        self.assertIn("strip_pr_tools", cfg["tool_pruning"])
         self.assertIn("probe_interception", cfg["rules"])

@@ -258,6 +258,7 @@
   .diff-val{color:var(--dim)}
   .diff-to{color:var(--fg);font-weight:600}
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
+  .note{font-size:12px;color:var(--dim);margin:14px 0 0;line-height:1.7}
 
   /* ── 开关行与功能大卡片 ───────────────────────────────── */
   .group-card{border:1px solid var(--line);border-radius:8px;margin-bottom:18px;background:var(--panel);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02)}
@@ -521,8 +522,9 @@
       <div class="head"><span class="num">④</span><h2>请求稳定化</h2>
         <button class="save-pill" data-save-section="s4" hidden></button></div>
       <div class="body">
-        <p class="lead">发往模型前的请求优化与前缀清洗通道，最大化命中 Prompt 缓存并消除误拒答。</p>
+        <p class="lead">发往模型前的请求优化与前缀清洗通道，最大化命中 Prompt 缓存。</p>
         <div id="ruleBox"></div>
+        <p class="note">工具说明段落的删留不在这里：它跟着 ⑤ 工具精简的开关走 —— 某组工具不再发送时，解释它的提示词段落会自动一起移除，免得留下指向不存在工具的指引。</p>
       </div>
     </section>
 
@@ -668,63 +670,48 @@ const ADVANCED = [
 ];
 
 const RULE_GROUPS = [
-  ['⚡ 传输通道优化与数据对齐', '探针秒回与并发定序（不改动正文）', [
-    ['probe_interception', '拦截连接探针本地秒回（不扣费）', ''],
-    ['strip_billing_header', '过滤客户端版本与计费标记', ''],
-    ['split_mixed_user_messages', '规范化工具混合返回格式', ''],
-    ['tool_block_ordering', '并发工具返回结果自动排序', ''],
+  ['⚡ 请求结构与探针', '只改结构，不动正文语义', [
+    ['probe_interception', '连接探针本地秒回（不扣费）', ''],
+    ['split_mixed_user_messages', '拆开混在一起的消息块', ''],
+    ['tool_block_ordering', '并发工具结果排序固定', ''],
   ]],
-  ['🛡️ 前缀动态噪声清洗（保缓存核心）', '消除时间戳、Git 快照与额度等变动扰动', [
-    ['strip_date', '移除动态日期与时间戳', ''],
-    ['strip_git_status', '移除 Git 代码变动快照', ''],
-    ['strip_model_declarations', '移除“由 Claude 驱动”等官方自称', ''],
-    ['strip_total_tokens_tag', '移除剩余额度与 Token 计数', ''],
+  ['🧼 请求头元数据清洗', '客户端每轮都会变的那几行', [
+    ['strip_billing_header', '计费头与客户端版本号', ''],
+    ['strip_model_declarations', '“由 Claude 驱动”等自述', ''],
+    ['strip_total_tokens_tag', '剩余额度与 Token 计数', ''],
   ]],
-  ['✂️ 系统防御指令精简（减少误拒答）', '精简客户端免责防御与道德指令', [
-    ['strip_security_guidelines', '移除过度安全防御指令（减少误拒答）', ''],
-    ['strip_pronoun_guidelines', '移除人称代词（they/them）中立指引', ''],
-    ['strip_caution_guidelines', '移除高危操作过度确认指引', ''],
+  ['🕒 前缀动态噪声', '内容会随时间或工作区变化', [
+    ['strip_date', '动态日期与时区', ''],
+    ['strip_git_status', 'Git 变更快照', ''],
+  ]],
+  ['✂️ 通用指令精简', '删的是客户端内置的行为指引，默认关', [
+    ['strip_security_guidelines', '安全防御指令段', ''],
+    ['strip_pronoun_guidelines', '人称代词中立指引段', ''],
+    ['strip_caution_guidelines', '高危操作确认指引段', ''],
   ]],
 ];
 
 const RULES = RULE_GROUPS.flatMap(g => g[2]);
 
 const PRUNING_GROUPS = [
-  ['🖥️ 桌面端界面与排版辅助', '操控桌面端窗口、侧栏与分屏等本地 UI 辅助工具', [
-    ['strip_sidebar_tools', '移除桌面侧栏分组与置顶操作', ''],
-    ['strip_window_tools', '移除桌面窗口与分屏布局控制', ''],
-    ['strip_view_tools', '移除辅助面板弹窗（Diff/预览等）', ''],
-    ['strip_turn_tools', '移除实时任务进度条与收尾卡片', ''],
-    ['strip_settings_tools', '移除桌面端偏好设置控制', ''],
-    ['strip_directory_tools', '移除切换项目工作目录能力', ''],
-  ]],
-  ['💬 会话生命周期与控制', '会话命名、权限切换、模型档位与历史会话维护', [
-    ['strip_session_tools', '移除修改会话标题与章节标记', ''],
-    ['strip_session_permission_tools', '移除自动切换会话权限模式', ''],
-    ['strip_session_model_tools', '移除自动切换模型与思考强度', ''],
-    ['strip_session_export_tools', '移除导出与检索历史会话', ''],
-    ['strip_session_delete_tools', '移除清理与归档历史会话', ''],
-    ['strip_session_remote_tools', '移除桌面远程控制模式', ''],
-    ['strip_session_task_tools', '移除强行中断其他会话能力', ''],
-  ]],
-  ['💻 本机系统与桌面终端联动', '外部编辑器唤起、防休眠与侧边终端', [
-    ['strip_host_tools', '移除打开外部编辑器与系统防休眠', ''],
-    ['strip_terminal_tools', '移除桌面端内置终端面板', ''],
-  ]],
-  ['🌐 外部网络与生态扩展', '联网搜索、抓取网页与三方扩展集成', [
-    ['strip_web_search_tools', '移除网页搜索（WebSearch）', ''],
-    ['strip_web_fetch_tools', '移除网页抓取（WebFetch）', ''],
-    ['strip_pr_ci_tools', '移除 GitHub PR 关联与 CI 监控', ''],
-    ['strip_notebook_tools', '移除 Jupyter Notebook 编辑工具', ''],
-  ]],
-  ['🤖 多智能体协同与高级流程', '多 Agent 协同、任务隔离与计划确认模式', [
-    ['strip_session_start_tools', '移除派生新会话与任务交接', ''],
-    ['strip_cross_session_tools', '移除多智能体跨会话通信（SendMessage）', ''],
-    ['strip_worktree_tools', '移除 Git 工作树隔离环境（Worktree）', ''],
-    ['strip_plan_tools', '移除编码前计划确认模式（Plan Mode）', ''],
-    ['strip_task_stop_tools', '移除终止后台子任务能力（TaskStop）', ''],
-    ['strip_monitor_tools', '移除后台监控与事件流（Monitor）', ''],
-    ['strip_report_findings_tools', '移除代码审查报告卡片（ReportFindings）', ''],
+  ['🧰 工具精简', '', [
+    ['strip_sidebar_tools', '侧栏管理（分组 / 置顶 / 未读）', ''],
+    ['strip_window_tools', '窗口与分屏', ''],
+    ['strip_view_tools', '呈现面板（Diff / 文件 / 预览）', ''],
+    ['strip_terminal_tools', '终端面板', ''],
+    ['strip_pr_tools', 'GitHub PR 与 CI 监控', ''],
+    ['strip_settings_tools', 'Code 标签页偏好', ''],
+    ['strip_session_ui_tools', '会话遥控（标题 / 用量 / 事件）', ''],
+    ['strip_session_control_tools', '会话操作（权限 / 模型 / 导出 / 删除）', ''],
+    ['strip_session_start_tools', '起会话与任务交接', ''],
+    ['strip_plan_isolation_tools', '计划模式与工作树', ''],
+    ['strip_web_search_tools', '网页搜索（WebSearch）', ''],
+    ['strip_web_fetch_tools', '网页抓取（WebFetch）', ''],
+    ['strip_notebook_tools', 'Notebook 编辑', ''],
+    ['strip_host_tools', '本机联动（编辑器 / Finder / 存储）', ''],
+    ['strip_directory_tools', '工作目录切换与授权', ''],
+    ['strip_progress_tools', '进度清单与收尾框', ''],
+    ['strip_background_tools', '后台监控与任务终止', ''],
   ]],
 ];
 

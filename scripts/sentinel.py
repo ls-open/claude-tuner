@@ -271,6 +271,9 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
     names = extract_tool_names(raw)
     kept = [n for n in names if not gateway.should_strip_tool(n, stripped, cfg)]
     pending = [] if surface_skipped else unknown_tools(names, cfg)
+    # 「类别认得出、但登记名单里没有」——客户端给某一组新增/改名的工具。
+    # 它既不会被挡、也不会被报成陌生工具，是跟版时最容易漏的一类。
+    unregistered = [] if surface_skipped else tool_rules.unregistered_tool_names(names)
 
     print()
     print("─" * 78)
@@ -301,6 +304,12 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
         print("       两种都算判过了：表里有了就不再报，也不必每次跟版重判一遍。")
     else:
         print("  ✅ 类别表已覆盖本次出现的全部工具")
+        if unregistered:
+            print("  ⚠️ %d 个工具落在已知类别里、但名字没登记 —— 客户端这版新增或改名了：" % len(unregistered))
+            for n in unregistered:
+                print("       · %s（归 %s）" % (n, tool_rules.category_for(n)))
+            print("     → 补进 tool_rules.CATEGORY_NAMES（精确组）或 CATEGORY_KNOWN_TOOLS（前缀组），")
+            print("       并判断它该不该跟着这一组一起不发。补完这行就不再出现。")
         # 开着、却一个工具都管不到的开关。**两种成因的处置正好相反**，所以分开说：
         # 客户端侧拦截挡住的，开关就是它不发的原因（删了工具回来）；客户端本来就不发的，
         # 删开关才是死重清理。混成一句「可考虑删掉」会让人删错。关着的开关不列。
@@ -329,7 +338,7 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
                   % ", ".join(naked))
         print("     → 查客户端设置是否被清掉、或该版换了语义。")
     print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
-    return len(pending) + len(leaks)
+    return len(pending) + len(unregistered) + len(leaks)
 
 
 def _audit_system(clean):

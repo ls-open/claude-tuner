@@ -17,7 +17,9 @@ import common
 
 class TestCoWorkAdapter(unittest.TestCase):
     def setUp(self):
-        self.cfg = dict(common.DEFAULT_TOOL_PRUNING_CONFIG)
+        # 全部开关打开：这些用例问的是「打开时规则管不管用」，不是默认值
+        self.cfg = {k: (True if isinstance(v, bool) and k != "enabled" else v)
+                    for k, v in common.DEFAULT_TOOL_PRUNING_CONFIG.items()}
         self.stripped_names = gateway.get_stripped_tool_names(self.cfg)
         # 端到端用例调用 prepare_request()，其内部经 load_tool_pruning_config() 读真实
         # ~/.claude-tuner/config.json —— 用例结果会随开发机的本地开关漂移（改过配置的机器
@@ -62,9 +64,9 @@ class TestCoWorkAdapter(unittest.TestCase):
         # 现在默认保留（见 common.DEFAULT_TOOL_PRUNING_CONFIG），故不在此列。
         dead_tools = [
             "mcp__session_info__list_sessions",
-            "mcp__session_info__read_transcript",
-            "mcp__ccd_session__list",
-            "mcp__ccd_settings__list_settings",
+            "mcp__ccd_session_mgmt__detach_session",
+            "mcp__ccd_session_mgmt__get_usage",
+            "mcp__ccd_settings__get_settings",
         ]
         for t in dead_tools:
             should_strip = gateway.should_strip_tool(t, self.stripped_names, self.cfg)
@@ -89,16 +91,12 @@ class TestCoWorkAdapter(unittest.TestCase):
         ]
         req = {"tools": list(code_tools), "messages": []}
         changed = gateway.prepare_request(req, session_id="test-code")
-        # 内置那三个（WebSearch / WebFetch / NotebookEdit）走客户端层，网关不剥 ——
-        # 它们不发是因为客户端名单，不是因为这里（见 DECISIONS #58）。
-        self.assertIn("prune_tools_4", changed)
-        self.assertEqual(len(req["tools"]), 13)
+        # 精简已经整层搬给客户端（`disabledBuiltinTools`），网关不再从报文里删工具：
+        # 「不发」只有客户端一个来源（见 DECISIONS #61）。
+        self.assertFalse([c for c in changed if c.startswith("prune_tools_")])
+        self.assertEqual(len(req["tools"]), len(code_tools))
         names = {t["name"] for t in req["tools"]}
-        self.assertEqual(names, {
-            "Bash", "Read", "Write", "Edit", "Glob", "Grep", "Skill", "AskUserQuestion",
-            "WebSearch", "WebFetch", "NotebookEdit", "mcp__terminal__read",
-            "mcp__scheduled-tasks__list_scheduled_tasks",
-        })
+        self.assertEqual(names, {t["name"] for t in code_tools})
 
     def test_cowork_surface_skips_pruning(self):
         """CoWork 面整面不剥：工具表原样发出（含商店、技能、搜索）
@@ -148,13 +146,13 @@ class TestCoWorkAdapter(unittest.TestCase):
         self.assertIn("split_mixed_user_msg", changed)
         self.assertEqual(len(parsed["messages"]), 2)
 
-    def test_other_surfaces_still_prune(self):
-        """按面跳过只认 CoWork：同一份 cfg 在 Code 面照旧剥"""
+    def test_no_surface_prunes_any_more(self):
+        """任何面都不再从报文里删工具 —— 精简整层在客户端，面之间不再有差异。"""
         tp = gateway.pruning_cfg_for_surface(dict(common.DEFAULT_TOOL_PRUNING_CONFIG), "main")
         req = {"tools": [{"name": n} for n in ("mcp__ccd_sidebar__list_groups", "Bash")],
                "messages": []}
         changed = gateway.prepare_request(req, session_id="test-code", tool_pruning_cfg=tp, kind="main")
-        self.assertIn("prune_tools_1", changed)
-        self.assertEqual([t["name"] for t in req["tools"]], ["Bash"])
+        self.assertFalse([c for c in changed if c.startswith("prune_tools_")])
+        self.assertEqual([t["name"] for t in req["tools"]], ["mcp__ccd_sidebar__list_groups", "Bash"])
 
 

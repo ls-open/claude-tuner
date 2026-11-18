@@ -47,7 +47,15 @@ PR_HEAD = ("After opening a PR, use the ccd_pr tools: call `get_status` and, if 
 
 
 def cfg(**over):
-    """默认配置 + 覆盖项（与生产同一个默认表）。"""
+    """**所有开关都打开** + 覆盖项；真实默认态（全关）用 `dflt()`。"""
+    base = {k: (True if isinstance(v, bool) and k != "enabled" else v)
+            for k, v in tr.DEFAULT_TOOL_PRUNING_CONFIG.items()}
+    base.update(over)
+    return {**base, "custom_strip_tools": over.get("custom_strip_tools", [])}
+
+
+def dflt(**over):
+    """真实默认配置（全关）+ 覆盖项。"""
     base = dict(tr.DEFAULT_TOOL_PRUNING_CONFIG)
     base.update(over)
     return {**base, "custom_strip_tools": over.get("custom_strip_tools", [])}
@@ -57,24 +65,27 @@ class ClientDisabledToolsTest(unittest.TestCase):
     """从配置算出「该让客户端根本不发」的工具名。"""
 
     def test_builtin_tools_come_from_config(self):
-        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=True, strip_notebook_tools=True))
+        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=True))
         self.assertIn("WebSearch", rules)
         self.assertIn("NotebookEdit", rules)
 
-    def test_never_returns_mcp_tools(self):
-        """MCP 工具一律不产出：设置层对桌面端的 hosted MCP 无效（实测两次，见 tool_rules 注释）。
+    def test_includes_mcp_tools_from_registry(self):
+        """MCP 工具**也在**名单里 —— 实测 57 条精确名让客户端把 85 个工具压到 28 个。
 
-        写进去不会生效，只会让配置看起来比实际能做到的多 —— 比不写更坏。
+        来源是 `CATEGORY_KNOWN_TOOLS` 的已登记名字（前缀只负责认人，不负责执行）。
         """
-        rules = tr.client_disabled_tools(cfg(strip_pr_ci_tools=True, strip_session_tools=True,
-                                  strip_web_fetch_tools=True, strip_terminal_tools=True))
-        self.assertTrue(rules)
-        self.assertEqual([r for r in rules if r.startswith("mcp__")], [])
+        rules = tr.client_disabled_tools(cfg(strip_pr_tools=True, strip_session_ui_tools=True, strip_web_search_tools=True, strip_terminal_tools=True))
+        self.assertIn("mcp__ccd_pr__get_status", rules)
+        self.assertIn("mcp__ccd_sidebar__set_view", rules)
+        self.assertIn("mcp__ccd_session_mgmt__set_session_title", rules)
 
     def test_disabled_category_adds_nothing(self):
-        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=False, strip_web_fetch_tools=False,
-                                  strip_notebook_tools=False))
-        self.assertEqual(rules, [])
+        """关掉一组不漏出它的工具 —— 别的组按各自的默认值照常出。"""
+        rules = tr.client_disabled_tools(cfg(strip_web_search_tools=False,
+                                             strip_web_fetch_tools=False,
+                                             strip_notebook_tools=False))
+        for name in ("WebSearch", "WebFetch", "NotebookEdit"):
+            self.assertNotIn(name, rules)
 
     def test_master_switch_off_disables_everything(self):
         self.assertEqual(tr.client_disabled_tools(cfg(enabled=False, strip_web_search_tools=True)), [])
@@ -85,12 +96,12 @@ class ClientDisabledToolsTest(unittest.TestCase):
         self.assertNotIn("Bash", rules)
         self.assertNotIn("Read", rules)
 
-    def test_custom_list_takes_non_mcp_only(self):
-        """自定义清单里的非 MCP 工具会挡，MCP 工具照样排除（同一条边界）。"""
+    def test_custom_list_is_included(self):
+        """自定义清单里的名字一律进名单，MCP 与非 MCP 没有区别了。"""
         rules = tr.client_disabled_tools(cfg(strip_web_search_tools=False,
-                                  custom_strip_tools=["BrandNewTool", "mcp__ccd_pr__get_status"]))
+                                  custom_strip_tools=["BrandNewTool", "mcp__ccd_unknown__whatever"]))
         self.assertIn("BrandNewTool", rules)
-        self.assertNotIn("mcp__ccd_pr__get_status", rules)
+        self.assertIn("mcp__ccd_unknown__whatever", rules)
 
 
 class MergeClientDisabledTest(unittest.TestCase):
@@ -131,30 +142,29 @@ class SyncClientDisabledTest(unittest.TestCase):
     """配置 → 名单 → 3P 配置的整条路（与网关剥离同一份配置）。"""
 
     def test_uses_same_config_as_gateway(self):
-        pruning = cfg(strip_web_search_tools=True, strip_web_fetch_tools=True,
-                      strip_notebook_tools=True)
+        pruning = cfg(strip_web_search_tools=True)
         new, changed, written = config_ops.sync_client_disabled({}, pruning, [])
         self.assertEqual(changed, ["disabledBuiltinTools"])
         self.assertEqual(written, tr.client_disabled_tools(pruning))
         self.assertEqual(new["disabledBuiltinTools"], written)
 
     def test_turning_category_off_withdraws_rule(self):
-        pruning = cfg(strip_web_search_tools=False, strip_web_fetch_tools=False,
-                      strip_notebook_tools=False)
+        pruning = cfg(strip_web_search_tools=False, strip_notebook_tools=False)
         existing = {"disabledBuiltinTools": ["WebSearch", "NotebookEdit"]}
         new, changed, written = config_ops.sync_client_disabled(
             existing, pruning, ["WebSearch", "NotebookEdit"])
-        self.assertEqual(written, [])
-        self.assertEqual(changed, ["disabledBuiltinTools"])
-        self.assertNotIn("disabledBuiltinTools", new)
+        # 关掉之后这两条必须收回；别的组仍按各自的默认值写着，所以名单不空。
+        self.assertNotIn("WebSearch", written)
+        self.assertNotIn("NotebookEdit", written)
+        self.assertNotIn("WebSearch", new.get("disabledBuiltinTools") or [])
+        self.assertIn("disabledBuiltinTools", changed)
 
 
 class ParagraphStillStrippedTest(unittest.TestCase):
-    """客户端不再发工具时，桌面端那几段写死的提示词**仍然**要剥。
+    """段落跟**请求实况**走：这一对的工具一个都没发过来，段落就必须走。
 
-    这段保护的正是「用户在客户端界面里把某个 MCP 工具关掉」那条路：段落是客户端无条件
-    拼接的字符串常量，跟工具在不在无关。少了这条，「工具挡了、段落留着」就是一句指向
-    不存在工具的悬空指引 —— 比不剥更糟。
+    判据从「配置说该剥」改成了「本轮请求里没有」，理由是工具现在由客户端在源头挡掉，
+    同一份配置在不同人那里保留的工具不同，只有请求能说明这一面到底发了什么。
     """
 
     def _parsed(self, tools):
@@ -162,20 +172,21 @@ class ParagraphStillStrippedTest(unittest.TestCase):
                 "messages": [{"role": "user", "content": "hi"}],
                 "tools": tools}
 
-    def test_stripped_when_client_still_sends_tool(self):
+    def test_kept_when_client_still_sends_tool(self):
+        """工具还在请求里 → 它真的能用 → 段落原样保留（此时删段才会变成悬空指引）。"""
         parsed = self._parsed([{"name": "mcp__ccd_pr__get_status", "description": "x"}])
         changed = gateway.canonicalize(
             parsed, rules=gateway.load_rules_config(),
-            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_ci_tools=True), "main"))
-        self.assertNotIn(PR_HEAD, parsed["system"])
-        self.assertIn("strip_ghost_tool_instructions", changed)
+            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_tools=True), "main"))
+        self.assertIn(PR_HEAD, parsed["system"])
+        self.assertNotIn("strip_ghost_tool_instructions", changed)
 
     def test_still_stripped_when_client_no_longer_sends_it(self):
-        """客户端侧已经挡住（请求里没有这个工具）—— 段落照样得走。"""
-        parsed = self._parsed([])
+        """客户端侧已经挡住（请求里有别的工具、但没有这一对）—— 段落照样得走。"""
+        parsed = self._parsed([{"name": "Bash", "description": "x"}])
         changed = gateway.canonicalize(
             parsed, rules=gateway.load_rules_config(),
-            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_ci_tools=True), "main"))
+            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_tools=True), "main"))
         self.assertNotIn(PR_HEAD, parsed["system"])
         self.assertIn("strip_ghost_tool_instructions", changed)
 
@@ -184,7 +195,7 @@ class ParagraphStillStrippedTest(unittest.TestCase):
         parsed = self._parsed([{"name": "mcp__ccd_pr__get_status", "description": "x"}])
         gateway.canonicalize(
             parsed, rules=gateway.load_rules_config(),
-            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_ci_tools=False), "main"))
+            tool_pruning_cfg=tr.pruning_cfg_for_surface(cfg(strip_pr_tools=False), "main"))
         self.assertIn(PR_HEAD, parsed["system"])
 
 

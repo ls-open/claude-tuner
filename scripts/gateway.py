@@ -580,9 +580,7 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=
 
     orig = text
     for pair in PROMPT_PAIRS:
-        if not pair_is_orphaned(pair, names, cfg):
-            continue
-        if incoming_tools is not None and not any(t in incoming_tools for t in pair["tools"]):
+        if not pair_is_orphaned(pair, names, cfg, incoming_tools):
             continue
         text, hit = _strip_paragraphs_by_predicate(
             text, pair_paragraph_predicate(pair), trim=False)
@@ -866,38 +864,24 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     if _client_tools is None:
         _client_tools = {t.get("name") for t in parsed.get("tools") or []
                          if isinstance(t, dict) and t.get("name")}
-    # 剥的口径：「这一轮客户端手里有没有这个工具」= 它发过来了 **或** 我们判定它已经被挡掉。
-    # 后者有两条来路：用户在客户端界面里把工具关了，或 tool_rules.client_disabled_tools
-    # 写进 3P 配置的 `disabledBuiltinTools`（目前只覆盖非 MCP 的内置工具）。
-    # 少了后半句就会反噬：客户端一旦不发，这里判空 → 段落不再剥 → 留下指向不存在工具的
-    # 孤句。桌面端那些段落是写死的字符串常量（例如 `After opening a PR, use the ccd_pr
-    # tools:`），跟工具在不在**无关**，所以工具被挡掉时照样得剥。
-    _strip_tools = set(_client_tools) | {
-        n for pair in PROMPT_PAIRS for n in pair["tools"]
-        if should_strip_tool(n, _ghost_names, tp)
-    }
+    # 剥的口径以**请求实况**为准：这一对里的工具一个都没发过来 → 段落是孤句、删掉。
+    # 不再拿「配置说该剥」当依据 —— 工具现在由客户端在源头挡掉，同一份配置在不同人那里
+    # 保留的工具不同，只有请求能说明这一面到底发了什么（见 tool_rules.pair_is_orphaned）。
     _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
                             lambda t, legacy: strip_ghost_tool_instructions(
-                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_strip_tools)),
+                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_client_tools)),
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
     # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
     # 别让它静默过去，但也别拿假报警淹掉它。
     #
-    # 报警比剥严格一档，两道闸（少一道就成天喊狼来了，真改了措辞反倒没人看）：
-    # ① 用**客户端原始**且**发过**的工具清单（`_client_tools`），不是上面那个并集 ——
-    #    并集里有「我们判定被挡掉」的工具，而会话标题生成这类零工具的后台请求根本
-    #    不带那段说明，拿并集判会把它们全报成失配；
-    # ② 只认主会话面：子代理与 CoWork 的 system 是另外两份提示词，工具照发、这几段本就
-    #    不在里面（实测抓包），「该删的段落没删掉」这个前提不成立。见 DECISIONS #62。
-    #    「只有 main 面成立」比逐个排除更结实 —— 将来多一个面，默认不会误报。
-    if _kind == "main":
-        report_missing_pair_paragraphs(
-            [p["id"] for p in active_pairs(tp, _ghost_names, incoming_tools=_client_tools)
-             if p["id"] not in _pair_found])
+    # 「配对段落没找到」这条报警已经撤掉：判据改成缺席驱动之后，「工具没发 + 段落不在」
+    # 是**正常态**（客户端本来就可能不拼那段），不再是「锚点被改写」的证据 —— 留着只会
+    # 每天误报（DECISIONS #62 记的就是这类假警）。真正的悬空指引改由
+    # `report_orphan_mentions` 抓：洗完之后正文里还残留着被挡工具的名字就报出来。
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     for _guideline in GUIDELINE_PARAGRAPHS:
@@ -1195,27 +1179,10 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
     changed = []
     r = rules or load_rules_config()
 
-    # 1. 模块化动态工具精简（剥掉桌面端强制注入、多数场景用不到的那几类）
-    #    完全保留客户端原生注册的工具物理顺序与 Schema 参数顺序，不做任何人为重排
-    #    剥离口径由调用方按客户端面定型后传进来（见 `_stabilize`）—— 这里不再判面，
-    #    免得同一个判断在两处各写一遍、只对其中一条调用路径生效。
+    # 1. 工具精简**不在网关做**了：开关推导出的名单由配置台写成客户端的
+    #    `disabledBuiltinTools`，客户端根本不发（DECISIONS #61）。这里只保留工具顺序的
+    #    稳定化，不再从报文里删工具 —— 让「不发」只有客户端一个来源。
     tools = parsed.get("tools")
-    if isinstance(tools, list):
-        if tool_pruning_cfg is not None:
-            pruning_cfg = dict(DEFAULT_TOOL_PRUNING_CONFIG)
-            pruning_cfg.update(tool_pruning_cfg)
-        else:
-            pruning_cfg = load_tool_pruning_config()
-        stripped_names = get_stripped_tool_names(pruning_cfg)
-        filtered_tools = [
-            t for t in tools
-            if isinstance(t, dict) and not should_strip_tool(t.get("name", ""), stripped_names, pruning_cfg)
-        ]
-        if len(filtered_tools) != len(tools):
-            pruned_count = len(tools) - len(filtered_tools)
-            parsed["tools"] = filtered_tools
-            tools = filtered_tools
-            changed.append(f"prune_tools_{pruned_count}")
 
     # 2. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
     #    Claude Code 使用 Anthropic 协议：并发工具返回位于单条消息内，严格按 id 排序保证对称稳定

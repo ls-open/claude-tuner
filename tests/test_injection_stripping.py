@@ -73,7 +73,7 @@ class TestUnknownToolDetection(unittest.TestCase):
 
     def test_开关关掉的类别也照样认帐(self):
         names = ["mcp__ccd_sidebar__set_view"]
-        self.assertEqual(sentinel.unknown_tools(names, self._cfg(strip_sidebar_tools=False)), [])
+        self.assertEqual(sentinel.unknown_tools(names, self._cfg(strip_window_tools=False)), [])
 
     def test_原生工具没有开关也要报(self):
         """回归：以前只挑 `mcp__` 前缀，掉出开关范围的原生工具完全没人管 ——
@@ -314,6 +314,9 @@ class TestStripBoundary(unittest.TestCase):
 
 
 
+AUDIT_CFG = {"enabled": True, "strip_session_ui_tools": True}
+
+
 class TestSentinelMatchesGateway(unittest.TestCase):
     """自检侧：哨兵必须认得出网关负责剥的形态，且只扫注入真正落地的地方。"""
 
@@ -389,7 +392,7 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         # 这三段对应的工具都被剥掉时，三段一起走。
         # 配置显式给出，不读环境里那份 —— 否则用例的结果取决于跑测试的机器上恰好勾了什么。
         prune = dict(gateway.DEFAULT_TOOL_PRUNING_CONFIG)
-        prune.update({"enabled": True, "strip_pr_ci_tools": True,
+        prune.update({"enabled": True, "strip_pr_tools": True,
                       "strip_settings_tools": True, "strip_host_tools": True})
         out, changed = gateway.strip_ghost_tool_instructions(text, tp_cfg=prune)
         self.assertTrue(changed)
@@ -400,29 +403,27 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         self.assertIn("mcp__ccd_view__show_pane", out)
         self.assertIn("<ci-monitor-event>", out)
 
-        # 反向联动守卫：若用户保留 ccd_pr 工具 (strip_pr_ci_tools=False)，说明必须自动保留，绝不脱节
-        keep_pr_cfg = {"enabled": True, "strip_pr_ci_tools": False,
-                       "strip_settings_tools": True, "strip_host_tools": True,
-                       "strip_window_tools": True}
-        out_keep_pr, _ = gateway.strip_ghost_tool_instructions(text, tp_cfg=keep_pr_cfg)
-        self.assertIn("ccd_pr", out_keep_pr, "保留了 PR 工具时，说明必须同步保留")
-        self.assertNotIn("ccd_settings", out_keep_pr)
+        # 反向联动守卫：关掉某组 → 该组的说明段落必须自动保留，别的组照删
+        keep_integration = {"enabled": True, "strip_pr_tools": False,
+                            "strip_settings_tools": True, "strip_host_tools": True}
+        out_keep, _ = gateway.strip_ghost_tool_instructions(text, tp_cfg=keep_integration)
+        self.assertIn("ccd_pr", out_keep, "保留了 PR 工具时，说明必须同步保留")
+        self.assertNotIn("ccd_settings", out_keep, "设置组仍开着，那段照删")
+        self.assertNotIn("sync_with_base_branch", out_keep, "host 组仍开着，那段照删")
 
-        # 反向联动守卫：若用户保留设置/主机工具，对应的说明段落必须自动保留
-        keep_session_cfg = {"enabled": True, "strip_pr_ci_tools": True,
-                            "strip_settings_tools": False, "strip_host_tools": False,
-                            "strip_window_tools": False}
-        out_keep_session, _ = gateway.strip_ghost_tool_instructions(text, tp_cfg=keep_session_cfg)
-        self.assertNotIn("ccd_pr", out_keep_session)
-        self.assertIn("ccd_settings", out_keep_session, "保留了设置工具时，说明必须同步保留")
-        self.assertIn("sync_with_base_branch", out_keep_session)
+        keep_local = {"enabled": True, "strip_pr_tools": True,
+                      "strip_local_tools": False, "strip_window_tools": True}
+        out_local, _ = gateway.strip_ghost_tool_instructions(text, tp_cfg=keep_local)
+        self.assertNotIn("ccd_pr", out_local)
+        self.assertIn("sync_with_base_branch", out_local, "保留了 host 工具时，那段必须同步保留")
 
     def test_配置可直接注入不依赖重复读盘(self):
         """注入 tool_pruning_cfg 后，prepare_request 与 canonicalize 都不再重读 config.json。"""
         req = {"tools": [{"name": "mcp__ccd_pr__list"}, {"name": "Read"}], "messages": []}
-        custom_tp = {"enabled": True, "strip_pr_ci_tools": True}
+        custom_tp = {"enabled": True, "strip_pr_tools": True}
         system_text = "After opening a PR, use the ccd_pr tools: call get_status and never enable auto-merge unless the user asked.\n\nHello"
-        parsed = {"system": [{"type": "text", "text": system_text}]}
+        parsed = {"system": [{"type": "text", "text": system_text}],
+                  "tools": [{"name": "Read"}]}
 
         reads = []
         real_loader = gateway.load_tool_pruning_config
@@ -433,8 +434,8 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         c_changed = gateway.canonicalize(parsed, rules={"strip_date": False}, tool_pruning_cfg=custom_tp)
 
         self.assertEqual(reads, [], "注入配置后不得回退去读 config.json")
-        self.assertIn("prune_tools_1", changed)
-        self.assertEqual([t["name"] for t in req["tools"]], ["Read"])
+        self.assertEqual([t["name"] for t in req["tools"]], ["mcp__ccd_pr__list", "Read"],
+                         "网关不再删工具：「不发」已经整层搬到客户端")
         self.assertIn("strip_ghost_tool_instructions", c_changed)
         self.assertEqual(parsed["system"][0]["text"].strip(), "Hello")
 
@@ -460,12 +461,10 @@ class TestSentinelMatchesGateway(unittest.TestCase):
                       {"name": "mcp__ccd_session__read_widget_context"},
                       {"name": "Read"}],
             "messages": []}
-        # **生产同一条路**：名单在剥离之前算。prepare_request 会把这些工具从
-        # parsed["tools"] 里删掉，删完再算就只剩保留的那些，探测等于没做。
+        # **生产同一条路**：名单按客户端发来的工具算。网关不再删工具，所以这份名单
+        # 就是「这些工具本该由客户端挡掉」的记录 —— 提示词里还提它，就是悬空指引。
         ghost = gateway.ghost_tool_names(parsed["tools"], tp)
         gateway.prepare_request(parsed, session_id=None, tool_pruning_cfg=tp)
-        self.assertEqual([t["name"] for t in parsed["tools"]], ["Read"],
-                         "剥离后工具确实不在了 —— 所以名单只能事先算")
         gateway.canonicalize(parsed, rules={}, tool_pruning_cfg=tp, stripped_names=ghost)
 
         hits = [e for e in seen if e.get("event") == "orphan_tool_mention"]
@@ -488,11 +487,11 @@ class TestSentinelMatchesGateway(unittest.TestCase):
             _, ghost_out = gateway.strip_ghost_tool_instructions(ghost_pr, tp_cfg=dict(cfg))
             return tool_out, ghost_out
 
-        # 两个键都缺：回落声明默认（True）—— 两侧都剥
-        self.assertEqual(sides({"enabled": True}), (True, True))
+        # 显式打开该组：两侧都剥（默认已改成全关，见 common.DEFAULT_TOOL_PRUNING_CONFIG）
+        self.assertEqual(sides({"enabled": True, "strip_pr_tools": True}), (True, True))
         # 显式保留：两侧都不剥
         self.assertEqual(
-            sides({"enabled": True, "strip_pr_ci_tools": False}), (False, False)
+            sides({"enabled": True, "strip_pr_tools": False}), (False, False)
         )
         # 工具精简总开关关掉：工具不剥，说明也必须留着
         self.assertEqual(sides({"enabled": False}), (False, False))
@@ -527,72 +526,28 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         "mcp__ccd_pr__get_status", "mcp__ccd_settings__get_settings",
         "mcp__ccd_host__sync_with_base_branch", "mcp__ccd_window__open_session_in",
         "mcp__terminal__open_terminal_tab")]
-    _STRIP_HOST_TERMINAL = {"enabled": True, "strip_host_tools": True, "strip_terminal_tools": True}
+    _STRIP_HOST_TERMINAL = {"enabled": True, "strip_host_tools": True, "strip_host_tools": True}
 
-    def _capture_missing(self):
-        """替换掉上报函数，截获 canonicalize 每次上报的失配清单（绕开进程级去重 memo）。"""
-        calls = []
-        real = gateway.report_missing_pair_paragraphs
-        gateway.report_missing_pair_paragraphs = lambda missed: calls.append(list(missed))
-        self.addCleanup(setattr, gateway, "report_missing_pair_paragraphs", real)
-        return calls
-
-    def test_多块system不产生配对失配假报警(self):
-        """「段落没找到」必须**跨全部 system 块**判。
-
-        客户端把 system 拆成计费头 / 身份 / 正文三块，配对段落只可能在第三块。旧实现按块判：
-        前两块本就不含这些段落，于是**每份请求**都被判成「失配」，网关每次启动都发一次假 WARN
-        （见 DECISIONS「配对段落失配的按块假报警」）。这里钉住真形态下零误报。
-        """
+    def test_零工具请求不删段也不报(self):
+        """会话标题生成那类零工具请求：这一面判断不了发了什么，段落原样保留。"""
         big = "\n\n".join(self._PAIR_PARAS)
-        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": big}],
-                  "tools": self._ORPHANED_TOOLS}
-        calls = self._capture_missing()
-        gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
-                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
-        self.assertEqual(calls, [[]], "段落都在正文里，一处失配都不该报（按块判会误报这 5 项）")
-
-    def test_段落真被改写时如实报失配(self):
-        """反向守卫：锚点全失配时必须报出来 —— 别把假报警修成哑巴。"""
-        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": "正文里没有这些配对段落。"}],
-                  "tools": self._ORPHANED_TOOLS}
-        calls = self._capture_missing()
-        # 显式剥掉 host/terminal：_ORPHANED_IDS 是「这五对全剥」时的集合，
-        # 别依赖它们各自的默认值（默认保留时它们本来就不该报）
-        gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
-                             tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(set(calls[0]), self._ORPHANED_IDS)
-
-    def test_没发工具的后台请求不判失配(self):
-        """零工具的辅助请求（会话标题生成那类）不该被当成锚点失配。
-
-        它的 system 里本来就没有这些段落，而「我们判定义被剥的工具」会让配对仍算 active ——
-        判据必须只认**客户端真发过**的工具。曾因此刷出 8 次假 WARN（见 DECISIONS #62）。
-        """
-        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": "写个标题。"}]}
-        calls = self._capture_missing()
+        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": big}]}
         gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
                              tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL),
                              incoming_tools=set())
-        self.assertEqual(calls, [[]], "客户端一个工具都没发，谈不上「该删的段落没删掉」")
+        text = "\n".join(b.get("text", "") for b in parsed["system"])
+        self.assertIn("Link a Terminal panel tab", text, "判断不了就不动")
 
-    def test_子代理面不判失配(self):
-        """子代理的 system 是另一份精简提示词：工具照发，这几段本就不在里面。
-
-        拿主会话的判据去量它，每份子代理请求都会报 5 项假失配（见 DECISIONS #62）。
-        """
-        parsed = {
-            "system": [{"type": "text",
-                        "text": "x-anthropic-billing-header: cc_version=2.1.295.1fa; "
-                                "cc_is_subagent=true; cc_entrypoint=claude-desktop-3p;"},
-                       {"type": "text", "text": "子代理的 system，没有工具说明段落。"}],
-            "tools": self._ORPHANED_TOOLS,
-        }
-        calls = self._capture_missing()
+    def test_工具没发时段落跟着走(self):
+        """这一对的工具本轮一个都没发 → 整段摘除，不留指向不存在工具的指引。"""
+        big = "\n\n".join(self._PAIR_PARAS)
+        parsed = {"system": self._SMALL_BLOCKS + [{"type": "text", "text": big}],
+                  "tools": [{"name": "Bash"}]}
         gateway.canonicalize(parsed, rules=dict(gateway.DEFAULT_RULES),
                              tool_pruning_cfg=dict(self._STRIP_HOST_TERMINAL))
-        self.assertEqual(calls, [], "子代理面根本不承载这些段落，不该走配对缺失判据")
+        text = "\n".join(b.get("text", "") for b in parsed["system"])
+        self.assertNotIn("Link a Terminal panel tab", text)
+        self.assertNotIn("After opening a PR", text)
 
     def test_splitview段落随会话管理开关原子联动(self):
         """整段可剥的形态：`ccd_window` 的说明段落随 strip_window_tools 同进同退。
@@ -727,21 +682,21 @@ class TestSentinelMatchesGateway(unittest.TestCase):
 
     def test_提示词工具搭配检查认得出被剥工具的引用(self):
         """被剥掉的工具若仍被正文引用（“说明在、工具没了”），审计必须报出来；作为更长标识符子串时不得误报。"""
-        tools = [{"name": "Bash"}, {"name": "mcp__ccd_session__get_usage"}]
+        tools = [{"name": "Bash"}, {"name": "mcp__ccd_session_mgmt__get_usage"}]
         # 两种写法各来一份**只含其一**的样例：正文常常省掉命名空间前缀，
         # 只查全名会漏，而两种情况写在同一段里则互相掩护（去掉短名查找也照样绿）。
-        full_only = {"tools": tools, "system": [{"type": "text", "text": "用量可以问 `mcp__ccd_session__get_usage`。"}]}
+        full_only = {"tools": tools, "system": [{"type": "text", "text": "用量可以问 `mcp__ccd_session_mgmt__get_usage`。"}]}
         short_only = {"tools": tools, "system": [{"type": "text", "text": "用量可以问 get_usage（省略前缀的写法）。"}]}
         substr_word = {"tools": tools, "system": [{"type": "text", "text": "内部函数名 get_usage_stats 不应被当成短名命中。"}]}
         ok = {"tools": tools, "system": [{"type": "text", "text": "这里一个字都没提那个工具。"}]}
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             # 返回 (孤句引用, 配对失配条数)；这里只看前者。
-            got = [sentinel._audit_prompt_tool_pairing(p, p, {})[0] for p in (full_only, short_only)]
-            got_sub = sentinel._audit_prompt_tool_pairing(substr_word, substr_word, {})[0]
-            got_ok = sentinel._audit_prompt_tool_pairing(ok, ok, {})[0]
+            got = [sentinel._audit_prompt_tool_pairing(p, p, AUDIT_CFG)[0] for p in (full_only, short_only)]
+            got_sub = sentinel._audit_prompt_tool_pairing(substr_word, substr_word, AUDIT_CFG)[0]
+            got_ok = sentinel._audit_prompt_tool_pairing(ok, ok, AUDIT_CFG)[0]
         for hits in got:
-            self.assertEqual([n for n, _ in hits], ["mcp__ccd_session__get_usage"])
+            self.assertEqual([n for n, _ in hits], ["mcp__ccd_session_mgmt__get_usage"])
         self.assertEqual(got_sub, [], "短名落在更长标识符内部时不得误报")
         self.assertEqual(got_ok, [])
 
