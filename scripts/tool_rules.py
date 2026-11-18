@@ -289,15 +289,18 @@ def client_disabled_tools(cfg):
     """该让客户端「根本不发」的工具名 —— 开关是唯一来源，**一律精确名**。
 
     来源三处：`CATEGORY_NAMES`（精确名类别）、`CATEGORY_KNOWN_TOOLS`（前缀类别的已登记
-    名字）、`ALWAYS_STRIPPED`（与开关无关、永远不该占上下文的那两个）。
+    名字）、`ALWAYS_STRIPPED`（与开关无关、永远不该占上下文的那一个）。
 
     刻意**不生成通配**：客户端认通配，但通配会连将来新增的同 server 工具一起挡掉，把
     「这个新工具该不该留」的判断也一起吞了、且不留痕迹。精确名的代价是客户端新增工具时
     名单要补一条 —— 但那条会先出现在请求里、被 `unregistered_tool_names()` 报出来。
     """
-    if not tp_flag(cfg, "enabled"):
-        return []
+    # 恒定名单**不受总开关影响**：它不是「精简」，是客户端等 MCP 就绪的内部工具，
+    # 对模型毫无意义 —— 与 `get_stripped_tool_names()` 的判断保持同一口径，否则会出现
+    # 「判定说永远该剥、名单里却一条没写」的两种说法。
     targets = set(ALWAYS_STRIPPED)
+    if not tp_flag(cfg, "enabled"):
+        return sorted(targets - PROTECTED_TOOLS)
     for key, group in CATEGORY_NAMES.items():
         if tp_flag(cfg, key):
             targets.update(group)
@@ -331,11 +334,15 @@ def unregistered_tool_names(present_names):
 
 
 def switch_tools(key):
-    """一个开关名下的工具清单。前缀类开关（会话那一堆）按它登记的前缀元组给。"""
-    for k, prefixes in CATEGORY_NAMESPACES:
-        if k == key:
-            return tuple(prefixes)
-    return tuple(CATEGORY_NAMES.get(key, ()))
+    """一个开关名下**已登记的精确工具名**。
+
+    前缀类开关在 `CATEGORY_NAMESPACES` 里只登记前缀，精确名在 `CATEGORY_KNOWN_TOOLS`，
+    两张表都要取。**不能返回前缀本身**：它的消费者是 `idle_switches`，而拿来比对的是
+    客户端名单（全是精确名）—— `mcp__ccd_sidebar` 永远比不中 `mcp__ccd_sidebar__create_group`，
+    于是「被客户端挡住的开关」会被判成「客户端本来就不发」，给出一个删了就把工具放回来的建议。
+    """
+    names = list(CATEGORY_NAMES.get(key, ())) + list(CATEGORY_KNOWN_TOOLS.get(key, ()))
+    return tuple(dict.fromkeys(names))
 
 
 def idle_switches(cfg, present_names, disabled_names):
@@ -351,7 +358,9 @@ def idle_switches(cfg, present_names, disabled_names):
     present = set(present_names or ())
     denied = set(disabled_names or ())
     covered, stale = {}, []
-    for key in list(dict(CATEGORY_NAMESPACES)) + list(CATEGORY_NAMES):
+    # 去重：有的键同时登记在前缀表与精确表里（如 `strip_session_ui_tools`），
+    # 两张表各遍历一遍就会把同一个开关报两次。
+    for key in dict.fromkeys(list(dict(CATEGORY_NAMESPACES)) + list(CATEGORY_NAMES)):
         if not tp_flag(cfg, key) or any(category_for(n) == key for n in present):
             continue
         owned = switch_tools(key)
@@ -365,22 +374,22 @@ def idle_switches(cfg, present_names, disabled_names):
 def client_disabled_leaks(present_names, disabled_names):
     """写着「客户端不发」、报文里却出现了 —— 客户端侧拦截失效，必须报出来。
 
-    失效不等于坏事：网关剥离照旧把它们删掉，前缀仍然恒定。报出来是为了让人知道
-    「这条保证已经只剩一层了」，而不是等到某天上下文里真的冒出来才发现。
+    这一层**没有兜底**：网关已不再从报文里删工具，泄漏就是真进了上下文、前缀当场涨一截。
+    报出来是为了让人当场看见，而不是等到账单变贵才发现（DECISIONS #58 / #61）。
     """
     denied = set(disabled_names or ())
     return sorted(n for n in (present_names or ()) if n in denied)
 
 
 def ghost_tool_names(tools, cfg):
-    """本次请求里**实际会被剥掉**的工具名 —— 孤儿探测与配对判定都按这个口径。
+    """本次请求里**判定为不该留**的工具名 —— 孤儿探测与配对判定都按这个口径。
 
     不能只读配置：类别表里既有精确名也有前缀（`mcp__ccd_session*` 等），而配置侧
     只有精确名 —— 前缀类工具永远进不来，探测器对它们就是瞎的（27 个 ccd_session
-    剥了却一条都报不出）。
+    判了却一条都报不出）。
 
-    **必须在剥离之前调用**：`prepare_request` 会原地删掉 tools，之后再算只剩保留的
-    那些，修补等于没做（这条踩过）。
+    名字里有「剥离」是历史叫法：现在网关不再从报文里删工具，这个集合只用于判断
+    「哪些工具的说明段落该跟着走」。
     """
     names = get_stripped_tool_names(cfg)
     for t in tools if isinstance(tools, list) else ():
@@ -410,7 +419,8 @@ def ghost_tool_names(tools, cfg):
 # 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
 # 锚点必须取短、只留段首特征：段落后面怎么改写都还认得出。拿「首句 + 末句逐字
 # 全等」当判据会在客户端改一个标点时静默失配 —— 工具照剥、段落留下，成了比不剥
-# 更糟的孤句。连锚点也被改写的情况由 missing_pair_paragraphs() 报出来。
+# 更糟的孤句。锚点失配**不再单独报警**：工具没发 + 段落不在是正常态（#62），
+# 真留下悬空指引由 `orphan_mentions()` 按工具名抓。
 PROMPT_PAIRS = (
     {
         "id": "ccd_pr",
@@ -503,18 +513,6 @@ def pair_paragraph_missing(pair, text):
         return True
     return not any(pair_paragraph_predicate(pair)(p.strip())
                    for p in text.split("\n\n") if p.strip())
-
-
-def missing_pair_paragraphs(text, cfg, stripped_names, incoming_tools=None):
-    """该剥的配对里，段首锚点一处都没命中的那些 —— 即「承诺要删的整段没删掉」。
-
-    这是**故障**，不是取舍：工具已经全被剥了，解释它们的整段却还留在提示词里，
-    模型被引到一个不存在的工具上。客户端多半改了措辞，导致锚点失配。
-    网关据此记 WARN，哨兵据此把结论从 ✅ 拉下来。
-    """
-    return [{"id": p["id"], "anchor": p["anchor"], "why": p["why"]}
-            for p in active_pairs(cfg, stripped_names, incoming_tools=incoming_tools)
-            if pair_paragraph_missing(p, text)]
 
 
 def orphan_mentions(text, stripped_names):

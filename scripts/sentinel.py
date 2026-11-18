@@ -260,11 +260,10 @@ def unknown_tools(names, cfg):
 
 
 def _audit_tools(raw, tp_cfg, surface_skipped=False):
-    """工具面：剥离多少、保留哪些；只把类别表外的工具列为待判定。
+    """工具面：本轮在场哪些、有没有本该被客户端挡掉却仍在场的；只把类别表外的工具列为待判定。
 
-    待判定的判据是「我们有没有为它定过开关」，不是「它有没有被剥」——
-    判为保留也是判定，见 `unknown_tools`。只看原文（`raw`）：剥离是配置算出来的，
-    清洗后的副本对「剥了哪些」没有增量信息。
+    待判定的判据是「我们有没有为它定过开关」，不是「它有没有被挡」——
+    判为保留也是判定，见 `unknown_tools`。
     """
     cfg = tp_cfg
     stripped = gateway.get_stripped_tool_names(cfg)
@@ -279,7 +278,9 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
     print("─" * 78)
     print("① 工具面")
     print("─" * 78)
-    print("  %d 个工具 → 剥离 %d，保留 %d" % (len(names), len(names) - len(kept), len(kept)))
+    print("  %d 个工具在场%s" % (
+        len(names), "，其中 %d 个本该被客户端挡掉" % (len(names) - len(kept))
+        if len(kept) != len(names) else ""))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
     if surface_skipped:
         print("  ℹ️ CoWork 面按策略**原样透传**：不剥工具，也不跑任何清洗规则，只做模型名映射。")
@@ -321,21 +322,17 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
             for key in sorted(idle["covered"]):
                 print("     %s ← %s" % (key, ", ".join(idle["covered"][key])))
             print("     → 别删这些开关：客户端的名单由它们推导，删了工具立刻回来。")
-            print("       这几条只有客户端这一层（见 tool_rules.CLIENT_LAYER_NAMES）。")
         if idle["stale"]:
             print("  ℹ️ %d 个开关开着、但客户端这版根本不发它们名下的工具：" % len(idle["stale"]))
             print("     %s" % ", ".join(idle["stale"]))
             print("     → 可考虑删掉该开关；若只面向新客户端则纯属死重。")
-    # 写着「客户端不发」却出现了：客户端侧拦截失效。内置工具那几条（CLIENT_LAYER_NAMES）
-    # 没有网关第二层，报出来才是它们唯一的安全网 —— 别当成故障，但也别静默。
+    # 写着「客户端不发」却出现了：客户端侧拦截失效。**没有网关兜底** —— 漏出来就是真进了
+    # 上下文、前缀当场涨一截，所以这条必须报。别当成故障去改代码，先查客户端设置。
     leaks = tool_rules.client_disabled_leaks(names, gateway.load_client_disabled_tools())
     if leaks:
         print("  ⚠️ %d 个工具写着「客户端不发」却出现在报文里 —— 客户端侧拦截失效：" % len(leaks))
         print("     %s" % ", ".join(leaks))
-        naked = [n for n in leaks if n in tool_rules.CLIENT_LAYER_NAMES]
-        if naked:
-            print("     · %s 没有网关第二层，本轮它们真的进了前缀（缓存击穿一次）。"
-                  % ", ".join(naked))
+        print("     · 网关已不再删工具，本轮它们真的进了前缀（缓存击穿一次）。")
         print("     → 查客户端设置是否被清掉、或该版换了语义。")
     print("  ℹ️ 底线名单里的原生工具（Bash / Read 等）刻意不给开关，客户端增删它们不在这里报")
     return len(pending) + len(unregistered) + len(leaks)
@@ -444,15 +441,15 @@ def _has_identifier(text, token):
 
 
 def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
-    """提示词 / 工具搭配：两个方向都要看。
+    """提示词 / 工具搭配：工具没了，正文里还提它吗。
 
-    · **该删的整段没删掉**（`missing_pair_paragraphs`）：工具全被剥了，解释它们的整段
-      却还在 —— 客户端多半改了措辞导致锚点失配。**这是故障，计入结论**。
-    · **工具剥了、正文里还提一句**：段落边界不清楚的已知取舍，**只提示、不计入结论**。
+    **只提示、不计入结论**：段落边界不清楚，整段删会连累无关内容，句中删又容易切坏，
+    所以只报出来给人看。
+
+    反方向（「工具没发、说明段落也不在」）**不再报** —— 那是正常态：客户端本来就可能
+    不拼那段（DECISIONS #62）。真正留下悬空指引时，工具名会在这里被逮到。
 
     只扫**顶层 system 面**，不扫 messages —— messages 是对话正文，讨论到某个工具名是常态。
-    孤句那一侧只看**最终要发出去的**那份（clean）；失配那一侧要看客户端发来的原文（raw），
-    因为清洗之后该段可能已经被删掉了。
     """
     cfg = tp_cfg if tp_cfg is not None else gateway.load_tool_pruning_config()
     stripped_names = gateway.get_stripped_tool_names(cfg)
@@ -467,35 +464,26 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
         if found:
             hits.append((name, sorted(found)))
     # 只认主会话面：子代理与 CoWork 的 system 是另外两份提示词，工具照发、这几段本就不在
-    # 里面，「该删的整段没删掉」这个前提不成立。网关侧同一道闸见 DECISIONS #62。
+    # 里面，这里报什么都是噪声。网关侧同一道闸见 DECISIONS #62。
     kind = gateway.classify_kind(raw)
-    missing = [] if kind != "main" else tool_rules.missing_pair_paragraphs(
-        "\n".join(extract_system_texts(raw)), cfg, stripped_names,
-        incoming_tools=extract_tool_names(raw))
     print()
     print("─" * 78)
     print("④ 提示词 / 工具搭配")
     print("─" * 78)
-    if missing:
-        print("  ⚠️ 这些配对的工具已全被剥离，但它们的说明段落一处都没找到 —— 客户端可能改了措辞：")
-        for m in missing:
-            print("       · %-20s 锚点 %r" % (m["id"], m["anchor"]))
-        print("     → 工具没了、说明还在，模型会被引到一个不存在的工具上。改 tool_rules.PROMPT_PAIRS")
-        print("       里这条的 anchor 即可（只取段首一小截，段落后面怎么改都还认得出）。")
-    if not hits and not missing:
+    if not hits:
         if kind != "main":
-            print("  ✅ 这是 %s 面：system 是另一份提示词，本就不含工具说明段落，配对缺失不研判" % kind)
+            print("  ✅ 这是 %s 面：system 是另一份提示词，本就不含工具说明段落，不研判" % kind)
         elif not gone:
-            print("  ✅ 这份报文里没有被剥的工具，提示词与工具表不会脱节")
+            print("  ✅ 这份报文里没有被挡掉的工具，提示词与工具表不会脱节")
         else:
-            print("  ✅ 被剥掉的 %d 个工具：该删的整段都删到了，剩下的也没有被正文引用" % len(gone))
+            print("  ✅ 被挡掉的 %d 个工具，正文里一个都没被引用" % len(gone))
     if hits:
-        print("  ℹ️ 以下工具已被剥掉，但正文仍在引用：")
+        print("  ℹ️ 以下工具已被挡掉，但正文仍在引用：")
         for name, tokens in hits:
             print("       · %s   （正文里写作 %s）" % (name, "、".join("`%s`" % t for t in tokens)))
         print("    整段边界清楚的可以顺手剥掉整段；夹在句子中段的按约定不动，保留原样。")
         print("    不计入下方结论 —— 这是已知取舍，不是故障。")
-    return hits, len(missing)
+    return hits, 0
 
 
 def _audit_rule_health(changed, skipped=False):

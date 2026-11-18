@@ -67,7 +67,6 @@ EVENT_LEVELS = {
     "stabilize_error": "ERROR",
     "canonicalized": "DEBUG",
     "orphan_tool_mention": "WARN",
-    "pair_text_not_found": "WARN",
     "client_disconnected": "WARN",
     "upstream_ok": "INFO",
     "upstream_truncated": "ERROR",
@@ -214,7 +213,6 @@ from tool_rules import (  # noqa: E402
 # 上一次报出来的孤句集合。逐轮重复报同一件事只会把日志刷满，
 # 但**变化时一定报** —— 客户端新增交叉引用时它就会变，那正是我们要知道的那一刻。
 _orphan_memo = [None]
-_pair_miss_memo = [None]
 
 
 def _system_text(parsed):
@@ -267,25 +265,6 @@ def report_orphan_mentions(parsed, stripped_names):
                        "note": "这些工具已被剥离，但提示词里仍提到它们"})
     except Exception:
         pass
-
-
-def report_missing_pair_paragraphs(missed):
-    """该删的配对段落一处都没找到 —— 记进日志。
-
-    与 report_orphan_mentions 是两件事，别混：那边是「工具剥了、正文里还提一句」，
-    段落边界不清楚，属**已知取舍**；这边是「我们承诺过整段删掉，结果一处都没命中」，
-    属**故障** —— 工具已经没了，那段却还留着，模型被引到一个不存在的工具上。
-
-    最可能的成因：客户端改了那段的措辞，锚点失配。改一行 PROMPT_PAIRS 的 anchor 即可。
-    """
-    if not missed:
-        return
-    if missed == _pair_miss_memo[0]:
-        return   # 每个请求都跑，和上一轮一样就闭嘴，免得把日志刷满
-    _pair_miss_memo[0] = list(missed)
-    log_event({"event": "pair_text_not_found",
-               "pairs": missed[:20],
-               "note": "这些配对的工具已被全部剥离，但它们的说明段落没找到 —— 客户端可能改了措辞"})
 
 
 def log_retention_days():
@@ -855,10 +834,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
 
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
-    # 优先用调用方在剥离前记下的那份；没传才退回「当前 tools」——
-    # 直接调用本函数（不经 prepare_request）时两者本来就是同一份。
-    # 名单必须在**剥离之前**算（见 ghost_tool_names 的说明）：走到这里 tools 已被
-    # prepare_request 删过，再按它补齐就只剩下保留的那些，前缀类工具一条都补不到。
+    # 优先用调用方算好传进来的那份；没传才退回「当前 tools」——直接调用本函数
+    # （不经 prepare_request）时两者本来就是同一份。
     _ghost_names = stripped_names if stripped_names is not None else get_stripped_tool_names(tp)
     _client_tools = incoming_tools
     if _client_tools is None:
@@ -1173,18 +1150,14 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
 
 def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=None):
     """主请求前置稳定化预处理：
-    1. 稳定工具顺序 + 模块化工具裁剪 (Tool Pruning)
-    2. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
+    1. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
+    2. 工具精简不在网关做：开关推导出的名单由配置台写成客户端的 `disabledBuiltinTools`，
+       客户端根本不发（DECISIONS #61）—— 这里不删任何工具。
     """
     changed = []
     r = rules or load_rules_config()
 
-    # 1. 工具精简**不在网关做**了：开关推导出的名单由配置台写成客户端的
-    #    `disabledBuiltinTools`，客户端根本不发（DECISIONS #61）。这里只保留工具顺序的
-    #    稳定化，不再从报文里删工具 —— 让「不发」只有客户端一个来源。
-    tools = parsed.get("tools")
-
-    # 2. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
+    # 1. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
     #    Claude Code 使用 Anthropic 协议：并发工具返回位于单条消息内，严格按 id 排序保证对称稳定
     #    这是一条独立规则（可关）：它不删内容、只重排，但重排本身会让这一轮的字节与写进缓存的
     #    那份不一致 —— 关掉它缓存会掉，只是有些上游对块顺序敏感，留一个逃生口。

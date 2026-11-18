@@ -533,7 +533,6 @@
         <span class="tag" id="pruneTag" style="display:none"></span>
         <button class="save-pill" data-save-section="s5" hidden></button></div>
       <div class="body">
-        <p class="lead">按需精简客户端注入的外围辅助工具，配套的系统提示词将自动同步清理，节省上下文并释放模型注意力。</p>
         <div id="pruneBox"></div>
       </div>
     </section>
@@ -1376,7 +1375,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 
   // 5. 随附技能与动态工作流（客户端设置，随下面那组一起比）
 
-  // 6. 工具精简分类开关
+  // 6. 工具精简分类开关 —— 落点是客户端的 disabledBuiltinTools，重启客户端才生效
   PRUNING_GROUPS.forEach(([, , items]) => {
     items.forEach(([k, label]) => {
       const oldVal = !!(CFG.tool_pruning && (CFG.tool_pruning[k] ?? CFG.options?.pruning_defaults?.[k]));
@@ -1387,7 +1386,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
           from: oldVal ? '开' : '关',
           to: newVal ? '开' : '关',
           immediate: true,
-          ...{ when: WHEN.now[0], badge: WHEN.now[1] }
+          ...{ when: WHEN.restart[0], badge: WHEN.restart[1] }
         });
       }
     });

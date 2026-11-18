@@ -87,8 +87,14 @@ class ClientDisabledToolsTest(unittest.TestCase):
         for name in ("WebSearch", "WebFetch", "NotebookEdit"):
             self.assertNotIn(name, rules)
 
-    def test_master_switch_off_disables_everything(self):
-        self.assertEqual(tr.client_disabled_tools(cfg(enabled=False, strip_web_search_tools=True)), [])
+    def test_master_switch_off_keeps_only_the_constant_list(self):
+        """总开关关掉 = 一个开关都不生效，但恒定名单照写 —— 它不是「精简」。
+
+        判定侧（`get_stripped_tool_names`）任何配置下都认它，名单侧却一条不写的话，
+        就出现「判定说永远该挡、实际谁也没挡」的两种说法。
+        """
+        self.assertEqual(tr.client_disabled_tools(cfg(enabled=False, strip_web_search_tools=True)),
+                         ["WaitForMcpServers"])
 
     def test_protected_tools_are_never_denied(self):
         """PROTECTED_TOOLS 是底线：就算进了自定义清单也不挡。"""

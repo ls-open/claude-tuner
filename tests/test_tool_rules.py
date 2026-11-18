@@ -538,14 +538,18 @@ class TestPairAnchorTolerance(unittest.TestCase):
         # 只断言 ccd_pr：这段的整段就在正文里，摘掉了，就该记进命中。
         self.assertIn("ccd_pr", found)
 
-    def test_哨兵与网关用同一份判据(self):
+    def test_配对判据以请求实况为准(self):
+        """这一对的工具本轮一个都没发 → 段落是孤句；只要有一个在场 → 段落仍成立。
+
+        配置不再参与：工具由客户端在源头挡掉，同一份配置在不同人那里保留的工具不同。
+        """
         c = cfg()
-        ids = lambda t, cc: [m["id"] for m in tr.missing_pair_paragraphs(t, cc, tr.get_stripped_tool_names(cc))]
-        self.assertIn("ccd_pr", ids("无关正文。", c))
-        self.assertNotIn("ccd_pr", ids(PR_HEAD, c))
-        # 判为保留的配对不在其中 —— 它本来就不该删，谈不上「没删到」
-        c2 = cfg(strip_view_tools=False)
-        self.assertNotIn("ccd_view_show_pane", ids(SHOW_PANE, c2))
+        names = tr.get_stripped_tool_names(c)
+        pair = next(p for p in tr.PROMPT_PAIRS if p["id"] == "ccd_pr")
+        self.assertTrue(tr.pair_is_orphaned(pair, names, c, incoming_tools={"Bash"}))
+        self.assertFalse(tr.pair_is_orphaned(pair, names, c, incoming_tools={"Bash", "mcp__ccd_pr__bind_pr"}))
+        # 零工具的辅助请求（会话标题生成那类）判断不了：不删也不报
+        self.assertFalse(tr.pair_is_orphaned(pair, names, c, incoming_tools=set()))
 
 
 class TestOrphanDetection(unittest.TestCase):
@@ -697,6 +701,24 @@ class TestIdleSwitchAttribution(unittest.TestCase):
     def test_off_switch_is_never_reported(self):
         out = tr.idle_switches(cfg(strip_web_search_tools=False), [], [])
         self.assertNotIn("strip_web_search_tools", out["stale"])
+
+    def test_前缀类开关也认得被挡住(self):
+        """前缀类开关（sidebar / window / pr …）的精确名在 `CATEGORY_KNOWN_TOOLS` 里。
+
+        拿前缀去比客户端名单（全是精确名）永远比不中 —— 那会把「被挡住的」判成「客户端
+        本来就不发」，给出一个删了就把工具放回来的建议。这条钉住它。
+        """
+        c = cfg(strip_sidebar_tools=True)
+        denied = [n for n in tr.client_disabled_tools(c) if n.startswith("mcp__ccd_sidebar__")]
+        self.assertTrue(denied, "开关开着，客户端名单里就该有它的精确名")
+        out = tr.idle_switches(c, [], denied)
+        self.assertIn("strip_sidebar_tools", out["covered"])
+        self.assertNotIn("strip_sidebar_tools", out["stale"])
+
+    def test_每个开关只报一次(self):
+        """`strip_session_ui_tools` 同时登记在前缀表与精确表里，别报两遍。"""
+        out = tr.idle_switches(cfg(strip_session_ui_tools=True), [], [])
+        self.assertEqual(out["stale"].count("strip_session_ui_tools"), 1)
 
     def test_one_deny_rule_keeps_the_whole_switch(self):
         # WebFetch 进客户端名单、同组的 mcp__workspace__web_fetch 进不去（MCP 写不进）——
