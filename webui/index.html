@@ -863,11 +863,15 @@ function renderSwitches(d){
 
   bindGroupMasterEvents();
 
-  // 工具面的主指标：最近一次真实请求里客户端发了多少、我们剥了多少。
+  // 工具面的主指标：这一轮实际在场几个，客户端名单里挡着几条。
+  // 两个数同屏才有意义 —— 挡着的压根没发出来，在场的才是真实占用。
   const ts = d.tool_stats;
   if (ts && ts.incoming){
     const tag = $('#pruneTag');
-    if (tag) tag.textContent = `最近一次请求：剥掉 ${ts.stripped} / ${ts.incoming} 个工具`;
+    if (tag){
+      tag.textContent = `本轮在场 ${ts.incoming} 个工具 · 客户端名单挡着 ${ts.blocked} 条`;
+      tag.style.display = '';
+    }
   }
 
   $('#prefBox').innerHTML =
@@ -1451,9 +1455,9 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 }
 
 // ── 保存：两条路 ──────────────────────────────────────────
-// **立即生效的一类**（前缀稳定化 / 工具精简 / 日志保留 / 上游地址）写的是网关自己的
-// config.json：热读 + 原子写，改完就该生效，所以不等按钮 —— 防抖 300ms 直接存，
-// 配 5 秒「撤销」。页头那颗常驻按钮因此没有存在的理由：它大多数时候无事可做。
+// **不等按钮的一类**（前缀稳定化 / 工具精简 / 日志保留 / 上游地址）：改完防抖 300ms 直接存，
+// 配 5 秒「撤销」。其中写网关 config.json 的下一轮就生效，工具精简写的是客户端名单、
+// 存完还要重启客户端 —— toast 按这批 diff 里有没有 restart 项分别说。
 //
 // **客户端那几本账**（密钥、模型映射、缓存时长、客户端偏好）写的是 3P 配置或客户端
 // 设置文件：客户端开着时会被它覆盖回去，所以不能偷偷写 —— 收进所在区块标题的小按钮，
@@ -1540,7 +1544,9 @@ async function autoSaveImmediate(){
 
     _autoUndo = before;
     say('');
-    showToast('已保存，立即生效', 'ok', 5000, {
+    // 同一批自动保存里可能混着「要重启客户端」的项（工具精简写的是客户端名单）
+    const needsRestart = diffs.some(d => d.badge === 'restart');
+    showToast(needsRestart ? '已保存，重启客户端后生效' : '已保存，立即生效', 'ok', 5000, {
       label: '撤销',
       onClick: async () => {
         const back = _autoUndo;
@@ -1636,8 +1642,10 @@ async function saveClientSide(){
   const schedNow = !!$('#schedTasks').checked;
   const schedChanged = (CFG.client?.scheduled_tasks === false) !== schedNow;
 
+  // 地址不合法就别发：留了半截地址时点别的区块的保存，会把半截 URL 写进配置并重启网关
+  const rawUp = ($('#upstream').value || '').trim();
   const r = await api('/api/config', {
-    upstream_url: $('#upstream').value.trim(),
+    upstream_url: isValidUpstreamUrl(rawUp) ? rawUp : undefined,
     api_key: $('#apikey').value.trim(),
     models, settings, tool_pruning, rules,
     unset_settings: [

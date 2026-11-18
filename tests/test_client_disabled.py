@@ -16,7 +16,7 @@
 
 跑法：
     python3 -m unittest discover -s claude-tuner/tests -p "test_*.py"
-    python3 tests/test_client_deny.py
+    python3 claude-tuner/tests/test_client_disabled.py
 """
 import os
 import sys

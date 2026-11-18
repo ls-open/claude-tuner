@@ -691,10 +691,10 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         ok = {"tools": tools, "system": [{"type": "text", "text": "这里一个字都没提那个工具。"}]}
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            # 返回 (孤句引用, 配对失配条数)；这里只看前者。
-            got = [sentinel._audit_prompt_tool_pairing(p, p, AUDIT_CFG)[0] for p in (full_only, short_only)]
-            got_sub = sentinel._audit_prompt_tool_pairing(substr_word, substr_word, AUDIT_CFG)[0]
-            got_ok = sentinel._audit_prompt_tool_pairing(ok, ok, AUDIT_CFG)[0]
+            # 返回「正文里仍被引用的被挡工具」清单。
+            got = [sentinel._audit_prompt_tool_pairing(p, p, AUDIT_CFG) for p in (full_only, short_only)]
+            got_sub = sentinel._audit_prompt_tool_pairing(substr_word, substr_word, AUDIT_CFG)
+            got_ok = sentinel._audit_prompt_tool_pairing(ok, ok, AUDIT_CFG)
         for hits in got:
             self.assertEqual([n for n, _ in hits], ["mcp__ccd_session_mgmt__get_usage"])
         self.assertEqual(got_sub, [], "短名落在更长标识符内部时不得误报")

@@ -345,6 +345,31 @@ CLIENT_DISABLED_KEY = "client_disabled_tools"
 LEGACY_DENY_KEY = "client_deny_rules"
 
 
+def drop_legacy_deny(settings, rules):
+    """收回旧落点（`permissions.deny`）留下的条目 —— 只删记账里那些，别人的规则不动。
+
+    那一版把「让客户端不发」实现成权限层禁止（DECISIONS #58 记了为什么换掉）。换掉之后
+    这些条目仍在用户的 `/permissions` 里，卸载时得跟着收走，否则会留下指向不存在工具的规则。
+    """
+    want = {r for r in (rules or ()) if isinstance(r, str) and r}
+    perms = settings.get("permissions") if isinstance(settings, dict) else None
+    deny = perms.get("deny") if isinstance(perms, dict) else None
+    if not want or not isinstance(deny, list):
+        return settings, []
+    kept = [r for r in deny if r not in want]
+    if len(kept) == len(deny):
+        return settings, []
+    new = copy.deepcopy(settings)
+    dropped = sorted(want.intersection(deny))
+    if kept:
+        new["permissions"]["deny"] = kept
+    else:
+        new["permissions"].pop("deny", None)
+        if not new["permissions"]:
+            new.pop("permissions")
+    return new, dropped
+
+
 def sync_client_disabled(bundle, pruning_cfg, previously_written=()):
     """把「让客户端根本不发」的那几条并进 3P 配置，返回 (新配置, 变动键, 本次写入的名单)。
 

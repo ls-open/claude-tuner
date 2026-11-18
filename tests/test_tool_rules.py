@@ -486,6 +486,25 @@ class TestGhostInstructionStripping(unittest.TestCase):
         text = "\n".join(b.get("text", "") for b in parsed["system"])
         self.assertIn("After opening a PR", text)
 
+    def test_网关不再从报文里删工具(self):
+        """迁移的底线：工具精简整层在客户端，网关一个工具都不许删。
+
+        哪天有人「顺手补一层兜底」把它加回来，「它为什么没发」就又有两个口径了
+        （DECISIONS #61）。这条用例就是那根桩。
+        """
+        parsed = {
+            "model": "claude-opus-5-5",
+            "system": [],
+            "tools": [{"name": "mcp__ccd_sidebar__set_view"},
+                      {"name": "WebSearch"}, {"name": "Bash"}],
+            "messages": [],
+        }
+        c = cfg(strip_sidebar_tools=True, strip_web_search_tools=True)
+        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+                             tool_pruning_cfg=c)
+        self.assertEqual([t["name"] for t in parsed["tools"]],
+                         ["mcp__ccd_sidebar__set_view", "WebSearch", "Bash"])
+
     def test_CI监控那段刻意不随ccd_pr剥(self):
         """它不是「怎么用某个工具」的说明，而是一条**防注入约束**：事件流由客户端投递，
         跟工具勾没勾无关，它防的是「文件 / 工具输出 / 网页里冒充事件的块」。
@@ -521,22 +540,14 @@ class TestPairAnchorTolerance(unittest.TestCase):
         self.assertTrue(hit)
         self.assertNotIn("show_pane", out)
 
-    def test_锚点被改写时不误记为命中(self):
-        """最坏情况：连锚点都被改写。段落摘不掉，就**不能记进 found** —— 上层据此报失配。"""
+    def test_锚点被改写时宁可不动手(self):
+        """最坏情况：连锚点都被改写。认不出这段就不动它 —— 误删别的内容比漏删更糟。"""
         c = cfg()
         names = tr.get_stripped_tool_names(c)
         rewritten = PR_HEAD.replace("After opening a PR", "Once you open a PR")
-        found = set()
-        gw.strip_ghost_tool_instructions(rewritten, tp_cfg=c, stripped_names=names, found=found)
-        self.assertNotIn("ccd_pr", found, "段落没摘掉却记成命中，真失配就再也报不出来了")
-
-    def test_段落还在时记进命中(self):
-        c = cfg()
-        names = tr.get_stripped_tool_names(c)
-        found = set()
-        gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=c, stripped_names=names, found=found)
-        # 只断言 ccd_pr：这段的整段就在正文里，摘掉了，就该记进命中。
-        self.assertIn("ccd_pr", found)
+        out, hit = gw.strip_ghost_tool_instructions(rewritten, tp_cfg=c, stripped_names=names)
+        self.assertFalse(hit)
+        self.assertEqual(out, rewritten)
 
     def test_配对判据以请求实况为准(self):
         """这一对的工具本轮一个都没发 → 段落是孤句；只要有一个在场 → 段落仍成立。

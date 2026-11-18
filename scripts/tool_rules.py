@@ -183,7 +183,7 @@ def pruning_cfg_for_surface(cfg, kind):
     """按客户端面给出**实际生效**的剥离配置。
 
     CoWork 面**整面原样透传**（见 DECISIONS #46）：返回一份 `enabled=False` 的副本，
-    于是 `strip_reason` / `active_pairs` / 孤儿与配对探测全部自动跟着走 —— 判一遍面就够，
+    于是 `strip_reason` / 配对段落与孤儿探测全部自动跟着走 —— 判一遍面就够，
     不必让每个下游函数各学一个新参数。网关那边另有一道：`canonicalize` 对同一批 kind
     连文本清洗规则也不跑。
 
@@ -267,22 +267,17 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 客户端自己的字段之后，语义对上了，用户打开 `/permissions` 看到的全是自己写的规则，
 # 名字写错时客户端还会给警告（`web_fetch` 那种小写写法就是它报的）。
 #
-# 只有**非 MCP** 的内置工具走得通。桌面端把 hosted MCP 工具按它自己的 `enabledMcpTools`
-# （界面上那套工具开关，落盘成 mcp-user-tool-toggles.json）先筛一遍，配置层不参与那一层
-# —— 所以 MCP 那部分只能由用户在界面里关，网关的事后剥离照旧兜底。
+# MCP 工具同样走得通：名单里既有非 MCP 的内置工具，也有 `mcp__*` 的精确名。
+# 早先按公开 issue 判定「客户端侧没有出路」，实测（客户端 2.1.326）推翻了 —— 见 #61。
 #
-# 结论：这里只产出**非 MCP** 的名字。多写不会生效，只会让配置看起来比实际能做到的多
-# —— 那比不写更坏。
-#
-# 和网关剥离是什么关系
-# --------------------
-# 内置工具（`WebSearch` / `WebFetch` / `NotebookEdit`）**只有客户端这一层**：
-# 名单由开关推导、写进 3P 配置，客户端不发，请求里就真的没有它们。网关不重复剥一遍 ——
-# 剥一个永远不出现的名字是无物可剥，还会让「它为什么没发」出现两个口径。
-# 其余类别（MCP 工具等）照旧只有网关剥离这一条路：客户端名单管不到它们。
+# 和网关是什么关系
+# ----------------
+# 工具精简**只有客户端这一层**：名单由开关推导、写进 3P 配置，客户端不发，请求里就真的
+# 没有它们。网关不重复剥一遍 —— 剥一个永远不出现的名字是无物可剥，还会让「它为什么没发」
+# 出现两个口径。
 #
 # 失效靠 `client_disabled_leaks` 报出来：某版客户端不认那个字段，工具立刻回到报文里、
-# 前缀当场涨一截。这一层没有网关兜底 —— 报出来就是为了当场看见（DECISIONS #58）。
+# 前缀当场涨一截。这一层没有网关兜底 —— 报出来就是为了当场看见（DECISIONS #58 / #61）。
 
 
 def client_disabled_tools(cfg):
@@ -492,27 +487,10 @@ def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
     return all(should_strip_tool(name, stripped_names or (), cfg) for name in pair["tools"])
 
 
-def active_pairs(cfg, stripped_names, incoming_tools=None):
-    """当前已成孤句的配对（这一对的工具本轮一个都没出现，段落也该走）。
-
-    不带 `incoming_tools` 时退回按配置判定，供离线工具使用。
-    """
-    return [p for p in PROMPT_PAIRS
-            if pair_is_orphaned(p, stripped_names, cfg, incoming_tools)]
-
-
 def pair_paragraph_predicate(pair):
     """配对段落的识别谓词：按空行切段后，**段首命中锚点**即认这一整段。"""
     anchor = pair["anchor"]
     return lambda para: para.startswith(anchor)
-
-
-def pair_paragraph_missing(pair, text):
-    """这段在文本里还找得到吗 —— 逐段比对段首锚点。"""
-    if not isinstance(text, str) or not text:
-        return True
-    return not any(pair_paragraph_predicate(pair)(p.strip())
-                   for p in text.split("\n\n") if p.strip())
 
 
 def orphan_mentions(text, stripped_names):

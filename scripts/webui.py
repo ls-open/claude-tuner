@@ -124,13 +124,18 @@ def stats_payload():
 
 
 def tool_stats_payload():
-    """最近一次真实请求的工具面：客户端发了几个、我们剥了几个。
+    """最近一次真实请求里客户端发了几个工具，外加客户端名单里挡着几条。
 
-    页面上的主指标就用这两个数 —— 它们来自实际请求，不是「打开了几个开关」那种
-    替代品（开关数和工具数根本不是一个量纲，同屏摆着只会互相打脸）。
+    两个数同屏摆着才有意义：挡着的压根没发出来，在场的才是这一轮的真实占用。
+    两个都来自**实际请求与配置本身**，不是「打开了几个开关」那种替代品。
     """
     import live_stats
-    return live_stats.last_pruning()
+    import tool_rules
+    got = live_stats.last_tools() or {}
+    cfg = (_read(bridge_path()).get("tool_pruning") or {})
+    return {"incoming": got.get("incoming"),
+            "ts": got.get("ts", ""),
+            "blocked": len(tool_rules.client_disabled_tools(cfg))}
 
 
 def client_running():
@@ -238,6 +243,16 @@ def apply_patch(patch):
         return _apply_patch_unlocked(patch)
 
 
+def _upstream_url_ok(url):
+    """够像一个 Anthropic 端点吗：http(s)、有主机名。与页面 `isValidUpstreamUrl` 同一口径。"""
+    from urllib.parse import urlsplit
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
+
+
 def _apply_patch_unlocked(patch):
     paths = _paths()
     effects = {"restart_gateway": False, "restart_client": False, "restart_session": False}
@@ -246,8 +261,12 @@ def _apply_patch_unlocked(patch):
     bridge = _read(bridge_path())
     three_p = _read(three_p_path()) if three_p_path() else {}
 
-    # 上游地址
+    # 上游地址。**先判形状再落盘**：只判非空的话，前端留了半截地址时点别的区块保存，
+    # 会把 `xxx/v1/messages` 这种写进配置并触发网关重启。
     url = (patch.get("upstream_url") or "").strip()
+    if url and not _upstream_url_ok(url):
+        notes.append("上游地址不完整，本次未写入")
+        url = ""
     if url:
         normalized = normalize_upstream(url)
         if bridge.get("upstream_url") != normalized:

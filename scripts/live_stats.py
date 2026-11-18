@@ -121,8 +121,6 @@ def summarize(lines):
     total = {"input": 0, "output": 0, "cache_read": 0, "cache_creation": 0}
     requests = 0
     first_ts = last_ts = ""
-    stripped_events = 0
-    stripped_tools = 0
     last = None
     seen = 0
     for line in lines:
@@ -145,13 +143,6 @@ def summarize(lines):
             if ts > last_ts:
                 last_ts = ts
         if event.get("event") == "canonicalized":
-            stripped_events += 1
-            for change in (event.get("changes") or []):
-                if isinstance(change, str) and change.startswith("prune_tools_"):
-                    try:
-                        stripped_tools += int(change.rsplit("_", 1)[1])
-                    except ValueError:
-                        pass
             continue
         if event.get("event") != "upstream_ok":
             continue
@@ -175,8 +166,6 @@ def summarize(lines):
         "tokens": total,
         "billed_input": billed_input,
         "hit_rate": hit_rate,
-        "stripped_events": stripped_events,
-        "stripped_tools": stripped_tools,
         "last": last,
         "window": {"from": first_ts, "to": last_ts},
     }
@@ -218,14 +207,11 @@ def read_recent_usage(home=None):
     return result
 
 
-def last_pruning(home=None, max_bytes=1024 * 1024):
-    """最近一次真实请求的工具面：客户端发了几个、我们剥了几个。
+def last_tools(home=None, max_bytes=1024 * 1024):
+    """最近一次真实请求里，客户端发过来几个工具。
 
-    两个数字落在**同一次请求的两行**里，用 request_id 串起来 —— 请求行的 `tools`，
-    与 canonicalized 行的 `prune_tools_<N>`。只读日志尾部，倒着找第一对就返回。
-
-    **读不到就返回 None**：页面据此不显示这一项，而不是拿「打开了几个开关」冒充
-    「剥掉了几个工具」—— 那正是口径混乱的来源（65 个开关数与 88 个工具数没法比）。
+    只读日志尾部，取最后一条带 `request_id` 与 `tools` 的请求行。**读不到返回 None** ——
+    页面据此不显示这一项，而不是拿「打开了几个开关」冒充工具数（两者不是一个量纲）。
     """
     lines = tail_lines(log_path(home), max_bytes)
     incoming = {}
@@ -252,20 +238,9 @@ def last_pruning(home=None, max_bytes=1024 * 1024):
             event = json.loads(line)
         except Exception:
             continue
-        if not isinstance(event, dict) or event.get("event") != "canonicalized":
+        if not isinstance(event, dict):
             continue
         rid = event.get("request_id")
-        if not rid or rid not in incoming:
-            continue
-        stripped = 0
-        for change in event.get("changes") or []:
-            if isinstance(change, str) and change.startswith("prune_tools_"):
-                try:
-                    stripped += int(change.rsplit("_", 1)[1])
-                except ValueError:
-                    pass
-        total = incoming[rid]
-        return {"incoming": total, "stripped": stripped,
-                "kept": max(total - stripped, 0),
-                "ts": event.get("ts", ""), "request_id": rid}
+        if rid and rid in incoming:
+            return {"incoming": incoming[rid], "ts": event.get("ts", ""), "request_id": rid}
     return None

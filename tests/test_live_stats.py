@@ -109,19 +109,6 @@ class TestHitRate(unittest.TestCase):
         self.assertEqual(data["last"]["usage"]["cache_read"], 2)
 
 
-class TestPruningCounters(unittest.TestCase):
-    def test_counts_stripped_tools(self):
-        lines = [canon_line(["prune_tools_65", "strip_date"]),
-                 canon_line(["prune_tools_10"])]
-        data = ls.summarize(lines)
-        self.assertEqual(data["stripped_events"], 2)
-        self.assertEqual(data["stripped_tools"], 75)
-
-    def test_ignores_malformed_prune_marker(self):
-        data = ls.summarize([canon_line(["prune_tools_", "prune_tools_x"])])
-        self.assertEqual(data["stripped_tools"], 0)
-
-
 class TestNoMoneyClaim(unittest.TestCase):
     """**刻意不折算金额**，这条要钉住。
 
@@ -261,40 +248,26 @@ class TestLastPruning(unittest.TestCase):
             for e in events:
                 fh.write(json.dumps(e, ensure_ascii=False) + "\n")
 
-    def test_按_request_id_把两个数串起来(self):
+    def test_报出本轮在场的工具数(self):
         self._write([
-            {"event": "request", "request_id": "r1", "tools": 88},
-            {"event": "canonicalized", "request_id": "r1",
-             "changes": ["prune_tools_61", "strip_date"]},
-        ])
-        got = ls.last_pruning(self.home)
-        self.assertEqual((got["incoming"], got["stripped"], got["kept"]), (88, 61, 27))
-
-    def test_取最近一次而不是拼两次请求(self):
-        self._write([
-            {"event": "request", "request_id": "r1", "tools": 88},
-            {"event": "canonicalized", "request_id": "r1", "changes": ["prune_tools_61"]},
-            {"event": "request", "request_id": "r2", "tools": 90},
-            {"event": "canonicalized", "request_id": "r2", "changes": ["prune_tools_62"]},
-        ])
-        got = ls.last_pruning(self.home)
-        self.assertEqual((got["incoming"], got["stripped"]), (90, 62))
-
-    def test_没剥任何工具时按_0_算(self):
-        self._write([
-            {"event": "request", "request_id": "r1", "tools": 5},
+            {"event": "request", "request_id": "r1", "tools": 41},
             {"event": "canonicalized", "request_id": "r1", "changes": ["strip_date"]},
         ])
-        got = ls.last_pruning(self.home)
-        self.assertEqual((got["incoming"], got["stripped"], got["kept"]), (5, 0, 5))
+        self.assertEqual(ls.last_tools(self.home)["incoming"], 41)
+
+    def test_取最近一次(self):
+        self._write([
+            {"event": "request", "request_id": "r1", "tools": 88},
+            {"event": "request", "request_id": "r2", "tools": 41},
+        ])
+        self.assertEqual(ls.last_tools(self.home)["incoming"], 41)
 
     def test_读不到就返回_None(self):
         self._write([])
-        self.assertIsNone(ls.last_pruning(self.home))
+        self.assertIsNone(ls.last_tools(self.home))
         # 只有探针请求（没有 tools 字段）时同样没有可报的数
-        self._write([{"event": "request", "request_id": "r9"},
-                     {"event": "canonicalized", "request_id": "r9", "changes": []}])
-        self.assertIsNone(ls.last_pruning(self.home))
+        self._write([{"event": "request", "request_id": "r9"}])
+        self.assertIsNone(ls.last_tools(self.home))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

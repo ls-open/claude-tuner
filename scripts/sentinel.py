@@ -200,9 +200,9 @@ def extract_tool_names(payload):
 def cleaned_copy(payload, tp_cfg=None, with_changed=False):
     """跑一遍**生产那条路**（`gateway.stabilize_request`），返回清洗后的副本。
 
-    不能只调 `canonicalize`：生产是「先剥工具、再清洗」两步，剥完 `tools` 就少了，
-    配对段落的判定依赖剥离前那份工具名。只调一步时哨兵看到的字节与真发出去的不是同一份
-    —— 段落该删没删这种故障会被它报成 ✅（铁律 6）。
+    不能只调 `canonicalize`：生产走的是 `stabilize_request`（按面定型 → 记下工具名 →
+    排序 → 清洗），少了前两步，哨兵看到的字节与真发出去的不是同一份 —— 段落该删没删
+    这种故障会被它报成 ✅（铁律 6）。
     """
     p = copy.deepcopy(payload)
     changed = []
@@ -483,7 +483,7 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
             print("       · %s   （正文里写作 %s）" % (name, "、".join("`%s`" % t for t in tokens)))
         print("    整段边界清楚的可以顺手剥掉整段；夹在句子中段的按约定不动，保留原样。")
         print("    不计入下方结论 —— 这是已知取舍，不是故障。")
-    return hits, 0
+    return hits
 
 
 def _audit_rule_health(changed, skipped=False):
@@ -544,8 +544,7 @@ def cmd_audit(model, session=None, last=False):
     findings = _audit_tools(raw, tp_cfg, surface_skipped=surface_skipped) + _audit_system(clean)
     injected, suspect = _audit_message_injections(clean)
     findings += injected
-    _hits, pair_findings = _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
-    findings += pair_findings
+    _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
     _audit_rule_health(changed, skipped=surface_skipped)
     findings += sum(1 for c in changed if c.startswith(("rule_silent_", "rule_residue_")))
 
@@ -561,7 +560,7 @@ def cmd_audit(model, session=None, last=False):
         print("  ✅ 当前注入面已被现有规则完全吸收，本次升级无需动作。")
     else:
         print("  ⚠️ 发现 %d 处待处理的注入面 —— 按上面各条的说明处理：工具没开关的补进类别表"
-              "（默认开=剥、默认关=留），配对段落失配的改 PROMPT_PAIRS 的锚点。" % findings)
+              "（默认开=挡、默认关=留），正文里残留的被挡工具名按提示决定补段落还是改锚点。" % findings)
         print("     处理完重跑本命令确认转为 ✅。")
     if suspect:
         print("  ℹ️ 另有 %d 处形似注入但落在**用户正文**里（不计结论）：若你确认客户端把注入"

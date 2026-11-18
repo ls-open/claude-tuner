@@ -128,9 +128,10 @@ python install.py
 | ⑦ 网关状态 | 本地端点复制、重启网关、日志滚动保留天数 |
 | ⑧ 版本与更新 | 当前版本、客户端版本、更新检查 |
 
-生效时机只有两种：**网关自己读的**（④ 的规则、上游地址、日志保留天数、⑤ 的工具清单）改完
-300 ms 自动保存、下一轮请求就生效；**写进客户端配置的**（①②③）在区块标题上出现「保存 N 项」，
-保存后要**重启客户端**才生效。⑤ 另有整组总开关，避免逐项点选。
+生效时机只有两种：**网关自己读的**（④ 的规则、上游地址、日志保留天数）改完 300 ms 自动保存、
+下一轮请求就生效；**写进客户端配置的**（①②③，以及 ⑤ 的工具名单）保存后要**重启客户端**才生效
+—— ①②③ 在区块标题上出现「保存 N 项」，⑤ 和 ④ 一样自动保存，只是名单要客户端重启才读。
+⑤ 另有整组总开关，避免逐项点选。
 
 ## ❓ 常见问题 (FAQ)
 
@@ -196,7 +197,7 @@ bash ~/.claude/skills/claude-tuner/install.sh --uninstall      # macOS / Linux
 python "%USERPROFILE%\.claude\skills\claude-tuner\install.py" --uninstall   # Windows
 ```
 
-该命令会停止本地网关、删除插件目录，并清除安装时写入 `~/.claude/settings.json` 的环境变量与四项省钱键（缓存时长 / 输入联想 / 自动压缩）；改动前的配置备份留在 `~/.claude-tuner/backups/`。3P 推理配置默认保留，要一并清掉可加 `bootstrap.py uninstall --purge-3p`。
+该命令会停止本地网关、删除插件目录，并清除安装时写入 `~/.claude/settings.json` 的环境变量与三项省钱键（缓存时长 / 自动压缩 / Co-Authored-By 署名）；改动前的配置备份留在 `~/.claude-tuner/backups/`。3P 推理配置默认保留，要一并清掉可加 `bootstrap.py uninstall --purge-3p`。
 
 ---
 

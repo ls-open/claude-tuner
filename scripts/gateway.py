@@ -196,7 +196,6 @@ def load_rules_config():
 from tool_rules import (  # noqa: E402
     COWORK_KINDS,
     PROMPT_PAIRS,
-    active_pairs,
     category_for,  # noqa: F401 —— 再导出：哨兵按 gateway.category_for 取用，别删
     get_stripped_tool_names,
     ghost_tool_names,
@@ -534,21 +533,16 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=None, incoming_tools=None):
-    """剥离「工具已被剥、说明段落却还留着」的孤句。
+def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, incoming_tools=None):
+    """删掉「工具本轮没发、说明段落却还留着」的孤句。
 
-    配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if），
-    判断用 strip_reason 的同一份逻辑 —— 所以**无论是类别开关剥的还是用户自己勾的**，
-    段落都会跟着走。此前只认两个类别开关，用户自定义剥掉 ccd_pr 就会留下孤句。
+    配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if）。
+    判据是**请求实况**：给了 `incoming_tools` 就问「这一对里有没有工具真出现在本轮请求里」，
+    一个都没有 → 段落已成孤句 → 摘掉；没给才退回按配置判定（离线工具与单测用）。
 
     **只认整段**：配对表里登记的都是「整段存在的意义就是解释这个工具」的段落，
     按空行切段、段首命中锚点即摘除整段。段中顺带提一句工具名的不在这里处理（整段删
     会连累无关指引，句中手术又容易切坏），交给 orphan_mentions 去发现并报警。
-
-    `found` 传入 set 时，把**本段里真被摘掉**的配对 id 记进去。判定「该剥却没摘到」
-    是**跨全部 system 块**的事（一个块没有不代表整份请求没有），所以只记命中、由调用方
-    收官：见 canonicalize 里 `active_pairs() - found`（`missed` 曾按块判定，把计费头/
-    身份那两块误报成失配）。
     """
     if not isinstance(text, str):
         return text, False
@@ -561,10 +555,8 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, found=
     for pair in PROMPT_PAIRS:
         if not pair_is_orphaned(pair, names, cfg, incoming_tools):
             continue
-        text, hit = _strip_paragraphs_by_predicate(
+        text, _hit = _strip_paragraphs_by_predicate(
             text, pair_paragraph_predicate(pair), trim=False)
-        if hit and found is not None:
-            found.add(pair["id"])
     return text, (text != orig)
 
 
@@ -742,13 +734,12 @@ def _guard_rule(name, fn):
 def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None, incoming_tools=None, kind=None):
     """Stabilize cache-relevant bytes without touching semantic content.
 
-    `stripped_names`：本次请求**实际被剥**的工具名集合，由调用方在剥离之前用
-    `ghost_tool_names()` 算好传进来。不传就只认配置里的精确名 —— 走 `prepare_request`
-    剥过工具的调用方必须传，否则前缀类工具（`mcp__ccd_session*` 等）漏在探测之外。
+    `stripped_names`：**判定为不该留**的工具名集合，由调用方用 `ghost_tool_names()` 算好
+    传进来。不传就只认配置里的精确名 —— 前缀类工具（`mcp__ccd_session*` 等）会漏在探测之外。
+    名字里的「剥」是历史叫法：网关已不从报文里删工具（DECISIONS #61）。
 
-    `incoming_tools`：客户端**原始发来**的工具名集合，同样由调用方在剥离前记好。
-    `prepare_request` 是原地改 `parsed["tools"]` 的，所以到这里再算命中的只会是「剥剩的
-    那些」—— 于是「这对配对的工具客户端发过没有」永远答否，段落永远不剥、失配也永远不报。
+    `incoming_tools`：客户端**本轮真发来**的工具名集合。段落删不删由它决定 ——
+    这一对里的工具一个都没发 → 段落是孤句（见 `tool_rules.pair_is_orphaned`）。
     """
     changed = []
     r = rules or load_rules_config()
@@ -844,21 +835,15 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     # 剥的口径以**请求实况**为准：这一对里的工具一个都没发过来 → 段落是孤句、删掉。
     # 不再拿「配置说该剥」当依据 —— 工具现在由客户端在源头挡掉，同一份配置在不同人那里
     # 保留的工具不同，只有请求能说明这一面到底发了什么（见 tool_rules.pair_is_orphaned）。
-    _pair_found = set()
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
                             lambda t, legacy: strip_ghost_tool_instructions(
-                                t, tp_cfg=tp, stripped_names=_ghost_names, found=_pair_found, incoming_tools=_client_tools)),
+                                t, tp_cfg=tp, stripped_names=_ghost_names, incoming_tools=_client_tools)),
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
-    # 「该剥却整份请求都没摘到」才是失配：found 跨 system 各块收集，这里收官。按块判会把
-    # 计费头、身份那两块（本就不含这些段落）每个请求都误报一遍 —— 客户端改了措辞的信号，
-    # 别让它静默过去，但也别拿假报警淹掉它。
-    #
-    # 「配对段落没找到」这条报警已经撤掉：判据改成缺席驱动之后，「工具没发 + 段落不在」
-    # 是**正常态**（客户端本来就可能不拼那段），不再是「锚点被改写」的证据 —— 留着只会
-    # 每天误报（DECISIONS #62 记的就是这类假警）。真正的悬空指引改由
-    # `report_orphan_mentions` 抓：洗完之后正文里还残留着被挡工具的名字就报出来。
+    # 「配对段落没找到」不再单独报警：判据改成缺席驱动之后，「工具没发 + 段落不在」是
+    # **正常态**（客户端本来就可能不拼那段），不再是「锚点被改写」的证据（DECISIONS #62）。
+    # 真正的悬空指引由 `report_orphan_mentions` 抓：洗完还残留被挡工具的名字就报出来。
 
     # 4.6. 精准剥离安全防御、代词约束与高危操作防呆指令（仅作用于 system 注入面，绝不误伤正文）
     for _guideline in GUIDELINE_PARAGRAPHS:
@@ -1129,13 +1114,12 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     """按生产顺序跑一遍稳定化，返回 changed 列表（原地修改 parsed）。
 
     顺序是这里定的，别在别处复刻：
-    1. 按客户端面定型剥离口径（CoWork 面原样透传，见 DECISIONS #46）
-    2. **剥离之前**记下会被剥的工具名与客户端原始工具名 —— 剥完就再也算不出来
-    3. prepare_request 剥工具、排 tool_result
+    1. 按客户端面定型判定口径（CoWork 面原样透传，见 DECISIONS #46）
+    2. 记下「判定为不该留」的工具名与客户端原始工具名
+    3. prepare_request 排 tool_result（**不删工具**，工具由客户端在源头挡，见 #61）
     4. canonicalize 清洗易变前缀；配对段落用它需要的那两份名单
 
-    第 2 步是这套配合的关键：第 4 步判断「这段该不该删」靠的是「客户端发过哪些工具」，
-    拿剥剩的清单去问，答案永远是「没发过」。
+    第 2 步是这套配合的关键：第 4 步判断「这段该不该删」靠的是「客户端这一轮发了哪些工具」。
     """
     tp_cfg = pruning_cfg_for_surface(
         tool_pruning_cfg if tool_pruning_cfg is not None else load_tool_pruning_config(), kind)
