@@ -212,6 +212,9 @@ def read_config_payload(handler):
             # 客户端自己关掉的那个在页面上就会永远显示「没关」。
             "bundled_skills": (three_p.get("disableBundledSkills") is True
                                and claude_settings.get("enableWorkflows") is False),
+            # Auto 模式：客户端把「不写这个键」当默认（可用），只有显式 false 才是关掉。
+            # 所以判据是 `is False`，不是「真值判断」—— 不写键时页面必须显示为没关。
+            "auto_mode_disabled": three_p.get(config_ops.AUTO_MODE_FIELD) is False,
         },
         "options": {
             "presets": [{k: p[k] for k in ("id", "name", "url", "model", "key_hint")}
@@ -382,6 +385,17 @@ def _apply_patch_unlocked(patch):
     if disabled_written != (bridge.get(config_ops.CLIENT_DISABLED_KEY) or []):
         bridge[config_ops.CLIENT_DISABLED_KEY] = disabled_written
         atomic_write_json(bridge_path(), bridge, indent=1)
+
+    # Auto 模式：同样是客户端层开关，落点是 3P 配置的 autoModeEnabled。关掉是删键而不是写
+    # true —— Code 侧「不等于 false」就算开，写 true 会把 Cowork 侧也一起打开。
+    auto_disabled = patch.get("auto_mode_disabled")
+    if isinstance(auto_disabled, bool):
+        three_p, auto_changed = config_ops.apply_auto_mode(three_p, auto_disabled)
+        if auto_changed:
+            three_p_changed = True
+            effects["restart_client"] = True
+            notes.append("Auto 模式：%s（**重启客户端后生效**）"
+                         % ("已关闭" if auto_disabled else "已恢复默认"))
 
     if three_p_changed and three_p_path():
         atomic_write_json(three_p_path(), three_p)

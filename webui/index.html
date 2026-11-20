@@ -885,7 +885,9 @@ function renderSwitches(d){
     SW('关闭客户端自带默认技能与工作流', '',
        `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'restart') +
     SW('关闭客户端定时任务（Scheduled Tasks）', '',
-       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart');
+       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
+    SW('关闭 Auto 模式', '',
+       `id="autoMode" ${d.client.auto_mode_disabled ? 'checked' : ''}`, 'restart');
 }
 
 // ── 分类总开关与防呆提醒联动 ─────────────────────────────────
@@ -1418,7 +1420,8 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
   // 内部偏好
   const prefDefs = [
     ['bundledSkills', 'bundled_skills', '关闭随附技能与动态工作流', false],
-    ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true]
+    ['schedTasks', 'scheduled_tasks', '关闭客户端定时任务', true],
+    ['autoMode', 'auto_mode_disabled', '关闭 Auto 模式', false]
   ];
   prefDefs.forEach(([elId, prop, title, invert]) => {
     const rawOld = CFG.client ? CFG.client[prop] : undefined;
@@ -1641,6 +1644,8 @@ async function saveClientSide(){
   const bundleChanged = (CFG.client?.bundled_skills === true) !== bundleNow;
   const schedNow = !!$('#schedTasks').checked;
   const schedChanged = (CFG.client?.scheduled_tasks === false) !== schedNow;
+  const autoNow = !!$('#autoMode')?.checked;
+  const autoChanged = (CFG.client?.auto_mode_disabled === true) !== autoNow;
 
   // 地址不合法就别发：留了半截地址时点别的区块的保存，会把半截 URL 写进配置并重启网关
   const rawUp = ($('#upstream').value || '').trim();
@@ -1657,6 +1662,7 @@ async function saveClientSide(){
     bundled_skills: bundleChanged ? bundleNow : undefined,
     cli_linked: $('#cliLinked').checked,
     scheduled_tasks: schedChanged ? !schedNow : undefined,
+    auto_mode_disabled: autoChanged ? autoNow : undefined,
     log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
   if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }

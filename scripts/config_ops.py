@@ -332,6 +332,10 @@ def merge_client_disabled(bundle, wanted, previously_written=()):
 # 3P 配置里那个字段名 —— 客户端的「Disabled built-in tools」写的就是它。
 DISABLED_TOOLS_FIELD = "disabledBuiltinTools"
 
+# 3P 配置里关掉 Auto 模式的键。客户端的求值是 `code: 值 !== false`：
+# **不写这个键 = Auto 可用**，写 `false` 才关掉；写 `true` 会把 Cowork 侧也一并打开。
+AUTO_MODE_FIELD = "autoModeEnabled"
+
 # 「本插件写了哪几条」记在网关 config.json 的这个键下 —— 改配置与卸载时只收回自己写过
 # 的那些，用户在客户端界面里加的条目一条都不动。
 CLIENT_DISABLED_KEY = "client_disabled_tools"
@@ -345,6 +349,28 @@ def sync_client_disabled(bundle, pruning_cfg, previously_written=()):
     """
     return merge_client_disabled(bundle, tool_rules.client_disabled_tools(pruning_cfg),
                                  previously_written)
+
+
+def apply_auto_mode(bundle, disabled):
+    """把「关掉 Auto 模式」落进 3P 配置的 `autoModeEnabled`，返回 (新配置, 变动键列表)。
+
+    纪律同 `merge_client_disabled`：不碰其它键；用户自己显式写的 `true` 不覆盖。
+
+    为什么关的时候是**删键**而不是写 `true`：客户端把 `undefined` 与 `true` 在 Code 侧当同一件事
+    （都算开），写 `true` 反而会把 Cowork 侧的 Auto 也打开。删键才是「回到默认」。
+    """
+    new = copy.deepcopy(bundle) if isinstance(bundle, dict) else {}
+    before = new.get(AUTO_MODE_FIELD)
+
+    if disabled:
+        if before is not False:
+            new[AUTO_MODE_FIELD] = False
+    elif before is False:
+        # 只收回自己写的那种「显式 false」；用户写的 true 或别的值原样留着
+        new.pop(AUTO_MODE_FIELD, None)
+
+    changed = [AUTO_MODE_FIELD] if new.get(AUTO_MODE_FIELD) != before else []
+    return new, changed
 
 
 def managed_settings_present(existing):

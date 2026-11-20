@@ -339,6 +339,32 @@ class TestWriteConfig(WebUITestCase):
         data = json.loads(self.request("/api/config")[1])["data"]
         self.assertTrue(data["client"]["bundled_skills"], "读回来要认得这个状态")
 
+    def test_auto模式开关写false并在关掉时删键(self):
+        """Auto 模式：开着写 `false`，关掉**删键** —— 删键才是「回到客户端默认」。
+
+        客户端把「不写这个键」当默认（Code 侧 Auto 可用），而写 `true` 会把 Cowork 侧的
+        Auto 一起打开。所以这个开关只会写 `false`、只会删键，绝不写 `true`。
+        """
+        status, body, _ = self.request("/api/config", method="POST", body={
+            "auto_mode_disabled": True,
+        })
+        self.assertEqual(status, 200, body)
+        three_p = json.loads((self.config_lib / "p.json").read_text(encoding="utf-8"))
+        self.assertIs(three_p["autoModeEnabled"], False)
+        self.assertEqual(three_p["inferenceGatewayApiKey"], self.THREE_P_KEY,
+                         "同一份文件里的 Key 必须逐字节不变")
+        data = json.loads(self.request("/api/config")[1])["data"]
+        self.assertTrue(data["client"]["auto_mode_disabled"], "读回来要认得这个状态")
+
+        status, body, _ = self.request("/api/config", method="POST", body={
+            "auto_mode_disabled": False,
+        })
+        self.assertEqual(status, 200, body)
+        three_p = json.loads((self.config_lib / "p.json").read_text(encoding="utf-8"))
+        self.assertNotIn("autoModeEnabled", three_p, "关掉是删键，不是写 true")
+        data = json.loads(self.request("/api/config")[1])["data"]
+        self.assertFalse(data["client"]["auto_mode_disabled"])
+
 
 class TestOriginalRoutesStillWork(WebUITestCase):
     """配置台接进同一个 Handler 之后，客户端的路不能被挡。"""
