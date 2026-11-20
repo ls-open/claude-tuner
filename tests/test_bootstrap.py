@@ -189,8 +189,10 @@ class TestInstall(BootstrapTestCase):
         self.assertEqual(cfg["upstream_url"], "https://opencode.ai/inference/go/anthropic/v1/messages")
 
     def test_no_cli_skips_env(self):
+        """`--no-cli` 之后本插件在 settings.json 里没有非要写的键了 —— 文件不建也算对。"""
         self.install("--key", "k", "--no-cli")
-        self.assertNotIn("env", self.read(self.claude_home / "settings.json"))
+        path = self.claude_home / "settings.json"
+        self.assertFalse(path.exists() and "env" in self.read(path))
 
 
 class TestDefaultMapping(BootstrapTestCase):

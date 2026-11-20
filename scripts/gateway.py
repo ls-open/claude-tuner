@@ -752,10 +752,9 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     _kind = kind or classify_kind(parsed)
     # CoWork 面（非主力面）只做**结构修正**，清洗规则一律不跑：这个面用得少，不值得为它
     # 维护一套要跟着客户端跟版的规则；也不做工具精简（`pruning_cfg_for_surface` 已关）。
-    # 留下的两条都是「不做会 400」的：拆混合 user 消息、工具块排序（在 prepare_request 里）。
+    # 结构修正（拆混合 user 消息、工具块排序）不在这张表里，两个面都照跑。
     if _kind in COWORK_KINDS:
         r = dict.fromkeys(r, False)
-        r["split_mixed_user_messages"] = True
     if tool_pruning_cfg is not None:
         tp = dict(DEFAULT_TOOL_PRUNING_CONFIG)
         tp.update(tool_pruning_cfg)
@@ -893,9 +892,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
             changed.append("prune_empty_messages")
 
     # 5. 拆分混合 user 消息（text 与 tool_result 共存同一条消息，防 OpenAI 400）
-    if r.get("split_mixed_user_messages", True):
-        if split_mixed_user_messages(parsed):
-            changed.append("split_mixed_user_msg")
+    if split_mixed_user_messages(parsed):
+        changed.append("split_mixed_user_msg")
 
     # 6. 收尾：查一遍「已经被剥掉、提示词里却还在提」的工具名。
     #    放在最后（配对段落已删完），所以报出来的都是我们**没能**处理干净的 —— 即
@@ -1146,10 +1144,9 @@ def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=
 
     # 1. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
     #    Claude Code 使用 Anthropic 协议：并发工具返回位于单条消息内，严格按 id 排序保证对称稳定
-    #    这是一条独立规则（可关）：它不删内容、只重排，但重排本身会让这一轮的字节与写进缓存的
-    #    那份不一致 —— 关掉它缓存会掉，只是有些上游对块顺序敏感，留一个逃生口。
+    #    它不删内容、只重排；留成可关的那段时间里，关掉的人是在自己拿掉唯一的稳定化手段。
     incoming_msgs = parsed.get("messages")
-    if r.get("tool_block_ordering", True) and isinstance(incoming_msgs, list):
+    if isinstance(incoming_msgs, list):
         for m in incoming_msgs:
             if not isinstance(m, dict):
                 continue
@@ -1469,8 +1466,7 @@ class Handler(BaseHTTPRequestHandler):
         # 捕获 100% 原始入口报文快照（未经任何模型改写、日期清洗与工具精简）
         self._save_raw_inbound(parsed, kind=kind)
         self._log_inbound(parsed, original, session_id, x_opencode_session, kind, mapped)
-        rules = load_rules_config()
-        if rules.get("probe_interception", True) and is_probe_request(parsed):
+        if is_probe_request(parsed):
             self._handle_probe(parsed, mapped, session_id, kind)
             return
         self._stabilize(parsed, session_id, kind, mapped)

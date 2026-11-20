@@ -232,15 +232,16 @@ def atomic_write_json(path, data, indent=2):
         raise
 
 
-# 默认清洗与防抖规则配置（全部可在 ~/.claude-tuner/config.json 的 "rules" 节点动态配置与热加载）
+# 默认清洗规则配置（可在 ~/.claude-tuner/config.json 的 "rules" 节点动态配置与热加载）
+#
+# 三条**结构规则**不在这张表里，网关无条件执行：探针本地秒回（max_tokens<=1）、拆分混合
+# user 消息（防上游 400）、并发工具块按 id 稳定排序。它们不改正文语义，关掉只会让请求
+# 报错或前缀漂移，所以不留开关 —— 表里没有的键，代码里也就没有读取点。
 DEFAULT_RULES = {
-    "probe_interception": True,          # 测长探针本地秒回 (max_tokens=1 拦截)
     "strip_billing_header": True,        # 剥离 x-anthropic-billing-header 计费头
     "strip_model_declarations": True,    # 剥离 - You are powered by the model named... 等声明行
     "strip_date": True,                  # 剥离 Today's date is... 动态跨天日期
     "strip_git_status": True,            # 剥离 gitStatus 仓库初始快照
-    "split_mixed_user_messages": True,   # 拆分混合 user 消息 (text + tool_result，防 400)
-    "tool_block_ordering": True,         # 并发工具调用的 tool_use / tool_result 块按 id 稳定排序
     "strip_security_guidelines": False,  # 剥离安全攻防与拒绝服务限制指令 (省 ~110 Tokens，防本地运维脚本误拒答)
     "strip_pronoun_guidelines": False,   # 剥离性别代词道德指引指令 (省 ~85 Tokens，专注于纯粹代码工程)
     "strip_caution_guidelines": False,   # 剥离高危操作与外发确认防御指引 (省 ~120 Tokens，减少模型过度犹豫)

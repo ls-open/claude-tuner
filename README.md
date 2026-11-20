@@ -121,7 +121,7 @@ python install.py
 | :--- | :--- |
 | ① 接上模型 | 服务商预设、Anthropic 协议端点、API Key、连通测试 |
 | ② 模型映射 | Claude 代号 → 上游真实模型名、1M 上下文窗口 |
-| ③ 客户端设置 | 缓存保留 1 小时、关闭自动压缩；终端 Claude Code 联动、Git 联署签名；随附技能、客户端定时任务 |
+| ③ 客户端设置 | 终端 Claude Code 联动、Git 联署签名、随附技能、客户端定时任务、Auto 模式 |
 | ④ 请求稳定化 | 探针本地拦截、计费头与动态日期清洗、Git 快照剥离、工具与混合消息定序，外加三条可选的防御性提示词精简 |
 | ⑤ 工具精简 | 分组开关 + 一键精简整组，工具名写进客户端名单、提示词段落同步移除 |
 | ⑥ 用量统计 | 缓存命中 / 未命中 / 输出 Token，数字来自上游真实 `usage` 响应，非估算 |
@@ -165,9 +165,9 @@ python install.py
 </details>
 
 <details>
-<summary><strong>Q: 为什么安装时默认关闭自动压缩（autoCompactEnabled）？</strong></summary>
+<summary><strong>Q: 网关会替我改客户端的缓存时长、自动压缩这些设置吗？</strong></summary>
 
-压缩会重写整段历史，已有的缓存前缀随之失效，下一次请求要全额重算。安装时默认关闭（③ 的「关闭会话自动压缩」默认勾选）；需要时手动执行 `/compact`。
+不会。安装与配置台都不碰 `~/.claude/settings.json` 的这几项，客户端自己的默认就是它按套餐算好的那个（订阅号 1 小时、API Key 5 分钟）；要改就改在客户端自己的设置里。插件只写 CLI 联动的那 9 个 env 变量与 Co-Authored-By 署名。
 </details>
 
 <details>
@@ -197,7 +197,7 @@ bash ~/.claude/skills/claude-tuner/install.sh --uninstall      # macOS / Linux
 python "%USERPROFILE%\.claude\skills\claude-tuner\install.py" --uninstall   # Windows
 ```
 
-该命令会停止本地网关、删除插件目录，并清除安装时写入 `~/.claude/settings.json` 的环境变量与三项省钱键（缓存时长 / 自动压缩 / Co-Authored-By 署名）；改动前的配置备份留在 `~/.claude-tuner/backups/`。3P 推理配置默认保留，要一并清掉可加 `bootstrap.py uninstall --purge-3p`。
+该命令会停止本地网关、删除插件目录，并清除安装时写入 `~/.claude/settings.json` 的环境变量与 Co-Authored-By 署名（旧版本写过的缓存时长 / 自动压缩键也一并收回）；改动前的配置备份留在 `~/.claude-tuner/backups/`。3P 推理配置默认保留，要一并清掉可加 `bootstrap.py uninstall --purge-3p`。
 
 ---
 

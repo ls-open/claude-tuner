@@ -265,7 +265,6 @@
   .group-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--panel2);border-bottom:1px solid var(--line);user-select:none}
   .group-info{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .group-title{font-size:14.5px;font-weight:600;color:var(--fg);letter-spacing:-.01em}
-  .group-desc{font-size:12px;color:var(--dim2);font-weight:400}
   .group-master{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer;margin-left:auto;padding:3px 8px;border-radius:4px;border:1px solid var(--line2);background:var(--panel);transition:all .15s}
   .group-master:hover{color:var(--fg);border-color:var(--line);background:var(--panel2)}
   .group-master input[type=checkbox]{margin:0;cursor:pointer}
@@ -276,9 +275,6 @@
   .badge-core-warn{display:none;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn-line);margin-left:10px;vertical-align:middle}
   .badge-core-warn.show{display:inline-flex}
 
-  .subgrp{font-size:12px;font-weight:600;color:var(--fg);margin:20px 0 4px}
-  .subgrp:first-child{margin-top:0}
-  .subgrp em{font-style:normal;font-weight:400;font-size:11.5px;color:var(--dim2);margin-left:8px}
   .sw{display:flex;align-items:center;gap:16px;padding:13px 8px;border-radius:6px;
       border-bottom:1px solid var(--line);transition:background .12s}
   .sw:last-child{border-bottom:none}
@@ -512,7 +508,6 @@
         <span class="who">Claude 官方设置</span>
         <button class="save-pill" data-save-section="s3" hidden></button></div>
       <div class="body">
-        <div id="moneyBox"></div>
         <div id="prefBox"></div>
       </div>
     </section>
@@ -636,45 +631,29 @@ let UPSTREAM_MODELS = [];
 const CUSTOM = '__custom__';
 
 // ── 开关定义 ───────────────────────────────────────────────
-// 这三个**刻意不写逐条说明**。机制一句话说不准：
-// - 缓存 TTL 是「留得久 vs 写得贵」的取舍，两边都取决于你的使用节奏；
-// - 自动压缩的核心是少压缩一次，而重算的代价随上下文长短浮动（长会话和短会话差很多）；
-// - 输入联想那条同上，量随上下文走，写一个具体数就会对不上。
-// 说不准就不说 —— 逐条写一个含糊的「大概」，比不写更容易被当成准数。
-// 这个开关组在干什么，由上面那段小节说明交代。
-const MONEY = [
-  ['promptCacheTtl', '延长缓存保留至 1 小时（推荐）',
-   '1 小时的缓存写入按更高价计费；上游不认 TTL 时等于没开（自动缓存型上游多半如此）'],
-  ['autoCompactEnabled', '关闭会话自动压缩（减少压缩次数）',
-   '压缩会重写历史、已有前缀缓存随之失效；关掉后上下文满了需手动 /compact'],
-];
-
+// 结构规则（探针本地秒回、拆混合消息块、并发工具结果排序）不在这里：它们关掉只会让请求
+// 报错或前缀漂移，网关无条件执行，页面上没有开关。
 const RULE_GROUPS = [
-  ['⚡ 请求结构与探针', '只改结构，不动正文语义', [
-    ['probe_interception', '连接探针本地秒回（不扣费）', ''],
-    ['split_mixed_user_messages', '拆开混在一起的消息块', ''],
-    ['tool_block_ordering', '并发工具结果排序固定', ''],
-  ]],
-  ['🧼 请求头元数据清洗', '客户端每轮都会变的那几行', [
+  ['🧼 请求头元数据清洗', [
     ['strip_billing_header', '计费头与客户端版本号', ''],
     ['strip_model_declarations', '“由 Claude 驱动”等自述', ''],
     ['strip_total_tokens_tag', '剩余额度与 Token 计数', ''],
   ]],
-  ['🕒 前缀动态噪声', '内容会随时间或工作区变化', [
+  ['🕒 前缀动态噪声', [
     ['strip_date', '动态日期与时区', ''],
     ['strip_git_status', 'Git 变更快照', ''],
   ]],
-  ['✂️ 通用指令精简', '删的是客户端内置的行为指引，默认关', [
+  ['✂️ 通用指令精简', [
     ['strip_security_guidelines', '安全防御指令段', ''],
     ['strip_pronoun_guidelines', '人称代词中立指引段', ''],
     ['strip_caution_guidelines', '高危操作确认指引段', ''],
   ]],
 ];
 
-const RULES = RULE_GROUPS.flatMap(g => g[2]);
+const RULES = RULE_GROUPS.flatMap(g => g[1]);
 
 const PRUNING_GROUPS = [
-  ['🧰 工具精简', '', [
+  ['🧰 工具精简', [
     ['strip_sidebar_tools', '侧栏管理（分组 / 置顶 / 未读）', ''],
     ['strip_window_tools', '窗口与分屏', ''],
     ['strip_view_tools', '呈现面板（Diff / 文件 / 预览）', ''],
@@ -698,7 +677,7 @@ const PRUNING_GROUPS = [
 
 // 页面上**真有开关**的那批键：一切「几个开关」的计数都只在这份名单里数，
 // 免得又把 `enabled` / `custom_strip_tools` 算进来。
-const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, , items]) => items.map(([k]) => k));
+const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, items]) => items.map(([k]) => k));
 
 // 生效时机**只有两档**，判断依据是「谁读这份配置」，不是「这个键碰巧在哪一级生效」：
 //   · 网关自己读的 → 保存即生效，下一轮请求就按新配置走；
@@ -714,7 +693,6 @@ const CORE_CACHE_RULES = new Set([
   'strip_date',
   'strip_git_status',
   'strip_total_tokens_tag',
-  'probe_interception',
 ]);
 
 const SW = (label, why, attr, when, key, isChecked) => {
@@ -803,14 +781,6 @@ function addModelRow(d, name, label, oneM){
 }
 
 function renderSwitches(d){
-  $('#moneyBox').innerHTML =
-    '<div class="subgrp">缓存与压缩</div>' +
-    MONEY.map(([k, label, why]) =>
-      SW(label, why, `data-key="${k}"`, 'restart')).join('');
-  const check = (k, val) => { const el = $(`#moneyBox input[data-key="${k}"]`); if (el) el.checked = !!val; };
-  check('promptCacheTtl', d.settings.promptCacheTtl === '1h');
-  check('autoCompactEnabled', d.settings.autoCompactEnabled === false);
-
   // 整组同一种生效时机，就只在组头说一次 —— 25 行各挂一枚「保存后即生效」是纯噪音。
   const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存即生效（网关）：下一轮请求起按新配置执行，不用重启任何东西。</div>';
   // 工具精简的开关写的是客户端名单，生效边界和上面那组**正好相反** —— 一行说清楚，
@@ -818,12 +788,11 @@ function renderSwitches(d){
   const RESTART_NOTE = '<div class="hint" style="margin:0 2px 14px">勾选后名字写进客户端配置，<b>重启客户端</b>才生效；不再发送的工具，解释它的提示词段落会自动一起移除。</div>';
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
-  $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, note, items]) =>
+  $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, items]) =>
     `<div class="group-card">
       <div class="group-header">
         <div class="group-info">
           <span class="group-title">${esc(title)}</span>
-          ${note ? `<span class="group-desc">${esc(note)}</span>` : ''}
         </div>
       </div>
       <div class="group-body">
@@ -836,7 +805,7 @@ function renderSwitches(d){
   ).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = RESTART_NOTE + PRUNING_GROUPS.map(([title, note, items], gIdx) => {
+  $('#pruneBox').innerHTML = RESTART_NOTE + PRUNING_GROUPS.map(([title, items], gIdx) => {
     const total = items.length;
     const checkedCount = items.filter(([k]) => !!(tp[k] ?? defs[k])).length;
     const allChecked = checkedCount === total && total > 0;
@@ -846,7 +815,6 @@ function renderSwitches(d){
       <div class="group-header">
         <div class="group-info">
           <span class="group-title">${esc(title)}</span>
-          ${note ? `<span class="group-desc">${esc(note)}</span>` : ''}
         </div>
         <label class="group-master" title="一键开启或关闭整组精简">
           <input type="checkbox" class="master-tp-chk" data-gidx="${gIdx}" ${allChecked ? 'checked' : ''} ${isIndeterminate ? 'data-indeterminate="1"' : ''}>
@@ -875,20 +843,20 @@ function renderSwitches(d){
     }
   }
 
+  // 这一节的开关**全部**是「写进客户端配置、重启才生效」，就只在节首说一次 ——
+  // 五行各挂一枚同样的徽标是纯噪音（与 ⑤ 的做法一致）。
   $('#prefBox').innerHTML =
-    '<div class="subgrp">会话与终端</div>' +
-    SW('终端里的 Claude Code 也走本网关',
-       '往 ~/.claude/settings.json 的 env 写 9 个变量（接口地址、Key、模型名等），让命令行里的 Claude Code 用同一套上游；客户端本身不受影响。Key 被客户端加密封存时这一项不可用',
-       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, 'restart') +
+    '<div class="hint" style="margin:0 2px 14px">写进客户端配置，<b>重启客户端</b>后生效。</div>' +
+    SW('终端里的 Claude Code 也走本网关', '',
+       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, '') +
     SW('Git 提交不带 Claude 联署签名', '',
-       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, 'restart') +
-    `<div class="subgrp">客户端自带能力</div>` +
+       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, '') +
     SW('关闭客户端自带默认技能与工作流', '',
-       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, 'restart') +
+       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, '') +
     SW('关闭客户端定时任务（Scheduled Tasks）', '',
-       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, 'restart') +
+       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, '') +
     SW('关闭 Auto 模式', '',
-       `id="autoMode" ${d.client.auto_mode_disabled ? 'checked' : ''}`, 'restart');
+       `id="autoMode" ${d.client.auto_mode_disabled ? 'checked' : ''}`, '');
 }
 
 // ── 分类总开关与防呆提醒联动 ─────────────────────────────────
@@ -1231,12 +1199,9 @@ function collectCurrentFormState(){
     const one_m = tr.querySelector('[data-role=one-m]').checked;
     return {name, label: modelValue(tr) || name, one_m};
   }).filter(m => m.name);
-  const on = k => { const el = $(`#moneyBox input[data-key="${k}"]`); return el && el.checked; };
   const settings = {
-    autoCompactEnabled: !on('autoCompactEnabled'),
     includeCoAuthoredBy: !$('#coauthor').checked,
   };
-  if (on('promptCacheTtl')) { settings.promptCacheTtl = '1h'; settings.subagentPromptCacheTtl = '1h'; }
   // 随附技能与动态工作流：一个开关、两个键，而且**两个键住的地方不一样** ——
   // disableBundledSkills 是 3P 配置的键（走 bundled_skills 那个字段），
   // enableWorkflows 是 Claude Code 那层的设置（走下面这个白名单）。
@@ -1250,7 +1215,7 @@ function collectCurrentFormState(){
   document.querySelectorAll('#ruleBox input[data-rule]').forEach(el => rules[el.dataset.rule] = el.checked);
   tool_pruning.custom_strip_tools = (CFG?.tool_pruning?.custom_strip_tools || []);
   const log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
-  return {models, settings, tool_pruning, rules, on, log_retention_days};
+  return {models, settings, tool_pruning, rules, log_retention_days};
 }
 
 // ── URL 规范化（与后端 common.normalize_upstream / webui.read_config_payload 对齐） ──
@@ -1351,7 +1316,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
   // 5. 随附技能与动态工作流（客户端设置，随下面那组一起比）
 
   // 6. 工具精简分类开关 —— 落点是客户端的 disabledBuiltinTools，重启客户端才生效
-  PRUNING_GROUPS.forEach(([, , items]) => {
+  PRUNING_GROUPS.forEach(([, items]) => {
     items.forEach(([k, label]) => {
       const oldVal = !!(CFG.tool_pruning && (CFG.tool_pruning[k] ?? CFG.options?.pruning_defaults?.[k]));
       const newVal = !!tool_pruning[k];
@@ -1367,31 +1332,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
     });
   });
 
-  // 7. 缓存与上下文
-  MONEY.forEach(([k, label]) => {
-    let oldVal, newVal;
-    if (k === 'promptCacheTtl') {
-      oldVal = (CFG.settings?.promptCacheTtl === '1h');
-      const el = $(`#moneyBox input[data-key="promptCacheTtl"]`);
-      newVal = el ? el.checked : false;
-    } else {
-      oldVal = (CFG.settings && CFG.settings[k] === false);
-      const el = $(`#moneyBox input[data-key="${k}"]`);
-      newVal = el ? el.checked : false;
-    }
-    if (oldVal !== newVal) {
-      diffs.push({
-        title: label,
-        from: oldVal ? '开' : '关',
-        to: newVal ? '开' : '关',
-        when: WHEN.restart[0],
-        badge: WHEN.restart[1],
-        section: 's3'
-      });
-    }
-  });
-
-  // 8. 客户端偏好
+  // 7. 客户端偏好
   const oldCo = (CFG.settings?.includeCoAuthoredBy === false);
   const newCo = $('#coauthor') ? $('#coauthor').checked : false;
   if (oldCo !== newCo) {
@@ -1634,13 +1575,12 @@ function updateUnsavedIndicator(delay = 300){
 }
 
 async function saveClientSide(){
-  const {models, settings, tool_pruning, rules, on} = collectCurrentFormState();
+  const {models, settings, tool_pruning, rules} = collectCurrentFormState();
   const diffs = computePendingDiffs(models, settings, tool_pruning, rules);
 
   say('正在保存设置……');
-  // 三个「只在用户真的动了它才发」的开关。无条件发有两个后果，都是真的踩过：
-  // 把用户自己在 settings.json 里设的 TTL 删掉；把 3P 里本来没有的 scheduledTasksEnabled 写成 true。
-  const ttlOff = CFG.settings?.promptCacheTtl === '1h' && !on('promptCacheTtl');
+  // 两个「只在用户真的动了它才发」的开关 —— 无条件发会把 3P 里本来没有的
+  // scheduledTasksEnabled 写成 true，等于替用户做了一个选择。
   const bundleNow = !!$('#bundledSkills')?.checked;
   const bundleChanged = (CFG.client?.bundled_skills === true) !== bundleNow;
   const schedNow = !!$('#schedTasks').checked;
@@ -1655,7 +1595,6 @@ async function saveClientSide(){
     api_key: $('#apikey').value.trim(),
     models, settings, tool_pruning, rules,
     unset_settings: [
-      ...(ttlOff ? ['promptCacheTtl', 'subagentPromptCacheTtl'] : []),
       // 没勾「关闭随附技能与工作流」就把这个键撤掉，别给客户端留一个写死的值
       ...(bundleChanged && !bundleNow ? ['enableWorkflows'] : []),
     ],

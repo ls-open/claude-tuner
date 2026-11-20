@@ -711,8 +711,8 @@ class TestSanitizeCustomList(unittest.TestCase):
         self.assertEqual(tr.sanitize_custom_list(["x" * 500]), [])
 
 
-class TestToolBlockOrderingSwitch(unittest.TestCase):
-    """工具块排序以前写死在 prepare_request 里，永远开、用户看不见。"""
+class TestToolBlockOrdering(unittest.TestCase):
+    """工具块排序没有开关：它是稳定化的地基，关掉只剩前缀漂移。"""
 
     def _parsed(self):
         return {
@@ -725,7 +725,7 @@ class TestToolBlockOrderingSwitch(unittest.TestCase):
             "tools": [],
         }
 
-    def test_on_by_default_sorts(self):
+    def test_always_sorts(self):
         parsed = self._parsed()
         changed = gw.prepare_request(parsed, "", rules=dict(gw.DEFAULT_RULES),
                                      tool_pruning_cfg=cfg())
@@ -733,15 +733,6 @@ class TestToolBlockOrderingSwitch(unittest.TestCase):
                if b.get("type") == "tool_result"]
         self.assertEqual(ids, ["a", "b"])
         self.assertTrue(any(c.startswith("tool_result_blocks_sorted") for c in changed))
-
-    def test_off_leaves_order_alone(self):
-        rules = dict(gw.DEFAULT_RULES, tool_block_ordering=False)
-        parsed = self._parsed()
-        changed = gw.prepare_request(parsed, "", rules=rules, tool_pruning_cfg=cfg())
-        ids = [b.get("tool_use_id") for b in parsed["messages"][0]["content"]
-               if b.get("type") == "tool_result"]
-        self.assertEqual(ids, ["b", "a"])
-        self.assertFalse(any(c.startswith("tool_result_blocks_sorted") for c in changed))
 
 
 class TestIdleSwitchAttribution(unittest.TestCase):

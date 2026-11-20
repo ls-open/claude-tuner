@@ -158,7 +158,6 @@ def read_config_payload(handler):
     base = upstream[:-len("/v1/messages")] if upstream.endswith("/v1/messages") else upstream
 
     env = claude_settings.get("env") if isinstance(claude_settings.get("env"), dict) else {}
-    safe_env = {k: v for k, v in env.items() if k != "ANTHROPIC_AUTH_TOKEN"}
 
     return {
         "upstream": {
@@ -190,12 +189,11 @@ def read_config_payload(handler):
         },
         "rules": bridge_cfg.get("rules") or {},
         "tool_pruning": bridge_cfg.get("tool_pruning") or {},
+        # 页面只有这两个开关读 settings.json；白名单里那些键（含已撤掉的）不再回传 ——
+        # 回传了也没有读取点，只会让人以为页面上还有对应开关。
         "settings": {
             "linked": "ANTHROPIC_BASE_URL" in env,
-            "env": safe_env,
-            # 白名单里登记过的键一律回传现值（页面按现值决定每个开关的初始状态）——
-            # 少回传一个，那个开关就会以「未设置」的假状态显示，用户一保存就写错值。
-            **{k: claude_settings.get(k) for k in config_ops.SETTINGS_TOP_KEYS},
+            "includeCoAuthoredBy": claude_settings.get("includeCoAuthoredBy"),
         },
         "versions": version_payload(),
         "tool_stats": tool_stats_payload(),

@@ -567,7 +567,7 @@ class TestEnsureConfigInitialized(unittest.TestCase):
         self.assertEqual(cfg["upstream_url"], "https://example.test/v1/messages")
         # 缺的键照旧补齐
         self.assertIn("strip_pr_tools", cfg["tool_pruning"])
-        self.assertIn("probe_interception", cfg["rules"])
+        self.assertIn("strip_billing_header", cfg["rules"])
 
     def test_拆开的老开关被两个新开关继承(self):
         """`strip_plan_isolation_tools` → 「计划模式」与「工作树」两个。

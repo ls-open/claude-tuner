@@ -47,10 +47,7 @@ class TriggerTableTest(unittest.TestCase):
     """判据表本身：每个文本规则都得有触发物，且不能宽到误伤。"""
 
     def test_每个文本规则都有触发物(self):
-        text_rules = set(gateway.DEFAULT_RULES) - {"probe_interception",
-                                                   "split_mixed_user_messages",
-                                                   "tool_block_ordering"}
-        missing = sorted(text_rules - set(vm.RULE_TRIGGERS))
+        missing = sorted(set(gateway.DEFAULT_RULES) - set(vm.RULE_TRIGGERS))
         self.assertEqual(missing, [], "这些规则没有触发物判据，哑火时无人报警")
 
     def test_触发物只认注入面_不误伤正文(self):

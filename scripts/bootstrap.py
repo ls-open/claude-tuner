@@ -212,23 +212,16 @@ def plan(state, api_key=None, upstream=None, model=None, preset=None, with_cli=T
                                      "同上，1P 数据目录也写一份"))
 
     # 3) 客户端行为开关与 CLI 联动
+    # 安装只写 CLI 联动那一套 env；缓存 TTL 与自动压缩**不碰** —— 客户端自己的默认就是
+    # 用户想要的那个（订阅号 1 小时、API Key 5 分钟），替它改反而要用户记住自己被动过。
     settings_patch = {
         "env": config_ops.cli_env(gateway_url, api_key or state["three_p"].get(
             "inferenceGatewayApiKey", ""), model, one_m) if with_cli else {},
-        # 省钱相关，默认帮用户开：
-        # - promptCacheTtl：不设时客户端自己决定（订阅号 1 小时、API Key 只有 5 分钟）。
-        #   1 小时的缓存写入更贵，但能跨更长的中断保温；上游认不认这个时长各家不同。
-        # - 自动压缩：上下文快满时自动压缩，压缩那一次会丢掉已有缓存。
-        # 输入联想不在这里：客户端设置页已有自己的「Prompt suggestions」开关
-        # （写 preferences.ccPromptSuggestions），由它管，我们不重复实现。
-        "promptCacheTtl": "1h",
-        "subagentPromptCacheTtl": "1h",
-        "autoCompactEnabled": False,
     }
     merged_settings, changed_keys = config_ops.merge_settings(state["claude_settings"], settings_patch)
     if changed_keys:
         actions.append(_write_action(paths["claude_settings"], merged_settings,
-                                     "客户端行为开关 + CLI 联动（新会话生效）"))
+                                     "CLI 联动（新会话生效）"))
         notes.append("  客户端设置变更：%s" % ", ".join(changed_keys))
     if not with_cli:
         notes.append("  已跳过 CLI 联动（--no-cli）")

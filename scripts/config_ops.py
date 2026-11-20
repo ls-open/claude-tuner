@@ -218,13 +218,12 @@ SETTINGS_ENV_KEYS = (
 )
 
 SETTINGS_TOP_KEYS = (
-    "promptCacheTtl",
-    "subagentPromptCacheTtl",
-    "autoCompactEnabled",
     "includeCoAuthoredBy",
-    # 下面四个已从页面撤掉：`precomputeCompactionEnabled` 在我们默认关掉自动压缩时恒为空转；
-    # 另三个有效但副作用没写进页面（关掉思考摘要会连对话里的摘要一起消失、禁用思考会掉质量）。
-    # 仍留在白名单里是为了卸载时能把当年写进去的值一起收回 —— 留在清单外就成了没人认领的残留键。
+    # 下面这些**已从页面撤掉、也不再写**，留在白名单里只为卸载时能把当年写进去的值一起收回 ——
+    # 留在清单外就成了没人认领的残留键。
+    "promptCacheTtl",              # 缓存保留时长（旧版安装时写过 1h）
+    "subagentPromptCacheTtl",      # 子代理那一档的同一件事
+    "autoCompactEnabled",          # 自动压缩（旧版安装时写过 false）
     "idleCompaction",              # 会话空闲时自动压缩长对话
     "precomputeCompactionEnabled", # 后台预生成压缩摘要（只在自动压缩开着时有意义）
     "showThinkingSummaries",       # 请服务端额外生成一份思考摘要
