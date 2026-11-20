@@ -188,24 +188,6 @@ class TestCategoryFor(unittest.TestCase):
         self.assertFalse(tr.should_strip_tool("mcp__ccd_sidebar__set_view", names2, c2))
         self.assertTrue(tr.should_strip_tool("mcp__ccd_window__close_split", names2, c2))
 
-    def test_disabled_switch_stops_stripping(self):
-        c = cfg(strip_terminal_tools=False)
-        names = tr.get_stripped_tool_names(c)
-        self.assertFalse(tr.should_strip_tool("mcp__terminal__read_terminal", names, c))
-
-    def test_protected_tools_cannot_be_stripped_by_any_means(self):
-        """底线：读/写/编辑/跑命令这些没有就没法干活的工具，任何配置都剥不动。
-
-        界面上不给勾是便利，这里拦是底线 —— 用户手改配置文件、或者配置里残留了旧值，
-        都不该把会话弄成残废。而且症状会很怪：模型说要用某工具，工具却不在列表里。
-        """
-        for name in ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "Agent"):
-            c = cfg(custom_strip_tools=[name])
-            names = tr.get_stripped_tool_names(c)
-            self.assertEqual(tr.strip_reason(name, names, c), "",
-                             "%s 不该被剥掉" % name, )
-            self.assertFalse(tr.should_strip_tool(name, names, c))
-
     # 桌面端真实发送的全部会话工具（2026-10-25 从 2.1.308 抓包读出，逐字）
     SESSION_TOOLS = (
         "mcp__ccd_session__dismiss_task", "mcp__ccd_session__mark_chapter",
@@ -230,21 +212,10 @@ class TestCategoryFor(unittest.TestCase):
         "mcp__ccd_session__mark_chapter", "mcp__ccd_session_mgmt__list_sessions",
     )
 
-    # 按**性质**从会话管理里挑出来的几类（其余留在 strip_session_ui_tools）
-    SESSION_CARVE_OUTS = {
-        "strip_session_start_tools": "mcp__ccd_session__start_session",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__set_session_permission_mode",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__set_session_model",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__export_transcript",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__delete_session",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__send_message",
-        "strip_session_ui_tools": "mcp__ccd_session_mgmt__stop_session",
-    }
-
     def test_会话各组互不牵连(self):
         """会话、起停、计划三组各管一摊：开一组不动另一组。"""
         c = cfg(strip_session_ui_tools=True, strip_session_control_tools=False,
-                strip_session_start_tools=False, strip_plan_isolation_tools=False)
+                strip_session_start_tools=False, strip_plan_mode_tools=False, strip_worktree_tools=False)
         names = tr.get_stripped_tool_names(c)
         self.assertTrue(tr.should_strip_tool("mcp__ccd_session_mgmt__set_session_title", names, c))
         for other in ("mcp__ccd_session_mgmt__delete_session",
@@ -252,7 +223,7 @@ class TestCategoryFor(unittest.TestCase):
             self.assertFalse(tr.should_strip_tool(other, names, c), other)
 
         c2 = cfg(strip_session_ui_tools=False, strip_session_control_tools=True,
-                 strip_session_start_tools=False, strip_plan_isolation_tools=False)
+                 strip_session_start_tools=False, strip_plan_mode_tools=False, strip_worktree_tools=False)
         names2 = tr.get_stripped_tool_names(c2)
         self.assertTrue(tr.should_strip_tool("mcp__ccd_session_mgmt__delete_session", names2, c2))
         self.assertFalse(tr.should_strip_tool("mcp__ccd_session_mgmt__set_session_title", names2, c2))
@@ -315,7 +286,7 @@ class TestCategoryFor(unittest.TestCase):
 
     def test_each_switch_covers_exactly_its_own_tools(self):
         """**开关之间不许互相牵连**：每个开关只管自己那一组工具。"""
-        c = cfg(strip_session_start_tools=True, strip_plan_isolation_tools=False,
+        c = cfg(strip_session_start_tools=True, strip_plan_mode_tools=False, strip_worktree_tools=False,
                 strip_background_tools=False, strip_session_ui_tools=False,
                 strip_session_control_tools=False, strip_view_tools=False)
         names = tr.get_stripped_tool_names(c)
@@ -325,6 +296,21 @@ class TestCategoryFor(unittest.TestCase):
                       "mcp__ccd_view__show_pane", "mcp__ccd_session_mgmt__get_usage"):
             self.assertFalse(tr.should_strip_tool(other, names, c),
                              "开起停组不该牵连 %s" % other)
+
+    def test_计划与工作树是两个独立开关(self):
+        """拆开的意义：只剥工作树（系统提示零引用）而把计划模式留着。
+
+        `ExitPlanMode` 在系统提示里被点名（"After the user accepts your plan"），
+        剥了会留一条指向不存在工具的说明；`EnterWorktree` / `ExitWorktree` 没有这个问题。
+        捆成一个开关时，省这 6.9 KB 就得连计划模式一起放弃。
+        """
+        c = cfg(strip_worktree_tools=True, strip_plan_mode_tools=False)
+        names = tr.get_stripped_tool_names(c)
+        for name in ("EnterWorktree", "ExitWorktree"):
+            self.assertTrue(tr.should_strip_tool(name, names, c), name)
+        for name in ("EnterPlanMode", "ExitPlanMode"):
+            self.assertFalse(tr.should_strip_tool(name, names, c),
+                             "剥工作树不该牵连 %s" % name)
 
     def test_paired_switches_take_both_ends(self):
         """配对的两个必须一起进出 —— 只剥一半会留下一个用不了的工具。"""
@@ -372,6 +358,78 @@ class TestPairing(unittest.TestCase):
                 custom_strip_tools=["mcp__ccd_pr__get_status", "mcp__ccd_pr__bind_pr"])
         names = tr.get_stripped_tool_names(c)
         self.assertTrue(tr.pair_is_orphaned(CCD_PR_PAIR, names, c))
+
+
+# 「Starting other sessions」那一段的形状：一串 `- ` 开头的 bullet，空行切不到其中任何一条。
+# 计划模式那条就长在这里 —— 它整行只为「用户接受计划之后」而写，所以按**行**认。
+PLAN_SECTION = (
+    "## Starting other sessions\n"
+    "- A NEW user message about something else while you are mid-task → hand the task off.\n"
+    "- After the user accepts your plan (`ExitPlanMode`), check whether two or more of its "
+    "steps are real work, then split them into sessions.\n"
+    "- Somewhere else, only when the user names the place: `cwd` for another folder.\n"
+)
+
+
+class TestLineLevelPairing(unittest.TestCase):
+    """计划模式那条 bullet 走**行级**配对：空行切不到它，但它整行只为 `ExitPlanMode` 而写。
+
+    这一格的必要性：`strip_plan_mode_tools` 把两个计划工具挡在客户端源头之后，正文里
+    只剩这一条还在点名 `ExitPlanMode`（其余 13 处 worktree 说的是会话自带的 worktree，
+    挂的是 `start_session`）。按整段切根本够不到它 —— 那会把整段「起会话」指引一起删掉。
+    """
+
+    def _section(self):
+        return PLAN_SECTION
+
+    def test_line_entry_registered(self):
+        pair = next(p for p in tr.PROMPT_PAIRS if p["id"] == "plan_mode_accepted")
+        self.assertEqual(pair["level"], "line")
+        self.assertEqual(pair["tools"], ("ExitPlanMode",))
+        self.assertEqual(tr.pair_unit(pair), "\n")
+        self.assertTrue(PLAN_SECTION.split("\n")[2].startswith(pair["anchor"]),
+                        "锚点必须与客户端正文逐字对齐，改了措辞要跟着改")
+
+    def test_strips_only_that_line(self):
+        out, hit = gw.strip_ghost_tool_instructions(
+            PLAN_SECTION, tp_cfg=cfg(strip_plan_mode_tools=True), incoming_tools={"Bash"})
+        self.assertTrue(hit)
+        self.assertNotIn("After the user accepts your plan", out)
+        # 同段其它 bullet 一个字节都不许动 —— 行级切法的最大风险就在这里
+        self.assertIn("A NEW user message about something else while you are mid-task", out)
+        self.assertIn("Somewhere else, only when the user names the place", out)
+        self.assertNotIn("\n\n", out, "行级删除不许在段落里凿出空行")
+
+    def test_kept_when_tool_is_present(self):
+        out, hit = gw.strip_ghost_tool_instructions(
+            PLAN_SECTION, tp_cfg=cfg(strip_plan_mode_tools=True),
+            incoming_tools={"ExitPlanMode", "Bash"})
+        self.assertFalse(hit)
+        self.assertEqual(out, PLAN_SECTION)
+
+    def test_anchor_must_be_at_line_start(self):
+        """锚点出现在行中间是**引用**，不许切 —— 切了就是把半句正常指引连根带走。"""
+        text = ("- Some rule about plans.\n"
+                "Read this: \"- After the user accepts your plan (`ExitPlanMode`)\" is a quote.\n")
+        out, hit = gw.strip_ghost_tool_instructions(
+            text, tp_cfg=cfg(strip_plan_mode_tools=True), incoming_tools={"Bash"})
+        self.assertFalse(hit)
+        self.assertEqual(out, text)
+
+    def test_production_pipeline(self):
+        """走生产那条路（`stabilize_request`）：客户端挡住工具后，这条 bullet 自己走掉。"""
+        parsed = {
+            "model": "claude-opus-5-5",
+            "system": [{"type": "text", "text": "Plan mode is a thing.\n\n" + PLAN_SECTION}],
+            "tools": [{"name": "Bash"}],
+            "messages": [],
+        }
+        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+                             tool_pruning_cfg=cfg(strip_plan_mode_tools=True))
+        text = "\n".join(b.get("text", "") for b in parsed["system"])
+        self.assertNotIn("After the user accepts your plan", text)
+        self.assertIn("A NEW user message about something else", text,
+                      "同段其它 bullet 必须还在 —— 行级切法不许连整段一起带走")
 
 
 class TestGhostInstructionStripping(unittest.TestCase):

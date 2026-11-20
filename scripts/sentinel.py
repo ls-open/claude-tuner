@@ -8,8 +8,8 @@
                     （本命令不预设是死重还是生产力工具，判定权在你）
     · ② system 面 —— 清洗后仍残留的易变痕迹（日期 / 路径 / 版本号 / 模型宣称 / 计费头 / token 计数…）
     · ③ messages 面 —— user / system 消息纯文本块里的客户端注入标记（注入实际落在这一面）
-    · ④ 提示词 / 工具搭配 —— 该删的整段有没有删到（计入结论）；被剥掉的工具是否仍被
-      正文引用（只提示、不计入结论）
+    · ④ 提示词 / 工具搭配 —— 被挡掉的工具是否仍被正文引用，以及**还关着的开关**
+      名下工具是否已被正文点名（勾上它就会留下同样的引用）。两者都只提示、不计入结论
 
 判定只需**单份抓包**，不依赖任何人工时机。
 
@@ -443,26 +443,48 @@ def _has_identifier(text, token):
 def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     """提示词 / 工具搭配：工具没了，正文里还提它吗。
 
-    **只提示、不计入结论**：段落边界不清楚，整段删会连累无关内容，句中删又容易切坏，
-    所以只报出来给人看。
+    两个方向都问，因为「这个开关干不干净」正是这两句的差：
 
-    反方向（「工具没发、说明段落也不在」）**不再报** —— 那是正常态：客户端本来就可能
-    不拼那段。真正留下悬空指引时，工具名会在这里被逮到。
+    · **已挡掉的**工具，正文里还提 → 悬空引用（`tool_rules.PROMPT_PAIRS` 能跟着走的
+      都不在这儿，留下的才是需要人看一眼的）；
+    · **还没勾的**开关，名下工具已在正文里被提，而配对表里没有能跟着走的片段
+      → 勾上它就是同一条悬空引用。事前可见，不必等勾完再发现。
+
+    「已挡掉」不能从报文里取：工具由客户端在源头挡掉，报文里根本看不到它们，
+    按报文取会让人永远得到「没有被挡掉的工具」这个绿灯（曾经如此）。
+    口径取 `tool_rules.client_disabled_tools()` —— 那才是「客户端不会发的名字」。
+
+    **只提示、不计入结论**：边界不清楚的引用，整段删会连累无关内容、句中删又容易切坏。
 
     只扫**顶层 system 面**，不扫 messages —— messages 是对话正文，讨论到某个工具名是常态。
     """
     cfg = tp_cfg if tp_cfg is not None else gateway.load_tool_pruning_config()
-    stripped_names = gateway.get_stripped_tool_names(cfg)
-    gone = [t.get("name") or "" for t in (raw.get("tools") or [])
-            if isinstance(t, dict) and gateway.should_strip_tool(t.get("name") or "", stripped_names, cfg)]
     text = "\n".join(extract_system_texts(clean))
+
+    def _mentions(name):
+        # 短名也要查：正文里常常只写 `open_session_in` 而不带命名空间前缀。
+        return sorted(t for t in ({name, name.split("__")[-1]})
+                      if len(t) >= 6 and _has_identifier(text, t))
+
+    gone = tool_rules.client_disabled_tools(cfg)
     hits = []
     for name in gone:
-        # 短名也要查：正文里常常只写 `open_session_in` 而不带命名空间前缀。
-        # 一个工具只报一次 —— 长短名同时命中是常态，按工具聚合。
-        found = [t for t in ({name, name.split("__")[-1]}) if len(t) >= 6 and _has_identifier(text, t)]
-        if found:
-            hits.append((name, sorted(found)))
+        found = _mentions(name)
+        if found:   # 一个工具只报一次 —— 长短名同时命中是常态，按工具聚合
+            hits.append((name, found))
+
+    # 还没勾、勾上就会悬空的开关：名下工具被正文点名，且配对表里没有能跟着走的片段
+    paired = {t for p in tool_rules.PROMPT_PAIRS for t in p["tools"]}
+    pending = {}
+    for key in dict.fromkeys([k for k, _ in tool_rules.CATEGORY_NAMESPACES]
+                             + list(tool_rules.CATEGORY_NAMES)):
+        if tool_rules.tp_flag(cfg, key):
+            continue
+        named = [n for n in tool_rules.switch_tools(key)
+                 if n not in paired and n not in tool_rules.PROTECTED_TOOLS and _mentions(n)]
+        if named:
+            pending[key] = named
+
     # 只认主会话面：子代理与 CoWork 的 system 是另外两份提示词，工具照发、这几段本就不在
     # 里面，这里报什么都是噪声。网关侧同一道闸只看同一批面。
     kind = gateway.classify_kind(raw)
@@ -470,19 +492,25 @@ def _audit_prompt_tool_pairing(raw, clean, tp_cfg=None):
     print("─" * 78)
     print("④ 提示词 / 工具搭配")
     print("─" * 78)
+    if kind != "main":
+        print("  ✅ 这是 %s 面：system 是另一份提示词，本就不含工具说明段落，不研判" % kind)
+        return hits
     if not hits:
-        if kind != "main":
-            print("  ✅ 这是 %s 面：system 是另一份提示词，本就不含工具说明段落，不研判" % kind)
-        elif not gone:
-            print("  ✅ 这份报文里没有被挡掉的工具，提示词与工具表不会脱节")
-        else:
-            print("  ✅ 被挡掉的 %d 个工具，正文里一个都没被引用" % len(gone))
-    if hits:
+        print("  ✅ 被挡掉的 %d 个工具，正文里一个都没被引用" % len(gone))
+    else:
         print("  ℹ️ 以下工具已被挡掉，但正文仍在引用：")
         for name, tokens in hits:
             print("       · %s   （正文里写作 %s）" % (name, "、".join("`%s`" % t for t in tokens)))
         print("    整段边界清楚的可以顺手剥掉整段；夹在句子中段的按约定不动，保留原样。")
         print("    不计入下方结论 —— 这是已知取舍，不是故障。")
+    if pending:
+        print("  ℹ️ 还没勾、勾上却会留悬空引用的开关（配对表里没有能跟着走的片段）：")
+        for key, named in pending.items():
+            head = "、".join("`%s`" % n.split("__")[-1] for n in named[:3])
+            more = "…" if len(named) > 3 else ""
+            print("       · %s —— %d 个工具被正文点名（%s%s）" % (key, len(named), head, more))
+        print("    这类开关的工具是「正文整段的行为规范」在引用，段落删不得 —— 勾它省的是工具")
+        print("    描述，代价是正文里多几条指向不存在工具的指引。同样不计入结论。")
     return hits
 
 

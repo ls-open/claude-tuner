@@ -201,7 +201,8 @@ from tool_rules import (  # noqa: E402
     ghost_tool_names,
     orphan_mentions,
     pair_is_orphaned,
-    pair_paragraph_predicate,
+    pair_predicate,
+    pair_unit,
     pruning_cfg_for_surface,
     should_strip_tool,
     tp_flag as _tp_flag,
@@ -540,9 +541,10 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, incomi
     判据是**请求实况**：给了 `incoming_tools` 就问「这一对里有没有工具真出现在本轮请求里」，
     一个都没有 → 段落已成孤句 → 摘掉；没给才退回按配置判定（离线工具与单测用）。
 
-    **只认整段**：配对表里登记的都是「整段存在的意义就是解释这个工具」的段落，
-    按空行切段、段首命中锚点即摘除整段。段中顺带提一句工具名的不在这里处理（整段删
-    会连累无关指引，句中手术又容易切坏），交给 orphan_mentions 去发现并报警。
+    **只认边界清楚的片段**：配对表里登记的都是「存在的意义就是解释这个工具」的片段，
+    按该对的边界切开（缺省整段，`level: line` 的按行）、片首命中锚点即摘除。
+    段中顺带提一句工具名的不在这里处理（整段删会连累无关指引，句中手术又容易切坏），
+    交给 orphan_mentions 去发现并报警。
     """
     if not isinstance(text, str):
         return text, False
@@ -555,25 +557,27 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, incomi
     for pair in PROMPT_PAIRS:
         if not pair_is_orphaned(pair, names, cfg, incoming_tools):
             continue
-        text, _hit = _strip_paragraphs_by_predicate(
-            text, pair_paragraph_predicate(pair), trim=False)
+        text, _hit = _strip_blocks_by_predicate(
+            text, pair_predicate(pair), unit=pair_unit(pair), trim=False)
     return text, (text != orig)
 
 
-def _strip_paragraphs_by_predicate(text, predicate, trim=True):
-    """按自然段落(\\n\\n)精准拆解与识别，若命中谓词则安全剔除整段并压实空白。
+def _strip_blocks_by_predicate(text, predicate, unit="\n\n", trim=True):
+    """按指定边界精准拆解与识别，若命中谓词则安全剔除整个片段并压实空白。
+
+    `unit` 是边界：缺省按自然段落（`\\n\\n`），`"\\n"` 按行（行级配对用）。
 
     核心防御哲学：
-    1. 绝不使用跨越全局的贪婪正则，杜绝吞噬临近段落；
-    2. 必须同时命中段首特征与段内核心关键字；
+    1. 绝不使用跨越全局的贪婪正则，杜绝吞噬临近片段；
+    2. 命中必须是**片首**命中锚点，不是"文中出现过"；
     3. 特征不全则宁可不剥，绝不误伤任何正常文本。
 
-    trim=False 保留原文首尾空白。配对段落删除走这条：那段常出现在 system 正中间，
+    trim=False 保留原文首尾空白。配对片段删除走这条：那段常出现在 system 正中间，
     整体 strip 会顺手动到头尾，没必要 —— 只摘掉该摘的那一段。
     """
     if not isinstance(text, str) or not text:
         return text, False
-    paras = text.split("\n\n")
+    paras = text.split(unit)
     new_paras = []
     changed = False
     for p in paras:
@@ -584,7 +588,7 @@ def _strip_paragraphs_by_predicate(text, predicate, trim=True):
             new_paras.append(p)
     if not changed:
         return text, False
-    result = "\n\n".join(new_paras)
+    result = unit.join(new_paras)
     return (result.strip() if trim else result), True
 
 
@@ -626,7 +630,7 @@ def strip_guideline_text(text, rule):
             return False
         return any(word in lowered for word in any_of)
 
-    return _strip_paragraphs_by_predicate(text, _is_guideline_para)
+    return _strip_blocks_by_predicate(text, _is_guideline_para)
 
 
 def strip_total_tokens_tag_text(text):
@@ -643,7 +647,7 @@ def strip_total_tokens_tag_text(text):
         clean = p.strip()
         return bool(re.match(r"(?i)^<total_tokens>.*?tokens left</total_tokens>$", clean))
 
-    text, _ = _strip_paragraphs_by_predicate(text, _is_tokens_para)
+    text, _ = _strip_blocks_by_predicate(text, _is_tokens_para)
 
     # 2. 兜底整行剔除或行内嵌入形式
     if "<total_tokens>" in text:

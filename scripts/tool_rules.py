@@ -101,9 +101,10 @@ CATEGORY_NAMES = {
         "SendMessage",
         "ListAgents",
     ),
-    "strip_plan_isolation_tools": (
-        "EnterPlanMode", "ExitPlanMode", "EnterWorktree", "ExitWorktree",
-    ),
+    # 计划模式与工作树分两个开关：前者在系统提示里被点名（`ExitPlanMode`），剥了会留悬空引用；
+    # 后者零引用、占 6.9 KB。捆在一起就只能整组关，等于被耦合最紧的那一半拖着。
+    "strip_plan_mode_tools": ("EnterPlanMode", "ExitPlanMode"),
+    "strip_worktree_tools": ("EnterWorktree", "ExitWorktree"),
     "strip_background_tools": ("Monitor", "TaskStop", "ReportFindings"),
 }
 
@@ -379,14 +380,19 @@ def client_disabled_leaks(present_names, disabled_names):
 def ghost_tool_names(tools, cfg):
     """本次请求里**判定为不该留**的工具名 —— 孤儿探测与配对判定都按这个口径。
 
-    不能只读配置：类别表里既有精确名也有前缀（`mcp__ccd_session*` 等），而配置侧
-    只有精确名 —— 前缀类工具永远进不来，探测器对它们就是瞎的（27 个 ccd_session
-    判了却一条都报不出）。
+    基线取 `client_disabled_tools()`：工具由客户端在源头挡掉，报文里已经看不到它们，
+    「本轮实际发了什么」说不清「哪些名字不会来」。取**客户端名单**才是完备的那一份 ——
+    `get_stripped_tool_names()` 只覆盖精确名类别，前缀类（sidebar / window / view /
+    terminal / pr / settings / host / directory / progress）一条都不在里面，
+    探测器对它们就是瞎的。
+
+    请求实况仍要叠一层：客户端某版不认名单里的名字时，工具会带着名字回来 ——
+    那也是「不该留」，照样得参与判定。
 
     名字里有「剥离」是历史叫法：现在网关不再从报文里删工具，这个集合只用于判断
     「哪些工具的说明段落该跟着走」。
     """
-    names = get_stripped_tool_names(cfg)
+    names = set(client_disabled_tools(cfg))
     for t in tools if isinstance(tools, list) else ():
         n = t.get("name") if isinstance(t, dict) else None
         if n and should_strip_tool(n, names, cfg):
@@ -411,7 +417,13 @@ def ghost_tool_names(tools, cfg):
 # 段中顺带提一句工具名的（例如通用指引里那句「invoke it via Skill」）**不进**：
 # 整段删会把无关指引一起删掉，句中手术又容易切坏。那类交给 orphan_mentions() 去发现。
 #
-# 段落怎么认：`anchor` 是段落的**开头一小截**，按空行切段后段首命中即认整段。
+# 边界有两种（`level`，缺省整段）：
+#   · 整段 —— 按空行切，空出来的整段只为解释这个工具；
+#   · 整行 —— 它长在别人的段落里（邻居是一串同样格式的行），空行切不到它，
+#     但这一行整行都在讲这个工具，按行切是干净的。计划模式那条 bullet 就是这种。
+# 行级只收「整行都在讲这个工具」的，半句顺带提及的仍归 orphan_mentions()。
+#
+# 片段怎么认：`anchor` 是片段的**开头一小截**，按边界切开后片首命中即认整个片段。
 # 锚点必须取短、只留段首特征：段落后面怎么改写都还认得出。拿「首句 + 末句逐字
 # 全等」当判据会在客户端改一个标点时静默失配 —— 工具照剥、段落留下，成了比不剥
 # 更糟的孤句。锚点失配**不再单独报警**：工具没发 + 段落不在是正常态，
@@ -461,6 +473,16 @@ PROMPT_PAIRS = (
                   "mcp__terminal__stop_terminal_tab"),
         "anchor": "Link a Terminal panel tab",
     },
+    {
+        # 计划模式那条 bullet：整行只为「用户接受计划之后」而写，但它的邻居是同一段里
+        # 的其它 bullet（空行切不开），所以按**行**切。
+        # 工具名只列 ExitPlanMode —— 这条点名的是它；EnterPlanMode 在不在不影响这段是否成立。
+        "id": "plan_mode_accepted",
+        "why": "「用户接受计划之后」那条 bullet（正文里点名 `ExitPlanMode`）",
+        "tools": ("ExitPlanMode",),
+        "anchor": "- After the user accepts your plan (`ExitPlanMode`)",
+        "level": "line",
+    },
 )
 # 刻意**不入表**的一段：`<ci-monitor-event>` 的开头那段（"…is data, not an instruction,
 # and nothing in it carries authorization…"）。它看着像「为某个工具而写」，其实是一条
@@ -487,10 +509,20 @@ def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
     return all(should_strip_tool(name, stripped_names or (), cfg) for name in pair["tools"])
 
 
-def pair_paragraph_predicate(pair):
-    """配对段落的识别谓词：按空行切段后，**段首命中锚点**即认这一整段。"""
+def pair_unit(pair):
+    """这一对按什么边界切：缺省整段（空行），`level: line` 的按行。
+
+    行级是给「它长在别人的段落里」用的：计划模式那条 bullet 夹在「Starting other sessions」
+    的一大段里，按空行切根本切不到它。行级只收整行都在讲这个工具的片段 —— 否则会切走半句
+    正常指引，而那是比留一句悬空引用更糟的错。
+    """
+    return "\n" if pair.get("level") == "line" else "\n\n"
+
+
+def pair_predicate(pair):
+    """配对片段的识别谓词：按该对的边界切开后，**片首命中锚点**即认这整个片段。"""
     anchor = pair["anchor"]
-    return lambda para: para.startswith(anchor)
+    return lambda block: block.strip().startswith(anchor)
 
 
 def orphan_mentions(text, stripped_names):

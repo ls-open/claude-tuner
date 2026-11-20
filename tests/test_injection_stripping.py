@@ -430,7 +430,7 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         gateway.load_tool_pruning_config = lambda: (reads.append(1), real_loader())[1]
         self.addCleanup(setattr, gateway, "load_tool_pruning_config", real_loader)
 
-        changed = gateway.prepare_request(req, session_id="test-inject", tool_pruning_cfg=custom_tp)
+        gateway.prepare_request(req, session_id="test-inject", tool_pruning_cfg=custom_tp)
         c_changed = gateway.canonicalize(parsed, rules={"strip_date": False}, tool_pruning_cfg=custom_tp)
 
         self.assertEqual(reads, [], "注入配置后不得回退去读 config.json")
@@ -699,6 +699,35 @@ class TestSentinelMatchesGateway(unittest.TestCase):
             self.assertEqual([n for n, _ in hits], ["mcp__ccd_session_mgmt__get_usage"])
         self.assertEqual(got_sub, [], "短名落在更长标识符内部时不得误报")
         self.assertEqual(got_ok, [])
+
+    def test_被客户端挡住报文里看不到的工具也算数(self):
+        """**回归**：④ 面曾经按「报文里有哪些工具」取被挡名单。
+
+        工具改由客户端在源头挡掉之后，报文里根本没有它们 → 名单恒为空 → 永远打印
+        「✅ 没有被挡掉的工具」。而正文里那条点名 `ExitPlanMode` 的 bullet 明明还在
+        （网关自己的 `orphan_tool_mention` 一直在报 WARN）。口径取
+        `client_disabled_tools()`：客户端不会发的名字，才是这一面要查的。
+        """
+        cfg_on = {"enabled": True, "strip_plan_mode_tools": True}
+        raw = {"tools": [{"name": "Bash"}],
+               "system": [{"type": "text",
+                           "text": "- After the user accepts your plan (`ExitPlanMode`), split it."}]}
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            hits = sentinel._audit_prompt_tool_pairing(raw, raw, cfg_on)
+        self.assertIn("ExitPlanMode", [n for n, _ in hits])
+        self.assertIn("仍在引用", buf.getvalue())
+
+    def test_没勾但勾上会悬空的开关也报出来(self):
+        """反向：开关还关着、工具还在场时，正文里的点名是**正常**的 —— 但它预告了
+        「勾上这个开关就会留下同样一条引用」，所以按开关聚合一并报出。"""
+        cfg_off = {"enabled": True, "strip_progress_tools": False}
+        raw = {"tools": [{"name": "Bash"}],
+               "system": [{"type": "text", "text": "报进度用 `update_plan`，收尾用 `wrap_up`。"}]}
+        with contextlib.redirect_stdout(io.StringIO()) as buf:
+            hits = sentinel._audit_prompt_tool_pairing(raw, raw, cfg_off)
+        out = buf.getvalue()
+        self.assertEqual(hits, [], "开关没勾，工具还在场 —— 这不叫悬空引用")
+        self.assertIn("strip_progress_tools", out)
 
     def test_role_system消息注入在messages面可检出(self):
         """客户端注入走 messages 里的 role:system 消息时，③ messages 面必须能检出未剥除的宣称与计数。"""

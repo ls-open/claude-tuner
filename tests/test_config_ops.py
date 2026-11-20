@@ -568,3 +568,30 @@ class TestEnsureConfigInitialized(unittest.TestCase):
         # 缺的键照旧补齐
         self.assertIn("strip_pr_tools", cfg["tool_pruning"])
         self.assertIn("probe_interception", cfg["rules"])
+
+    def test_拆开的老开关被两个新开关继承(self):
+        """`strip_plan_isolation_tools` → 「计划模式」与「工作树」两个。
+
+        当初勾上的人要的是「全剥」，拆分必须两边都继承：退役清扫会把老键删掉，
+        不继承就是一次静默丢设置 —— 用户看不到任何提示，工具却都回来了。
+        """
+        import json
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"tool_pruning": {"strip_plan_isolation_tools": True}}, fh)
+        self._ensure()
+        with open(self.path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        self.assertNotIn("strip_plan_isolation_tools", cfg["tool_pruning"])
+        self.assertIs(cfg["tool_pruning"]["strip_plan_mode_tools"], True)
+        self.assertIs(cfg["tool_pruning"]["strip_worktree_tools"], True)
+
+    def test_老开关是关的时候两个新开关保持默认关(self):
+        import json
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"tool_pruning": {"strip_plan_isolation_tools": False}}, fh)
+        self._ensure()
+        with open(self.path, encoding="utf-8") as fh:
+            cfg = json.load(fh)
+        self.assertNotIn("strip_plan_isolation_tools", cfg["tool_pruning"])
+        self.assertFalse(cfg["tool_pruning"]["strip_plan_mode_tools"])
+        self.assertFalse(cfg["tool_pruning"]["strip_worktree_tools"])

@@ -266,7 +266,8 @@ DEFAULT_TOOL_PRUNING_CONFIG = {
     "strip_session_ui_tools": False,       # 会话遥控：改标题/输出风格、查用量、列事件、脱离
     "strip_session_control_tools": False,  # 会话操作：改权限/模型档位、导出、删除、终止
     "strip_session_start_tools": False,    # 起会话 / 交接 / 列目标 / 撤回 / 跨会话发消息
-    "strip_plan_isolation_tools": False,   # 计划模式 + Git 工作树隔离
+    "strip_plan_mode_tools": False,        # 计划模式：进 / 提交计划
+    "strip_worktree_tools": False,         # Git 工作树隔离：进 / 退
     "strip_web_search_tools": False,       # WebSearch
     "strip_web_fetch_tools": False,        # WebFetch
     "strip_notebook_tools": False,         # NotebookEdit
@@ -404,6 +405,16 @@ def ensure_config_initialized(config_path=None):
             for rk, rv in DEFAULT_RULES.items():
                 if rk not in cfg["rules"]:
                     cfg["rules"][rk] = rv
+                    updated = True
+
+        # 拆开的老开关：`strip_plan_isolation_tools` 曾经一个管四个工具，现在拆成
+        # 「计划模式」与「工作树」两个。当初勾上的人要的是「全剥」，两边都得继承 ——
+        # 不继承的话，拆分对老用户就是一次静默丢设置（退役清扫会把老键删掉，连痕迹都不剩）。
+        pruning = cfg.get("tool_pruning")
+        if isinstance(pruning, dict) and pruning.get("strip_plan_isolation_tools") is True:
+            for key in ("strip_plan_mode_tools", "strip_worktree_tools"):
+                if pruning.get(key) is not True:
+                    pruning[key] = True
                     updated = True
 
         # 剔除已退役的开关键：默认值表里没有的键在代码里不可能有读取点，留着只会让
