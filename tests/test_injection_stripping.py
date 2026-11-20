@@ -808,6 +808,47 @@ class TestRuleIsolation(unittest.TestCase):
         self.assertIn("strip_model_declarations", log)
 
 
+class TestDateSwitch(unittest.TestCase):
+    """`strip_date` 是一个**开关**，不是一个结论：关掉它，日期就该原样留着。
+
+    这条开关曾经无脑开着 —— 当时上游缓存能撑到 24 小时，跨天一次重算换回一整天的命中。
+    TTL 缩短之后这个交换不再成立，于是它必须真的能关：关掉时一个字都不许动，
+    而且不许因此报「规则哑火」（关掉的规则本来就不该动手，见 volatile_markers.rule_markers）。
+    """
+
+    DATE_IN_MSG = "Today's date is 2026-10-02.\n# Environment update\n - foo"
+
+    def _payload(self):
+        return {
+            "system": [{"type": "text", "text": CURRENT_DATE_BLOCK}],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": self.DATE_IN_MSG}]}],
+            "tools": [],
+        }
+
+    def test_关掉后日期原样保留(self):
+        p = self._payload()
+        changed = gateway.canonicalize(p, rules={"strip_date": False})
+        self.assertNotIn("strip_date", changed)
+        self.assertIn("Today's date is 2026-10-02", p["system"][0]["text"])
+        self.assertIn("Today's date is 2026-10-02", p["messages"][0]["content"][0]["text"])
+        self.assertFalse([c for c in changed if c.startswith("rule_")], "关掉的规则不该报哑火")
+
+    def test_开着时两处都剥掉(self):
+        """注入落在 system 与 messages 两处，只剥一处等于没剥 —— 另一处每轮照样在变。"""
+        p = self._payload()
+        changed = gateway.canonicalize(p, rules={"strip_date": True})
+        self.assertIn("strip_date", changed)
+        self.assertNotIn("2026-10-02", p["system"][0]["text"])
+        self.assertNotIn("2026-10-02", p["messages"][0]["content"][0]["text"])
+
+    def test_正文里提到日期不算注入(self):
+        """对话正文里出现日期是正常讨论，不许被当成注入抹掉。"""
+        p = {"system": [], "messages": [{"role": "user", "content": [
+            {"type": "text", "text": "上次我们讨论的是 2026-10-02 那个版本。"}]}], "tools": []}
+        gateway.canonicalize(p, rules={"strip_date": True})
+        self.assertIn("2026-10-02", p["messages"][0]["content"][0]["text"])
+
+
 class TestGuidelineTable(unittest.TestCase):
     """三条准则住在同一张表里，行为由一个函数统一执行。
 
