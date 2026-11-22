@@ -7,7 +7,8 @@
     · ① 工具面   —— 已挡 N / 保留 M；不在开关表内的 `mcp__*` 逐个列出待判定
                     （本命令不预设是死重还是生产力工具，判定权在你）
     · ② system 面 —— 清洗后仍残留的易变痕迹（日期 / 路径 / 版本号 / 模型宣称 / 计费头 / token 计数…）
-    · ③ messages 面 —— user / system 消息纯文本块里的客户端注入标记（注入实际落在这一面）
+    · ③ messages 面 —— user / system 消息纯文本块里的客户端注入标记（注入实际落在这一面；
+      规则开关自己关着的类目按配置放行，只打印、不计入结论）
     · ④ 提示词 / 工具搭配 —— 被挡掉的工具是否仍被正文引用，以及**还关着的开关**
       名下工具是否已被正文点名（勾上它就会留下同样的引用）。两者都只提示、不计入结论
 
@@ -78,6 +79,17 @@ INJECTION_MARKERS = {
     # （如 `<total_tokens>1.5M tokens remaining</total_tokens>`）。
     "Token 计数块": r"<total_tokens>\s*\d",
     "模型绑定宣称": r"(?im)^\s*You are powered by the model\b",
+}
+
+# 每类注入标记背后是哪条开关在管。③ 面据此把「规则没盖住」与「开关有意关着」分开：
+# 后者按配置放行，只打印、不计入结论 —— 否则关掉一个开关，哨兵每跑一次都报一条永远
+# 清不掉的告警，久了把真告警一起训练成噪音。
+INJECTION_MARKER_RULES = {
+    "gitStatus 注入块": "strip_git_status",
+    "currentDate 注入块": "strip_date",
+    "动态日期行": "strip_date",
+    "Token 计数块": "strip_total_tokens_tag",
+    "模型绑定宣称": "strip_model_declarations",
 }
 
 
@@ -372,7 +384,7 @@ def _in_reminder_container(text, pos):
     return False
 
 
-def _audit_message_injections(clean):
+def _audit_message_injections(clean, rules=None):
     """messages 面：user 与 system 消息的独立文本块里是否还残留客户端注入标记。
 
     **注入实际落在这一面**（gitStatus 提醒走 user 消息进来；15KB 环境/模型宣称/日期/token 计数走
@@ -389,8 +401,13 @@ def _audit_message_injections(clean):
 
     裸形态不等于安全：客户端若把注入挪进正文且不再带容器，这一档会降级 —— 所以存疑项照样
     全量打印，结论区也会点名要人复核，而不是静悄悄给一个 ✅。
+
+    **开关关着的不算未覆盖**：`rules` 里明确关掉的类目（用户自己关了 `strip_date` 等）是配置
+    选择，不是规则没盖住 —— 单独打印、不计入结论。`rules=None` 视为「规则都在」，因为
+    漏报比误报更糟。
     """
-    injected, suspect = [], []
+    injected, suspect, released = [], [], []
+    enabled = rules or {}
     print()
     print("─" * 78)
     print("③ messages 面（user / system 消息的纯文本块）")
@@ -413,22 +430,36 @@ def _audit_message_injections(clean):
             scanned += 1
             for label, pattern in INJECTION_MARKERS.items():
                 for m in re.finditer(pattern, text):
-                    is_injection = (role == "system") or _in_reminder_container(text, m.start())
-                    (injected if is_injection else suspect).append((label, text, m))
+                    if not ((role == "system") or _in_reminder_container(text, m.start())):
+                        suspect.append((label, text, m))
+                        continue
+                    rule = INJECTION_MARKER_RULES.get(label)
+                    if rule and enabled.get(rule) is False:
+                        released.append((label, rule, text, m))
+                    else:
+                        injected.append((label, text, m))
     if injected:
         print("  ⚠️ 注入残留（计入结论）：%d 处" % len(injected))
         for label, text, m in injected[:8]:
             print("     · %s：%s" % (label, _snippet(text, m.start(), m.end())))
         if len(injected) > 8:
             print("     …（其余 %d 处省略）" % (len(injected) - 8))
+    if released:
+        print("  ℹ️ 按配置放行（开关关着，不计结论）：%d 处" % len(released))
+        for label, rule, text, m in released[:8]:
+            print("     · %s ← %s 关着：%s" % (label, rule, _snippet(text, m.start(), m.end())))
+        if len(released) > 8:
+            print("     …（其余 %d 处省略）" % (len(released) - 8))
     if suspect:
         print("  ℹ️ 疑似正文引用（不计结论）：%d 处" % len(suspect))
         for label, text, m in suspect[:8]:
             print("     · %s：%s" % (label, _snippet(text, m.start(), m.end())))
         if len(suspect) > 8:
             print("     …（其余 %d 处省略）" % (len(suspect) - 8))
-    if not injected and not suspect:
+    if not injected and not suspect and not released:
         print("  ✅ 扫描 %d 个文本块，无注入残留" % scanned)
+    elif not injected and not suspect:
+        print("  ✅ 扫描 %d 个文本块，注入面已吸收（%d 处按开关放行，见上）" % (scanned, len(released)))
     elif not injected:
         print("  ✅ 扫描 %d 个文本块，注入面无残留（下列 %d 处落在用户正文里，人工扫一眼即可）"
               % (scanned, len(suspect)))
@@ -570,7 +601,7 @@ def cmd_audit(model, session=None, last=False):
         len(extract_system_texts(raw)), sum(len(x) for x in extract_system_texts(raw))))
 
     findings = _audit_tools(raw, tp_cfg, surface_skipped=surface_skipped) + _audit_system(clean)
-    injected, suspect = _audit_message_injections(clean)
+    injected, suspect = _audit_message_injections(clean, rules=gateway.load_rules_config())
     findings += injected
     _audit_prompt_tool_pairing(raw, clean, tp_cfg=tp_cfg)
     _audit_rule_health(changed, skipped=surface_skipped)

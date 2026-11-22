@@ -321,14 +321,14 @@ AUDIT_CFG = {"enabled": True, "strip_session_ui_tools": True}
 class TestSentinelMatchesGateway(unittest.TestCase):
     """自检侧：哨兵必须认得出网关负责剥的形态，且只扫注入真正落地的地方。"""
 
-    def scan(self, messages):
+    def scan(self, messages, rules=None):
         """该函数给人看报告用、会打表；测试只要计数，故吞掉输出。
 
         返回 (注入级命中数, 存疑级命中数) —— 注入级计入结论，存疑级是落在用户正文里的
-        裸形态（引用），不计结论。
+        裸形态（引用），不计结论。开关关掉的类目同样不计结论，所以不出现在返回值里。
         """
         with contextlib.redirect_stdout(io.StringIO()):
-            return sentinel._audit_message_injections({"messages": messages})
+            return sentinel._audit_message_injections({"messages": messages}, rules=rules)
 
     def test_两种注入形态都认得出(self):
         for label, block in (("gitStatus 注入块", GIT_STATUS_BLOCK),
@@ -372,6 +372,26 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         self.assertEqual(self.scan([{"role": "user", "content": [
             {"type": "text", "text": GIT_STATUS_BLOCK}]}]), (1, 0),
             "容器内的形态即便在 user 消息里也是注入")
+
+    def test_开关关着的类目按配置放行不计结论(self):
+        """用户自己关掉 strip_date 后，日期残留是配置选择，不是覆盖缺口。
+
+        它必须照旧打印（关掉不等于把观测静音），但不许计入结论 —— 否则每跑一次跟版自检
+        都多一条永远清不掉的告警，久了把真告警一起训练成噪音。
+        """
+        msg = {"role": "system", "content": [{"type": "text",
+                                              "text": "Today's date is 2026-11-22."}]}
+        self.assertEqual(self.scan([msg], {"strip_date": False}), (0, 0))
+        self.assertEqual(self.scan([msg], {"strip_date": True}), (1, 0))
+        self.assertEqual(self.scan([msg]), (1, 0), "没传 rules 时按规则都在算 —— 漏报比误报更糟")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            sentinel._audit_message_injections({"messages": [msg]}, rules={"strip_date": False})
+        self.assertIn("按配置放行", buf.getvalue(), "放行项必须打印，关掉不等于静音")
+
+    def test_每类注入标记都登记了它的开关(self):
+        """新增一类标记却忘了登记开关 → 开关关着时它会被当成「规则没盖住」，永远清不掉。"""
+        self.assertEqual(set(sentinel.INJECTION_MARKERS), set(sentinel.INJECTION_MARKER_RULES))
 
     def test_清洗过的请求报零(self):
         parsed = {"system": [], "messages": [
