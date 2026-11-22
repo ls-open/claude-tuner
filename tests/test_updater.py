@@ -94,7 +94,7 @@ class TestExtractSafety(UpdaterTestCase):
         """压缩包来自网络，不能信 —— 里面的路径不许写到工作目录之外。"""
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-            info = tarfile.TarInfo("../../evil.sh")   # noqa: foreign-path 压缩包内的恶意条目
+            info = tarfile.TarInfo("../../evil.sh")   # foreign-path：压缩包内的恶意条目
             data = b"rm -rf /"
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))

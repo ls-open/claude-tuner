@@ -204,8 +204,6 @@
   .head .num{font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-dim);
         border-radius:6px;padding:2px 7px;font-variant-numeric:tabular-nums;border:1px solid var(--accent-dim)}
   .head .tag{font-size:11px;color:var(--dim2);margin-left:auto;white-space:nowrap}
-  .head .who{font-size:10.5px;padding:2px 8px;border-radius:99px;
-        border:1px solid var(--line2);color:var(--dim2);white-space:nowrap}
   .body{padding:20px}
 
   /* ── 表单 ───────────────────────────────────────────── */
@@ -258,7 +256,6 @@
   .diff-val{color:var(--dim)}
   .diff-to{color:var(--fg);font-weight:600}
   .lead{font-size:13px;color:var(--dim);margin:0 0 16px;line-height:1.75}
-  .note{font-size:12px;color:var(--dim);margin:14px 0 0;line-height:1.7}
 
   /* ── 开关行与功能大卡片 ───────────────────────────────── */
   .group-card{border:1px solid var(--line);border-radius:8px;margin-bottom:18px;background:var(--panel);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.02)}
@@ -267,13 +264,10 @@
   .group-title{font-size:14.5px;font-weight:600;color:var(--fg);letter-spacing:-.01em}
   .group-master{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);cursor:pointer;margin-left:auto;padding:3px 8px;border-radius:4px;border:1px solid var(--line2);background:var(--panel);transition:all .15s}
   .group-master:hover{color:var(--fg);border-color:var(--line);background:var(--panel2)}
+  .head .group-master{margin-left:10px}
   .group-master input[type=checkbox]{margin:0;cursor:pointer}
   .group-body{padding:2px 8px}
   .group-body .sw:last-child{border-bottom:none}
-
-  /* 核心防呆警示徽章：平时开启隐藏，关了才弹出 */
-  .badge-core-warn{display:none;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:2px 8px;border-radius:99px;background:var(--warn-dim);color:var(--warn);border:1px solid var(--warn-line);margin-left:10px;vertical-align:middle}
-  .badge-core-warn.show{display:inline-flex}
 
   .sw{display:flex;align-items:center;gap:16px;padding:13px 8px;border-radius:6px;
       border-bottom:1px solid var(--line);transition:background .12s}
@@ -285,33 +279,17 @@
   .sw input[type=checkbox]{flex:none}
   .sw code{background:transparent;border:none;padding:0;color:var(--accent)}
 
-  /* ── 折叠块 ─────────────────────────────────────────── */
-  details{margin-top:18px;border-top:1px solid var(--line);padding-top:16px}
-  details summary{cursor:pointer;font-size:13px;color:var(--dim);list-style:none;
-       display:flex;align-items:center;gap:8px;user-select:none;font-weight:500}
-  details summary::-webkit-details-marker{display:none}
-  details summary::before{content:"";width:0;height:0;border-left:5px solid currentColor;
-       border-top:4px solid transparent;border-bottom:4px solid transparent;
-       transition:transform .15s;flex:none}
-  details[open] summary::before{transform:rotate(90deg)}
-  details summary:hover{color:var(--fg)}
-  details[open] summary{margin-bottom:14px}
-
   /* ── 表格 ───────────────────────────────────────────── */
   table{width:100%;border-collapse:collapse;font-size:13px}
   th{text-align:left;font-weight:500;color:var(--dim2);font-size:11.5px;
      padding:0 8px 8px;border-bottom:1px solid var(--line)}
   td{padding:8px;border-bottom:1px solid var(--line)}
   tr:last-child td{border-bottom:none}
-  .badge{font-size:10.5px;padding:2px 8px;border-radius:99px;border:1px solid var(--line2);
-       color:var(--dim2);white-space:nowrap}
   .when{font-size:10.5px;font-weight:400;padding:2px 8px;border-radius:99px;
        margin-left:8px;vertical-align:1px;white-space:nowrap;
        border:1px solid var(--line2);color:var(--dim2)}
   .when.gateway{border-color:var(--ok-line);color:var(--ok);background:var(--ok-dim)}
   .when.restart{border-color:var(--warn-line);color:var(--warn);background:var(--warn-dim)}
-  .when.session{border-color:var(--accent-line);color:var(--accent);background:var(--accent-dim)}
-  .badge.auto{border-color:var(--warn-line);color:var(--warn)}
 
   /* ── 战绩卡片 ───────────────────────────────────────── */
   .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
@@ -434,7 +412,7 @@
           <div class="step-num">1</div>
           <div class="step-txt">
             <b>配置上游接口</b>
-            <small>选择服务商或填入 Anthropic Messages 协议端点（官方 API/中转/DeepSeek）</small>
+            <small>选择服务商，或填入 Anthropic 协议端点</small>
           </div>
         </div>
         <div class="onboard-step">
@@ -448,7 +426,7 @@
           <div class="step-num">3</div>
           <div class="step-txt">
             <b>保存并重启</b>
-            <small>点区块标题上的「保存 N 项」，然后<b>完全退出并重开 Claude</b> 即可生效！</small>
+            <small>点区块标题上的「保存 N 项」，再<b>完全退出并重开 Claude</b></small>
           </div>
         </div>
       </div>
@@ -458,7 +436,7 @@
       <div class="head"><span class="num">①</span><h2>接上模型</h2><span class="tag">必填</span>
         <button class="save-pill" data-save-section="s1" hidden></button></div>
       <div class="body">
-        <p class="lead">填入 Anthropic Messages 协议接口与 API Key。支持官方 API、各类兼容中转及第三方模型直连。</p>
+        <p class="lead">填入 Anthropic 协议端点与 API Key。</p>
         <div class="row">
           <div class="field" style="flex:0 1 260px">
             <label>服务商预设</label>
@@ -485,7 +463,7 @@
       <div class="head"><span class="num">②</span><h2>模型映射</h2><span class="tag" id="mapTag"></span>
         <button class="save-pill" data-save-section="s2" hidden></button></div>
       <div class="body">
-        <p class="lead">左列为客户端选择器代号，右列为发给上游的真实模型名（区分大小写，同时作为客户端内的显示名称）。</p>
+        <p class="lead">左列是客户端代号，右列是发给上游的真实模型名（区分大小写，同时作为客户端显示名）。</p>
         <div class="row" style="margin-bottom:12px">
           <button id="btnPull">拉取上游模型列表</button>
           <button id="btnAdd">+ 加一行</button>
@@ -498,14 +476,14 @@
           <tbody id="models"></tbody>
         </table>
         <div class="hint">
-          注：客户端选择器直接读取此表；<b>1M</b> 列仅控制客户端内部窗口计算（修改后需完全退出并重启 Claude）。
+          <b>1M</b> 只影响客户端内部窗口计算，改动需重启客户端。
         </div>
       </div>
     </section>
 
     <section id="s3">
       <div class="head"><span class="num">③</span><h2>客户端设置</h2>
-        <span class="who">Claude 官方设置</span>
+        <span class="tag">写入客户端配置</span>
         <button class="save-pill" data-save-section="s3" hidden></button></div>
       <div class="body">
         <div id="prefBox"></div>
@@ -515,14 +493,16 @@
     <section id="s4">
       <div class="head"><span class="num">④</span><h2>请求稳定化</h2></div>
       <div class="body">
-        <p class="lead">发往模型前的请求优化与前缀清洗通道，最大化命中 Prompt 缓存。</p>
+        <p class="lead">清理每轮都会变的请求前缀，提升缓存命中率。</p>
         <div id="ruleBox"></div>
       </div>
     </section>
 
     <section id="s5">
       <div class="head"><span class="num">⑤</span><h2>工具精简</h2>
-        <span class="tag" id="pruneTag" style="display:none"></span></div>
+        <span class="tag" id="pruneTag" style="display:none"></span>
+        <label class="group-master" title="一键开启或关闭全部精简">
+          <input type="checkbox" id="pruneMaster"><span>一键精简整组</span></label></div>
       <div class="body">
         <div id="pruneBox"></div>
       </div>
@@ -549,17 +529,16 @@
           </div>
           <button id="btnRestart">重启网关</button>
         </div>
-        <div class="row" style="margin-top:14px;align-items:center;gap:12px;flex-wrap:wrap">
-          <label for="logRetention" style="font-size:13px;color:var(--dim);white-space:nowrap">日志滚动保留天数：</label>
-          <select id="logRetention" style="width:140px;height:32px;font-size:12.5px">
+        <div class="row" style="margin-top:14px;gap:12px;flex-wrap:wrap">
+          <label for="logRetention" style="white-space:nowrap">日志保留天数</label>
+          <select id="logRetention" style="flex:0 0 150px">
             <option value="3">保留 3 天</option>
             <option value="7">保留 7 天（默认）</option>
             <option value="14">保留 14 天</option>
             <option value="30">保留 30 天</option>
           </select>
-          <span class="hint" style="margin:0">按自然日自动滚动归档，超出保留天数的历史日志自动清理。</span>
+          <span class="hint" style="margin:0;flex:1">按天归档，超出天数的日志自动清理。</span>
         </div>
-        <div class="hint">网关规则改动后立即生效，无需重启 Claude 客户端。</div>
       </div>
     </section>
 
@@ -634,16 +613,16 @@ const CUSTOM = '__custom__';
 // 结构规则（探针本地秒回、拆混合消息块、并发工具结果排序）不在这里：它们关掉只会让请求
 // 报错或前缀漂移，网关无条件执行，页面上没有开关。
 const RULE_GROUPS = [
-  ['🧼 请求头元数据清洗', [
+  ['请求头元数据清洗', [
     ['strip_billing_header', '计费头与客户端版本号', ''],
     ['strip_model_declarations', '“由 Claude 驱动”等自述', ''],
     ['strip_total_tokens_tag', '剩余额度与 Token 计数', ''],
   ]],
-  ['🕒 前缀动态噪声', [
+  ['前缀动态噪声', [
     ['strip_date', '动态日期与时区', ''],
     ['strip_git_status', 'Git 变更快照', ''],
   ]],
-  ['✂️ 通用指令精简', [
+  ['通用指令精简', [
     ['strip_security_guidelines', '安全防御指令段', ''],
     ['strip_pronoun_guidelines', '人称代词中立指引段', ''],
     ['strip_caution_guidelines', '高危操作确认指引段', ''],
@@ -652,32 +631,31 @@ const RULE_GROUPS = [
 
 const RULES = RULE_GROUPS.flatMap(g => g[1]);
 
-const PRUNING_GROUPS = [
-  ['🧰 工具精简', [
-    ['strip_sidebar_tools', '侧栏管理（分组 / 置顶 / 未读）', ''],
-    ['strip_window_tools', '窗口与分屏', ''],
-    ['strip_view_tools', '呈现面板（Diff / 文件 / 预览）', ''],
-    ['strip_terminal_tools', '终端面板', ''],
-    ['strip_pr_tools', 'GitHub PR 与 CI 监控', ''],
-    ['strip_settings_tools', 'Code 标签页偏好', ''],
-    ['strip_session_ui_tools', '会话遥控（标题 / 用量 / 事件）', ''],
-    ['strip_session_control_tools', '会话操作（权限 / 模型 / 导出 / 删除）', ''],
-    ['strip_session_start_tools', '起会话与任务交接', ''],
-    ['strip_plan_mode_tools', '计划模式（进入 / 提交计划）', ''],
-    ['strip_worktree_tools', 'Git 工作树隔离', ''],
-    ['strip_web_search_tools', '网页搜索（WebSearch）', ''],
-    ['strip_web_fetch_tools', '网页抓取（WebFetch）', ''],
-    ['strip_notebook_tools', 'Notebook 编辑', ''],
-    ['strip_host_tools', '本机联动（编辑器 / Finder / 存储）', ''],
-    ['strip_directory_tools', '工作目录切换与授权', ''],
-    ['strip_progress_tools', '进度清单与收尾框', ''],
-    ['strip_background_tools', '后台监控与任务终止', ''],
-  ]],
+// 工具精简只有一个整组：开关直接平铺在 ⑤ 里，不再套一层同名分组卡片。
+const PRUNING_ITEMS = [
+  ['strip_sidebar_tools', '侧栏管理（分组 / 置顶 / 未读）', ''],
+  ['strip_window_tools', '窗口与分屏', ''],
+  ['strip_view_tools', '呈现面板（Diff / 文件 / 预览）', ''],
+  ['strip_terminal_tools', '终端面板', ''],
+  ['strip_pr_tools', 'GitHub PR 与 CI 监控', ''],
+  ['strip_settings_tools', 'Code 标签页偏好', ''],
+  ['strip_session_ui_tools', '会话遥控（标题 / 用量 / 事件）', ''],
+  ['strip_session_control_tools', '会话操作（权限 / 模型 / 导出 / 删除）', ''],
+  ['strip_session_start_tools', '起会话与任务交接', ''],
+  ['strip_plan_mode_tools', '计划模式（进入 / 提交计划）', ''],
+  ['strip_worktree_tools', 'Git 工作树隔离', ''],
+  ['strip_web_search_tools', '网页搜索（WebSearch）', ''],
+  ['strip_web_fetch_tools', '网页抓取（WebFetch）', ''],
+  ['strip_notebook_tools', 'Notebook 编辑', ''],
+  ['strip_host_tools', '本机联动（编辑器 / Finder / 存储）', ''],
+  ['strip_directory_tools', '工作目录切换与授权', ''],
+  ['strip_progress_tools', '进度清单与收尾框', ''],
+  ['strip_background_tools', '后台监控与任务终止', ''],
 ];
 
 // 页面上**真有开关**的那批键：一切「几个开关」的计数都只在这份名单里数，
 // 免得又把 `enabled` / `custom_strip_tools` 算进来。
-const PRUNE_KEYS = PRUNING_GROUPS.flatMap(([, items]) => items.map(([k]) => k));
+const PRUNE_KEYS = PRUNING_ITEMS.map(([k]) => k);
 
 // 生效时机**只有两档**，判断依据是「谁读这份配置」，不是「这个键碰巧在哪一级生效」：
 //   · 网关自己读的 → 保存即生效，下一轮请求就按新配置走；
@@ -689,24 +667,9 @@ const WHEN = {
   restart: ['重启客户端后生效', 'restart'],
 };
 
-const CORE_CACHE_RULES = new Set([
-  'strip_date',
-  'strip_git_status',
-  'strip_total_tokens_tag',
-]);
-
-const SW = (label, why, attr, when, key, isChecked) => {
-  const w = WHEN[when];
-  const isCore = CORE_CACHE_RULES.has(key);
-  const showWarn = isCore && (isChecked === false);
-  const warnBadge = isCore
-    ? `<span class="badge-core-warn${showWarn ? ' show' : ''}" data-core-warn="${key}">⚠️ 建议开启 · 关闭会导致缓存击穿</span>`
-    : '';
-
-  return `<div class="sw" data-sw-key="${key || ''}"><div class="txt"><b>${label}${w
-      ? `<span class="when ${w[1]}">${w[0]}</span>` : ''}${warnBadge}</b>${why ? `<small>${why}</small>` : ''}</div>
+const SW = (label, why, attr) =>
+  `<div class="sw"><div class="txt"><b>${label}</b>${why ? `<small>${why}</small>` : ''}</div>
    <input type="checkbox" ${attr}></div>`;
-};
 
 // ── 上游模型名单元格 ────────────────────────────────────────
 function fillModelCell(td, value){
@@ -751,7 +714,7 @@ function onPresetChange(fill){
   if (fill && p.url) $('#upstream').value = p.url;
   $('#presetHint').textContent = p.url
     ? ''
-    : '请填写兼容 Anthropic Messages 协议的接口地址。填好后可点「拉取上游模型列表」选择模型。';
+    : '请填写 Anthropic 协议端点；填好后可拉取上游模型列表。';
 }
 
 function renderModels(d){
@@ -781,11 +744,11 @@ function addModelRow(d, name, label, oneM){
 }
 
 function renderSwitches(d){
-  // 整组同一种生效时机，就只在组头说一次 —— 25 行各挂一枚「保存后即生效」是纯噪音。
-  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存即生效（网关）：下一轮请求起按新配置执行，不用重启任何东西。</div>';
+  // 整组同一种生效时机，就只在组头说一次 —— 逐个挂徽标是纯噪音。
+  const SAVED_NOTE = '<div class="hint" style="margin:0 2px 14px">保存即生效：下一轮请求起按新配置执行。</div>';
   // 工具精简的开关写的是客户端名单，生效边界和上面那组**正好相反** —— 一行说清楚，
-  // 别让 17 个开关各挂一枚徽标。
-  const RESTART_NOTE = '<div class="hint" style="margin:0 2px 14px">勾选后名字写进客户端配置，<b>重启客户端</b>才生效；不再发送的工具，解释它的提示词段落会自动一起移除。</div>';
+  // 别让每个开关各挂一枚徽标。
+  const RESTART_NOTE = '<div class="hint" style="margin:0 2px 14px">勾选后写进客户端名单，<b>重启客户端</b>生效；对应提示词段落自动移除。</div>';
 
   const rules = d.rules || {}, rdefs = d.options.rules_defaults;
   $('#ruleBox').innerHTML = SAVED_NOTE + RULE_GROUPS.map(([title, items]) =>
@@ -798,39 +761,19 @@ function renderSwitches(d){
       <div class="group-body">
         ${items.map(([k, label, why]) => {
           const checked = !!(rules[k] ?? rdefs[k]);
-          return SW(label, why, `data-rule="${k}" ${checked ? 'checked' : ''}`, '', k, checked);
+          return SW(label, why, `data-rule="${k}" ${checked ? 'checked' : ''}`);
         }).join('')}
       </div>
     </div>`
   ).join('');
 
   const tp = d.tool_pruning || {}, defs = d.options.pruning_defaults;
-  $('#pruneBox').innerHTML = RESTART_NOTE + PRUNING_GROUPS.map(([title, items], gIdx) => {
-    const total = items.length;
-    const checkedCount = items.filter(([k]) => !!(tp[k] ?? defs[k])).length;
-    const allChecked = checkedCount === total && total > 0;
-    const isIndeterminate = checkedCount > 0 && checkedCount < total;
-
-    return `<div class="group-card" data-gidx="${gIdx}">
-      <div class="group-header">
-        <div class="group-info">
-          <span class="group-title">${esc(title)}</span>
-        </div>
-        <label class="group-master" title="一键开启或关闭整组精简">
-          <input type="checkbox" class="master-tp-chk" data-gidx="${gIdx}" ${allChecked ? 'checked' : ''} ${isIndeterminate ? 'data-indeterminate="1"' : ''}>
-          <span>一键精简整组</span>
-        </label>
-      </div>
-      <div class="group-body">
-        ${items.map(([k, label, why]) => {
-          const checked = !!(tp[k] ?? defs[k]);
-          return SW(label, why, `data-tp="${k}" ${checked ? 'checked' : ''}`, '', k, checked);
-        }).join('')}
-      </div>
-    </div>`;
+  $('#pruneBox').innerHTML = RESTART_NOTE + PRUNING_ITEMS.map(([k, label, why]) => {
+    const checked = !!(tp[k] ?? defs[k]);
+    return SW(label, why, `data-tp="${k}" ${checked ? 'checked' : ''}`);
   }).join('');
 
-  bindGroupMasterEvents();
+  bindPruneMaster();
 
   // 工具面的主指标：这一轮实际在场几个，客户端名单里挡着几条。
   // 两个数同屏才有意义 —— 挡着的压根没发出来，在场的才是真实占用。
@@ -848,70 +791,46 @@ function renderSwitches(d){
   $('#prefBox').innerHTML =
     '<div class="hint" style="margin:0 2px 14px">写进客户端配置，<b>重启客户端</b>后生效。</div>' +
     SW('终端里的 Claude Code 也走本网关', '',
-       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`, '') +
+       `id="cliLinked" ${d.settings.linked ? 'checked' : ''}`) +
     SW('Git 提交不带 Claude 联署签名', '',
-       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`, '') +
+       `id="coauthor" ${d.settings.includeCoAuthoredBy === false ? 'checked' : ''}`) +
     SW('关闭客户端自带默认技能与工作流', '',
-       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`, '') +
+       `id="bundledSkills" data-needs-closed ${d.client.bundled_skills ? 'checked' : ''}`) +
     SW('关闭客户端定时任务（Scheduled Tasks）', '',
-       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`, '') +
+       `id="schedTasks" data-needs-closed ${d.client.scheduled_tasks === false ? 'checked' : ''}`) +
     SW('关闭 Auto 模式', '',
-       `id="autoMode" ${d.client.auto_mode_disabled ? 'checked' : ''}`, '');
+       `id="autoMode" ${d.client.auto_mode_disabled ? 'checked' : ''}`);
 }
 
-// ── 分类总开关与防呆提醒联动 ─────────────────────────────────
-function bindGroupMasterEvents() {
-  document.querySelectorAll('.group-card[data-gidx]').forEach(card => {
-    const master = card.querySelector('.master-tp-chk');
-    if (master && master.dataset.indeterminate === '1') {
-      master.indeterminate = true;
-    }
-
-    if (master) {
-      master.onchange = () => {
-        const targetState = master.checked;
-        master.indeterminate = false;
-        delete master.dataset.indeterminate;
-        card.querySelectorAll('input[data-tp]').forEach(sub => {
-          if (sub.checked !== targetState) {
-            sub.checked = targetState;
-            sub.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-        });
-      };
-    }
-  });
-}
-
-function updateGroupMaster(inputEl) {
-  const card = inputEl.closest('.group-card[data-gidx]');
-  if (!card) return;
-  const master = card.querySelector('.master-tp-chk');
+// ── ⑤ 的一键整组开关 ─────────────────────────────────────
+function bindPruneMaster() {
+  const master = $('#pruneMaster');
   if (!master) return;
-  const childBoxes = Array.from(card.querySelectorAll('input[data-tp]'));
-  const total = childBoxes.length;
-  const checkedCount = childBoxes.filter(b => b.checked).length;
-
-  if (checkedCount === total && total > 0) {
-    master.checked = true;
+  master.onchange = () => {
+    // 先固定目标态：子开关派发的 change 会回调 syncPruneMaster 改写 master.checked，
+    // 循环里再读它就会把后半个列表设反。
+    const target = master.checked;
     master.indeterminate = false;
-    delete master.dataset.indeterminate;
-  } else if (checkedCount === 0) {
-    master.checked = false;
-    master.indeterminate = false;
-    delete master.dataset.indeterminate;
-  } else {
-    master.checked = false;
-    master.indeterminate = true;
-    master.dataset.indeterminate = '1';
-  }
+    document.querySelectorAll('#pruneBox input[data-tp]').forEach(sub => {
+      if (sub.checked !== target) {
+        sub.checked = target;
+        sub.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    syncPruneMaster();
+    updateUnsavedIndicator();
+  };
+  syncPruneMaster();
 }
 
-// 表单与**已保存配置**有没有差异 —— 复用保存那条路径的同一份判据
-function hasPendingChanges(){
-  if (!CFG) return false;
-  const {models, settings, tool_pruning, rules} = collectCurrentFormState();
-  return computePendingDiffs(models, settings, tool_pruning, rules).length > 0;
+// 子开关变了就回读一次：全开 → 勾上；全关 → 取消；半开 → 半选。
+function syncPruneMaster() {
+  const master = $('#pruneMaster');
+  if (!master) return;
+  const boxes = Array.from(document.querySelectorAll('#pruneBox input[data-tp]'));
+  const on = boxes.filter(b => b.checked).length;
+  master.checked = on === boxes.length && on > 0;
+  master.indeterminate = on > 0 && on < boxes.length;
 }
 
 // 更新检查的结果用一行文字报出来。kind 只有三种：'' / 'ok' / 'warn' / 'err'。
@@ -931,7 +850,7 @@ function renderVersions(d){
     <div class="sw"><div class="txt"><b>claude-tuner 版本</b>
       <small>当前已安装运行的网关与插件版本</small></div><code>${esc(v.plugin || '未知')}</code></div>
     <div class="sw"><div class="txt"><b>Claude 客户端版本</b>
-      <small>本项目已针对 <b>${esc(v.tested_client || '未知')}</b> 完成严格兼容性验证</small></div>
+      <small>验证基准 ${esc(v.tested_client || '未知')}</small></div>
       <code>${esc(v.client || '未知')}</code></div>`;
   const tag = $('#verTag');
   const newer = !!v.client_newer_than_tested;
@@ -950,7 +869,7 @@ function renderGateway(d){
   $('#port').textContent = d.gateway.port;
   $('#gwUpstream').textContent = d.gateway.upstream_url || '未设置';
   const tag = $('#gwTag');
-  tag.textContent = d.gateway.unknown_model_fallback ? '漏配兜底：开' : '漏配兜底：关';
+  tag.textContent = d.gateway.unknown_model_fallback ? '未知模型回退：开' : '未知模型回退：关';
   tag.style.display = '';
   if (d.gateway && d.gateway.log_retention_days) {
     const sel = $('#logRetention');
@@ -978,11 +897,11 @@ async function renderStats(){
   box.innerHTML = '<div class="hint">正在读取实时统计……</div>';
   let r;
   try { r = await api('/api/stats'); }
-  catch (e) { box.innerHTML = `<div class="hint">⚠️ ${esc(e.message)}</div>`; return; }
-  if (!r.ok){ box.innerHTML = `<div class="hint">⚠️ ${esc(r.error || '暂无统计')}</div>`; return; }
+  catch (e) { box.innerHTML = `<div class="hint err">${esc(e.message)}</div>`; return; }
+  if (!r.ok){ box.innerHTML = `<div class="hint err">${esc(r.error || '暂无统计')}</div>`; return; }
   const d = r.data;
   if (!d.seen){
-    box.innerHTML = `<div class="hint">尚无统计数据。在 Claude 中发送一次对话后即可刷新查看。</div>`;
+    box.innerHTML = `<div class="hint">暂无数据；在 Claude 中发送一次对话后再刷新。</div>`;
     return;
   }
   const t = d.tokens;
@@ -998,10 +917,7 @@ async function renderStats(){
   const files = d.log_files || 0;
   // 只报事实：起止时刻与读了几份日志都由数据本身决定，不再写「近 N 天」——
   // 那个 N 是保留期配置，数据远没有那么多天的时候它就是一句假话。
-  const span = `<div class="hint">
-      数据统计范围：${fmt(w.from)} → ${fmt(w.to)}（${files} 份日志） · 含所有会话与子代理<br>
-      与终端 <b>stats.py</b> 的口径不同：那份是「当前会话主对话」的逐轮命中，这份是日志窗口内的全部请求
-    </div>`;
+  const span = `<div class="hint">范围：${fmt(w.from)} → ${fmt(w.to)}（${files} 份日志，含所有会话与子代理）。终端 <b>stats.py</b> 只看当前会话主对话。</div>`;
   box.innerHTML = `<div class="stat">${cards.join('')}</div>${span}`;
 }
 
@@ -1051,7 +967,7 @@ if (copyBtn) {
     const port = portEl ? portEl.textContent.trim() : '8789';
     const url = 'http://127.0.0.1:' + (port || '8789');
     navigator.clipboard.writeText(url).then(() => {
-      showToast('代理端点已复制到剪贴板 ✓', 'ok');
+      showToast('已复制代理端点', 'ok');
     }).catch(() => {
       showToast('复制失败，请手动选中复制', 'err');
     });
@@ -1060,21 +976,8 @@ if (copyBtn) {
 
 document.addEventListener('change', ev => {
   const t = ev.target;
-  if (t && t.type === 'checkbox') {
-    // 1. 核心保缓存防呆提醒联动
-    const ruleKey = t.dataset.rule;
-    if (ruleKey && CORE_CACHE_RULES.has(ruleKey)) {
-      const badge = document.querySelector(`[data-core-warn="${ruleKey}"]`);
-      if (badge) {
-        if (t.checked) badge.classList.remove('show');
-        else badge.classList.add('show');
-      }
-    }
-
-    // 2. 工具精简子开关联动分类总开关
-    if (t.hasAttribute('data-tp')) {
-      updateGroupMaster(t);
-    }
+  if (t && t.type === 'checkbox' && t.hasAttribute('data-tp')) {
+    syncPruneMaster();
   }
 
   updateUnsavedIndicator(300);
@@ -1108,19 +1011,19 @@ $('#btnPull').onclick = async () => {
   try {
     await flushAutoSave();
     const r = await api('/api/upstream-models');
-    if (!r.ok) { $('#pullOut').textContent = '⚠️ ' + (r.error || '拉取失败'); return; }
+    if (!r.ok) { $('#pullOut').textContent = '拉取失败：' + (r.error || '未知原因'); return; }
     UPSTREAM_MODELS = r.data.models.map(m => m.id);
     document.querySelectorAll('#models tr').forEach(tr => {
       const td = tr.querySelector('[data-slot=model]');
       fillModelCell(td, modelValue(tr));
     });
     $('#pullOut').textContent = `成功获取 ${UPSTREAM_MODELS.length} 个上游模型，可在列表中直接选取。`;
-  } catch (e) { $('#pullOut').textContent = '⚠️ ' + e.message; }
+  } catch (e) { $('#pullOut').textContent = '拉取失败：' + e.message; }
 };
 
 $('#btnTest').onclick = async () => {
   const wanted = [...new Set([...document.querySelectorAll('#models tr')].map(modelValue).filter(Boolean))];
-  if (!wanted.length) { $('#testOut').textContent = '⚠️ 映射表中尚未填写上游模型名'; return; }
+  if (!wanted.length) { $('#testOut').textContent = '映射表中尚未填写上游模型名'; return; }
   const out = [];
   let usedClientKey = false;
   for (const model of wanted) {
@@ -1132,23 +1035,23 @@ $('#btnTest').onclick = async () => {
       });
       if (!r.ok && r.key_source) {
         // 没 Key 可用（配置里的被客户端加密封存）—— 与模型无关，说一次就够
-        out.push('⚠️ ' + esc(r.error));
+        out.push('注意：' + esc(r.error));
         $('#testOut').innerHTML = out.join('<br>');
         return;
       }
       if (r.data && r.data.key_source === 'client') usedClientKey = true;
-      line = r.ok ? `✅ ${esc(model)} · 耗时 ${r.data.ms} ms${r.data.reply ? ' · 响应：' + esc(r.data.reply) : ''}`
-                  : `❌ ${esc(model)} · ${esc(r.error)}`;
-    } catch (e) { line = `❌ ${esc(model)} · ${esc(e.message)}`; }
+      line = r.ok ? `✓ ${esc(model)} · 耗时 ${r.data.ms} ms${r.data.reply ? ' · 响应：' + esc(r.data.reply) : ''}`
+                  : `✕ ${esc(model)} · ${esc(r.error)}`;
+    } catch (e) { line = `✕ ${esc(model)} · ${esc(e.message)}`; }
     out.push(line);
     $('#testOut').innerHTML = out.join('<br>');
   }
   if (usedClientKey) {
-    out.push('<br>🔑 配置里的 Key 已被客户端加密封存，本次用的是 Claude 正在使用的那把。');
+    out.push('<br>说明：配置里的 Key 已被客户端加密封存，本次用的是 Claude 正在使用的那把。');
   }
-  const bad = out.filter(l => l.startsWith('❌')).length;
-  out.push(bad ? `<br>⚠️ 有 ${bad} 个模型测试失败 —— 请确认上游是否支持 Anthropic Messages 协议（不支持纯 OpenAI 协议）或模型名是否有误。`
-               : '<br>🎉 所有配置的模型测试全部通过，可放心使用！');
+  const bad = out.filter(l => l.startsWith('✕')).length;
+  out.push(bad ? `<br>有 ${bad} 个模型测试失败 —— 请确认上游支持 Anthropic Messages 协议、且模型名可被该端点识别。`
+               : '<br>全部模型测试通过。');
   $('#testOut').innerHTML = out.join('<br>');
 };
 
@@ -1278,7 +1181,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       title: 'API Key',
       from: CFG.upstream?.api_key_masked ? `已配置（${CFG.upstream.api_key_masked}）` : '未配置',
       to: '已填入新密钥',
-      when: '保存后需重启客户端',
+      when: WHEN.restart[0],
       badge: 'restart',
       section: 's1'
     });
@@ -1292,7 +1195,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       title: '模型映射列表',
       from: `${(CFG.models || []).length} 条配置`,
       to: `${models.length} 条配置`,
-      when: '保存后需重启客户端',
+      when: WHEN.restart[0],
       badge: 'restart',
       section: 's2'
     });
@@ -1315,21 +1218,19 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 
   // 5. 随附技能与动态工作流（客户端设置，随下面那组一起比）
 
-  // 6. 工具精简分类开关 —— 落点是客户端的 disabledBuiltinTools，重启客户端才生效
-  PRUNING_GROUPS.forEach(([, items]) => {
-    items.forEach(([k, label]) => {
-      const oldVal = !!(CFG.tool_pruning && (CFG.tool_pruning[k] ?? CFG.options?.pruning_defaults?.[k]));
-      const newVal = !!tool_pruning[k];
-      if (oldVal !== newVal) {
-        diffs.push({
-          title: label,
-          from: oldVal ? '开' : '关',
-          to: newVal ? '开' : '关',
-          immediate: true,
-          ...{ when: WHEN.restart[0], badge: WHEN.restart[1] }
-        });
-      }
-    });
+  // 6. 工具精简开关 —— 落点是客户端的 disabledBuiltinTools，重启客户端才生效
+  PRUNING_ITEMS.forEach(([k, label]) => {
+    const oldVal = !!(CFG.tool_pruning && (CFG.tool_pruning[k] ?? CFG.options?.pruning_defaults?.[k]));
+    const newVal = !!tool_pruning[k];
+    if (oldVal !== newVal) {
+      diffs.push({
+        title: label,
+        from: oldVal ? '开' : '关',
+        to: newVal ? '开' : '关',
+        immediate: true,
+        ...{ when: WHEN.restart[0], badge: WHEN.restart[1] }
+      });
+    }
   });
 
   // 7. 客户端偏好
@@ -1375,7 +1276,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
         title,
         from: oldVal ? '开' : '关',
         to: newVal ? '开' : '关',
-        when: '保存后需重启客户端',
+        when: WHEN.restart[0],
         badge: 'restart',
         section: 's3'
       });
@@ -1390,7 +1291,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
       title: '日志保留天数',
       from: `${oldDays} 天`,
       to: `${newDays} 天`,
-      when: '保存后下次轮转生效',
+      when: '下次日志轮转生效',
       badge: 'gateway',
       immediate: true
     });
@@ -1404,7 +1305,7 @@ function computePendingDiffs(models, settings, tool_pruning, rules) {
 // 配 5 秒「撤销」。其中写网关 config.json 的下一轮就生效，工具精简写的是客户端名单、
 // 存完还要重启客户端 —— toast 按这批 diff 里有没有 restart 项分别说。
 //
-// **客户端那几本账**（密钥、模型映射、缓存时长、客户端偏好）写的是 3P 配置或客户端
+// **客户端那几本账**（密钥、模型映射、客户端偏好）写的是 3P 配置或客户端
 // 设置文件：客户端开着时会被它覆盖回去，所以不能偷偷写 —— 收进所在区块标题的小按钮，
 // 没有待保存项时那个按钮根本不存在。
 let _autoTimer = null, _autoUndo = null, _autoPromise = null, _autoRerun = false;
@@ -1467,10 +1368,10 @@ async function autoSaveImmediate(){
     try {
       r = await api('/api/config', body);
     } catch (e) {
-      say('❌ ' + (e.message || '保存失败'), 'err');
+      say('保存失败：' + (e.message || '未知原因'), 'err');
       return;
     }
-    if (!r.ok) { say('❌ ' + ((r.error && r.error.message) || '保存失败'), 'err'); return; }
+    if (!r.ok) { say('保存失败：' + ((r.error && r.error.message) || '未知原因'), 'err'); return; }
 
     CFG.rules = body.rules;
     CFG.tool_pruning = Object.assign({}, CFG.tool_pruning || {}, body.tool_pruning);
@@ -1498,18 +1399,16 @@ async function autoSaveImmediate(){
         _autoUndo = null;
         if (!back) return;
         const rr = await api('/api/config', back);
-        if (!rr.ok) { say('❌ 撤销失败', 'err'); return; }
+        if (!rr.ok) { say('撤销失败', 'err'); return; }
         RULES.forEach(([k]) => {
           const el = $(`#ruleBox input[data-rule="${k}"]`);
           if (el) el.checked = !!back.rules[k];
         });
         PRUNE_KEYS.forEach(k => {
           const el = $(`#pruneBox input[data-tp="${k}"]`);
-          if (el) {
-            el.checked = !!back.tool_pruning[k];
-            updateGroupMaster(el);
-          }
+          if (el) el.checked = !!back.tool_pruning[k];
         });
+        syncPruneMaster();
         const lr = $('#logRetention');
         if (lr) lr.value = String(back.log_retention_days);
         CFG.rules = back.rules;
@@ -1566,9 +1465,9 @@ function updateUnsavedIndicator(delay = 300){
   });
   const rawUp = ($('#upstream')?.value || '').trim();
   if (pending.length) {
-    say(`⚡️ ${pending.length} 项待保存（需重启或退出客户端）`);
+    say(`${pending.length} 项待保存（需重启或退出客户端）`);
   } else if (rawUp && !isValidUpstreamUrl(rawUp)) {
-    say('⚠️ 请输入完整的 http:// 或 https:// 接口地址', 'err');
+    say('请输入完整的 http:// 或 https:// 接口地址', 'err');
   } else {
     say('');
   }
@@ -1605,14 +1504,14 @@ async function saveClientSide(){
     auto_mode_disabled: autoChanged ? autoNow : undefined,
     log_retention_days: parseInt($('#logRetention')?.value || '7', 10),
   });
-  if (!r.ok) { say('❌ ' + (r.error.message || '保存失败'), 'err'); return; }
+  if (!r.ok) { say('保存失败：' + ((r.error && r.error.message) || '未知原因'), 'err'); return; }
   const fx = r.data.effects;
   if (CFG.gateway) CFG.gateway.log_retention_days = parseInt($('#logRetention')?.value || '7', 10);
   renderStats();
   $('#apikey').value = '';
-  say('✅ 设置已保存', 'ok');
+  say('设置已保存', 'ok');
 
-  let bodyHtml = `<div class="dlg-title">✅ 配置保存成功</div>`;
+  let bodyHtml = `<div class="dlg-title">配置已保存</div>`;
   if (diffs.length > 0) {
     bodyHtml += `
       <div class="dlg-sub">本次共保存 <b>${diffs.length}</b> 处改动：</div>
@@ -1630,18 +1529,17 @@ async function saveClientSide(){
   }
 
   // 生效指引判定
-  const hasRestart = diffs.some(d => d.badge === 'restart')
-    || fx.restart_client || fx.restart_session;
+  const hasRestart = diffs.some(d => d.badge === 'restart') || fx.restart_client;
 
   if (hasRestart) {
     bodyHtml += `
       <div class="banner warn">
-        <b>⚠️ 需重启生效：</b>本次改动写的是客户端配置，必须<b>完全退出并重新打开 Claude</b>（菜单「退出」，非关闭窗口）方可生效。
+        <b>需重启生效：</b>本次改动写的是客户端配置，必须<b>完全退出并重新打开 Claude</b>（菜单「退出」，非关闭窗口）方可生效。
       </div>`;
   } else if (diffs.length > 0) {
     bodyHtml += `
       <div class="banner ok">
-        <b>⚡️ 立即热生效：</b>改动已由常驻网关自动热加载，<b>下一轮对话直接生效</b>，无需重启 Claude 客户端！
+        <b>立即生效：</b>改动已由常驻网关热加载，<b>下一轮对话直接生效</b>，无需重启客户端。
       </div>`;
   }
 
@@ -1649,7 +1547,7 @@ async function saveClientSide(){
     bodyHtml += `<div style="margin-top:10px;font-size:12px;color:var(--dim)">${r.data.notes.map(esc).join('；')}</div>`;
   }
   if (r.data.problems && r.data.problems.length) {
-    bodyHtml += `<div style="margin-top:10px;font-size:12px;color:var(--err)">⚠️ 注意：${r.data.problems.map(esc).join('；')}</div>`;
+    bodyHtml += `<div style="margin-top:10px;font-size:12px;color:var(--err)">注意：${r.data.problems.map(esc).join('；')}</div>`;
   }
 
   tell(bodyHtml);
@@ -1703,7 +1601,7 @@ function applyTheme(theme) {
 (async () => {
   initTheme();
   const r = await api('/api/config');
-  if (!r.ok) { say('❌ 读取配置失败', 'err'); return; }
+  if (!r.ok) { say('读取配置失败', 'err'); return; }
   CFG = r.data;
   const sel = $('#preset');
   sel.innerHTML = CFG.options.presets.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');

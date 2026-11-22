@@ -256,14 +256,14 @@ def _upstream_url_ok(url):
 
 def _apply_patch_unlocked(patch):
     paths = _paths()
-    effects = {"restart_gateway": False, "restart_client": False, "restart_session": False}
+    effects = {"restart_client": False}
     notes = []
 
     bridge = _read(bridge_path())
     three_p = _read(three_p_path()) if three_p_path() else {}
 
     # 上游地址。**先判形状再落盘**：只判非空的话，前端留了半截地址时点别的区块保存，
-    # 会把 `xxx/v1/messages` 这种写进配置并触发网关重启。
+    # 会把 `xxx/v1/messages` 这种写进配置。落盘即可，网关按 mtime 热读，下一轮就生效。
     url = (patch.get("upstream_url") or "").strip()
     if url and not _upstream_url_ok(url):
         notes.append("上游地址不完整，本次未写入")
@@ -273,7 +273,6 @@ def _apply_patch_unlocked(patch):
         if bridge.get("upstream_url") != normalized:
             bridge["upstream_url"] = normalized
             notes.append("上游地址已更新")
-            effects["restart_gateway"] = True
 
     # API Key 与模型映射都写在 3P 配置里（网关只是把它转发的 Key 转出去）
     three_p_changed = False
@@ -325,8 +324,8 @@ def _apply_patch_unlocked(patch):
         bridge["rules"] = dict(DEFAULT_RULES)
     atomic_write_json(bridge_path(), bridge, indent=1)
 
-    # 客户端偏好（浏览器工具等）。它在 preferences 里，客户端运行时会覆盖回去，
-    # 所以跑着的时候不写，直接告诉用户先退出客户端。
+    # 客户端偏好（定时任务）。写进客户端自己的配置，运行中的客户端会覆盖回去 ——
+    # 页面用 `data-needs-closed` 在客户端运行时先拦住，这里只负责落盘。
     sched = patch.get("scheduled_tasks")
     if isinstance(sched, bool) and (three_p.get("scheduledTasksEnabled") is True) != sched:
         three_p["scheduledTasksEnabled"] = sched
@@ -368,7 +367,7 @@ def _apply_patch_unlocked(patch):
             atomic_write_json(paths["claude_settings"], merged)
             claude_settings = merged
             notes += ["客户端设置 %s" % k for k in changed]
-            effects["restart_session"] = True
+            effects["restart_client"] = True
 
     # 工具精简的**另一半**：让客户端根本不发这些工具（见 tool_rules.client_disabled_tools）。
     # 落了盘才让客户端"少拿" —— 这样它自己算的上下文占用才和真实请求是同一份账。

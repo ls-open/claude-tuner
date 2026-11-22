@@ -29,6 +29,7 @@ import _isolated_home  # noqa: E402,F401
 
 import gateway  # noqa: E402
 import sentinel  # noqa: E402
+import tool_rules  # noqa: E402
 
 MARKER = "This is the git status at the start of the conversation."
 GIT_STATUS_BLOCK = (
@@ -430,7 +431,7 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         gateway.load_tool_pruning_config = lambda: (reads.append(1), real_loader())[1]
         self.addCleanup(setattr, gateway, "load_tool_pruning_config", real_loader)
 
-        gateway.prepare_request(req, session_id="test-inject", tool_pruning_cfg=custom_tp)
+        gateway.prepare_request(req)
         c_changed = gateway.canonicalize(parsed, rules={"strip_date": False}, tool_pruning_cfg=custom_tp)
 
         self.assertEqual(reads, [], "注入配置后不得回退去读 config.json")
@@ -464,8 +465,8 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         # **生产同一条路**：名单按客户端发来的工具算。网关不再删工具，所以这份名单
         # 就是「这些工具本该由客户端挡掉」的记录 —— 提示词里还提它，就是悬空指引。
         ghost = gateway.ghost_tool_names(parsed["tools"], tp)
-        gateway.prepare_request(parsed, session_id=None, tool_pruning_cfg=tp)
-        gateway.canonicalize(parsed, rules={}, tool_pruning_cfg=tp, stripped_names=ghost)
+        gateway.prepare_request(parsed)
+        gateway.canonicalize(parsed, rules={}, tool_pruning_cfg=tp, disabled_names=ghost)
 
         hits = [e for e in seen if e.get("event") == "orphan_tool_mention"]
         self.assertTrue(hits, "前缀类工具被剥后仍被提示词提到，必须报出来")
@@ -482,8 +483,8 @@ class TestSentinelMatchesGateway(unittest.TestCase):
 
         def sides(cfg):
             """返回 (工具是否被剥, 说明是否被剥) —— 两者必须同进同退。"""
-            names = gateway.get_stripped_tool_names(dict(cfg))
-            tool_out = gateway.should_strip_tool("mcp__ccd_pr__list", names, dict(cfg))
+            names = tool_rules.client_disabled_tools(dict(cfg))
+            tool_out = tool_rules.should_strip_tool("mcp__ccd_pr__list", names, dict(cfg))
             _, ghost_out = gateway.strip_ghost_tool_instructions(ghost_pr, tp_cfg=dict(cfg))
             return tool_out, ghost_out
 
@@ -564,8 +565,8 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         self.assertIn("side by side", gateway.strip_ghost_tool_instructions(para, tp_cfg=keep)[0])
         self.assertNotIn("side by side", gateway.strip_ghost_tool_instructions(para, tp_cfg=cut)[0])
         # 与工具侧同进同退：开关关掉时工具也必须留下
-        names = gateway.get_stripped_tool_names(keep)
-        self.assertFalse(gateway.should_strip_tool("mcp__ccd_window__open_session_in", names, keep))
+        names = tool_rules.client_disabled_tools(keep)
+        self.assertFalse(tool_rules.should_strip_tool("mcp__ccd_window__open_session_in", names, keep))
 
     def test_cmd_list_includes_global_capture(self):
         """sentinel.cmd_list 必须列出默认抓包文件 latest_raw_inbound.json。"""
@@ -643,7 +644,7 @@ class TestSentinelMatchesGateway(unittest.TestCase):
         payload = {"model": "m", "max_tokens": 4096, "tools": [{"name": "Bash"}],
                    "system": [{"type": "text", "text": text}], "messages": [{"role": "user", "content": "hi"}]}
         d = copy.deepcopy(payload)
-        gateway.prepare_request(d, "s")
+        gateway.prepare_request(d)
         gateway.canonicalize(d)
         self.assertNotIn("<total_tokens>", d["system"][0]["text"], "网关没剥掉")
         self.assertTrue(

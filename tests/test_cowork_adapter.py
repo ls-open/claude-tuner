@@ -14,16 +14,16 @@ import _isolated_home  # noqa: E402,F401
 
 import gateway
 import common
+import tool_rules
 
 class TestCoWorkAdapter(unittest.TestCase):
     def setUp(self):
         # 全部开关打开：这些用例问的是「打开时规则管不管用」，不是默认值
         self.cfg = {k: (True if isinstance(v, bool) and k != "enabled" else v)
                     for k, v in common.DEFAULT_TOOL_PRUNING_CONFIG.items()}
-        self.stripped_names = gateway.get_stripped_tool_names(self.cfg)
-        # 端到端用例调用 prepare_request()，其内部经 load_tool_pruning_config() 读真实
-        # ~/.claude-tuner/config.json —— 用例结果会随开发机的本地开关漂移（改过配置的机器
-        # 上必然变红）。把配置源指向不存在的文件，强制回落默认值，保证与机器无关。
+        self.disabled_names = tool_rules.client_disabled_tools(self.cfg)
+        # 端到端用例会走 gateway 的配置读取：把配置源指向不存在的文件，强制回落默认值，
+        # 保证用例结果不随开发机的本地开关漂移。
         self._saved_cfg_file = gateway.CONFIG_FILE
         self._saved_cache = gateway._config_cache
         # 运行目录指向不存在的路径：抓包（save_session_capture）会往 BASE_DIR 落盘，
@@ -55,7 +55,7 @@ class TestCoWorkAdapter(unittest.TestCase):
             "mcp__workspace__bash",
         ]
         for t in cowork_tools:
-            should_strip = gateway.should_strip_tool(t, self.stripped_names, self.cfg)
+            should_strip = tool_rules.should_strip_tool(t, self.disabled_names, self.cfg)
             self.assertFalse(should_strip, f"CoWork tool {t} should NOT be stripped")
 
     def test_dead_mcp_tools_stripped(self):
@@ -69,14 +69,14 @@ class TestCoWorkAdapter(unittest.TestCase):
             "mcp__ccd_settings__get_settings",
         ]
         for t in dead_tools:
-            should_strip = gateway.should_strip_tool(t, self.stripped_names, self.cfg)
+            should_strip = tool_rules.should_strip_tool(t, self.disabled_names, self.cfg)
             self.assertTrue(should_strip, f"Dead tool {t} SHOULD be stripped")
 
     def test_native_code_tools_preserved(self):
         """验证原生 Code 核心工具保持保留"""
         core_tools = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "Task", "Skill", "AskUserQuestion"]
         for t in core_tools:
-            should_strip = gateway.should_strip_tool(t, self.stripped_names, self.cfg)
+            should_strip = tool_rules.should_strip_tool(t, self.disabled_names, self.cfg)
             self.assertFalse(should_strip, f"Core tool {t} should NOT be stripped")
 
     def test_end_to_end_code_pruning(self):
@@ -90,7 +90,7 @@ class TestCoWorkAdapter(unittest.TestCase):
             {"name": "mcp__scheduled-tasks__list_scheduled_tasks"}
         ]
         req = {"tools": list(code_tools), "messages": []}
-        changed = gateway.prepare_request(req, session_id="test-code")
+        changed = gateway.prepare_request(req)
         # 精简已经整层搬给客户端（`disabledBuiltinTools`），网关不再从报文里删工具：
         # 「不发」只有客户端一个来源。
         self.assertFalse([c for c in changed if c.startswith("prune_tools_")])
@@ -106,9 +106,8 @@ class TestCoWorkAdapter(unittest.TestCase):
         names = ["mcp__plugins__list_plugins", "mcp__skills__suggest_skills", "WebSearch",
                  "mcp__workspace__web_fetch", "mcp__session_info__list_sessions",
                  "mcp__cowork__create_artifact", "Bash"]
-        tp = gateway.pruning_cfg_for_surface(dict(common.DEFAULT_TOOL_PRUNING_CONFIG), "cowork")
         req = {"tools": [{"name": n} for n in names], "messages": []}
-        changed = gateway.prepare_request(req, session_id="test-cowork", tool_pruning_cfg=tp, kind="cowork")
+        changed = gateway.prepare_request(req)
         self.assertFalse([c for c in changed if c.startswith("prune_tools_")], changed)
         self.assertEqual([t["name"] for t in req["tools"]], names)
 
@@ -128,7 +127,7 @@ class TestCoWorkAdapter(unittest.TestCase):
             "tools": [{"name": "mcp__plugins__list_plugins"}, {"name": "Bash"}],
         }
         changed = gateway.stabilize_request(
-            parsed, "sid", kind="cowork", rules=dict(common.DEFAULT_RULES),
+            parsed, kind="cowork", rules=dict(common.DEFAULT_RULES),
             tool_pruning_cfg=dict(common.DEFAULT_TOOL_PRUNING_CONFIG))
         self.assertEqual(changed, [])
         self.assertEqual(gateway._system_text(parsed), sys_text, "CoWork 面的提示词必须一字不动")
@@ -141,17 +140,16 @@ class TestCoWorkAdapter(unittest.TestCase):
             {"type": "tool_result", "tool_use_id": "t1", "content": "r"},
         ]}]}
         changed = gateway.stabilize_request(
-            parsed, "sid", kind="cowork", rules=dict(common.DEFAULT_RULES),
+            parsed, kind="cowork", rules=dict(common.DEFAULT_RULES),
             tool_pruning_cfg=dict(common.DEFAULT_TOOL_PRUNING_CONFIG))
         self.assertIn("split_mixed_user_msg", changed)
         self.assertEqual(len(parsed["messages"]), 2)
 
     def test_no_surface_prunes_any_more(self):
         """任何面都不再从报文里删工具 —— 精简整层在客户端，面之间不再有差异。"""
-        tp = gateway.pruning_cfg_for_surface(dict(common.DEFAULT_TOOL_PRUNING_CONFIG), "main")
         req = {"tools": [{"name": n} for n in ("mcp__ccd_sidebar__list_groups", "Bash")],
                "messages": []}
-        changed = gateway.prepare_request(req, session_id="test-code", tool_pruning_cfg=tp, kind="main")
+        changed = gateway.prepare_request(req)
         self.assertFalse([c for c in changed if c.startswith("prune_tools_")])
         self.assertEqual([t["name"] for t in req["tools"]], ["mcp__ccd_sidebar__list_groups", "Bash"])
 

@@ -90,8 +90,8 @@ class ClientDisabledToolsTest(unittest.TestCase):
     def test_master_switch_off_keeps_only_the_constant_list(self):
         """总开关关掉 = 一个开关都不生效，但恒定名单照写 —— 它不是「精简」。
 
-        判定侧（`get_stripped_tool_names`）任何配置下都认它，名单侧却一条不写的话，
-        就出现「判定说永远该挡、实际谁也没挡」的两种说法。
+        判定侧与名单侧共用 `client_disabled_tools()`，不会出现「判定说永远该挡、
+        名单里却一条没写」的两种说法。
         """
         self.assertEqual(tr.client_disabled_tools(cfg(enabled=False, strip_web_search_tools=True)),
                          ["WaitForMcpServers"])

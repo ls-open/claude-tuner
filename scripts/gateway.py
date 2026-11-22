@@ -190,21 +190,18 @@ def load_rules_config():
 
 
 
-# 工具剥离规则本身住在 tool_rules.py（纯判断层）：网关与配置页共用同一份，
-# 页面显示的「按现在的配置会不会剥」与实际发生的事必然是同一个判断。
-# 这里 import 进来再导出，sentinel.py 等既有调用方无需改动。
+# 工具精简规则本身住在 tool_rules.py（纯判断层）：网关、配置页、哨兵共用同一份。
+# 网关只用它推导客户端名单与提示词配对，不从报文里删工具。
 from tool_rules import (  # noqa: E402
     COWORK_KINDS,
     PROMPT_PAIRS,
-    category_for,  # noqa: F401 —— 再导出：哨兵按 gateway.category_for 取用，别删
-    get_stripped_tool_names,
+    client_disabled_tools,
     ghost_tool_names,
     orphan_mentions,
     pair_is_orphaned,
     pair_predicate,
     pair_unit,
     pruning_cfg_for_surface,
-    should_strip_tool,
     tp_flag as _tp_flag,
 )
 
@@ -238,8 +235,8 @@ def _system_text(parsed):
     return "\n".join(parts)
 
 
-def report_orphan_mentions(parsed, stripped_names):
-    """工具剥了、提示词里还在提它 —— 记进日志，不去自动改写。
+def report_orphan_mentions(parsed, disabled_names):
+    """客户端已不发的工具、提示词里还在提它 —— 记进日志，不去自动改写。
 
     **必须在配对段落删除之后调用**。配对段落正是被我们连带删掉的，在删之前查，
     会把「已经正确处理掉的那段」误报成孤句。
@@ -255,14 +252,14 @@ def report_orphan_mentions(parsed, stripped_names):
         text = _system_text(parsed)
         if not text:
             return
-        hits = orphan_mentions(text, stripped_names)
+        hits = orphan_mentions(text, disabled_names)
         if hits == _orphan_memo[0]:
             return   # 和上一轮一样就闭嘴：这个检查每个请求都跑，重复报会把日志刷满
         _orphan_memo[0] = hits
         if hits:
             log_event({"event": "orphan_tool_mention",
                        "tools": hits[:20],
-                       "note": "这些工具已被剥离，但提示词里仍提到它们"})
+                       "note": "这些工具已由客户端挡掉，但提示词里仍提到它们"})
     except Exception:
         pass
 
@@ -534,7 +531,7 @@ def strip_model_declaration_text(text):
     return text, (text != orig)
 
 
-def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, incoming_tools=None):
+def strip_ghost_tool_instructions(text, tp_cfg=None, disabled_names=None, incoming_tools=None):
     """删掉「工具本轮没发、说明段落却还留着」的孤句。
 
     配对关系登记在 tool_rules.PROMPT_PAIRS 里（数据，不是散在各处的 if）。
@@ -551,7 +548,7 @@ def strip_ghost_tool_instructions(text, tp_cfg=None, stripped_names=None, incomi
     cfg = tp_cfg if tp_cfg is not None else load_tool_pruning_config()
     if not _tp_flag(cfg, "enabled"):
         return text, False
-    names = stripped_names if stripped_names is not None else get_stripped_tool_names(cfg)
+    names = disabled_names if disabled_names is not None else client_disabled_tools(cfg)
 
     orig = text
     for pair in PROMPT_PAIRS:
@@ -735,12 +732,11 @@ def _guard_rule(name, fn):
     return wrapper
 
 
-def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None, incoming_tools=None, kind=None):
+def canonicalize(parsed, rules=None, tool_pruning_cfg=None, disabled_names=None, incoming_tools=None, kind=None):
     """Stabilize cache-relevant bytes without touching semantic content.
 
-    `stripped_names`：**判定为不该留**的工具名集合，由调用方用 `ghost_tool_names()` 算好
-    传进来。不传就只认配置里的精确名 —— 前缀类工具（`mcp__ccd_session*` 等）会漏在探测之外。
-    名字里的「剥」是历史叫法：网关已不从报文里删工具。
+    `disabled_names`：**判定为不该留**的工具名集合，由调用方用 `ghost_tool_names()` 算好
+    传进来。不传就退回 `client_disabled_tools()` —— 与客户端名单始终是同一份。
 
     `incoming_tools`：客户端**本轮真发来**的工具名集合。段落删不删由它决定 ——
     这一对里的工具一个都没发 → 段落是孤句（见 `tool_rules.pair_is_orphaned`）。
@@ -827,9 +823,8 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
 
     # 4.5. 精准剥离已剔除冗余工具在 System 尾部的孤立引导段落（与 tool_pruning 自动原子联动，杜绝反向脱节）
     # messages=False：剥的是 system 尾部那份引导，不该去对话正文里找同样的段落。
-    # 优先用调用方算好传进来的那份；没传才退回「当前 tools」——直接调用本函数
-    # （不经 prepare_request）时两者本来就是同一份。
-    _ghost_names = stripped_names if stripped_names is not None else get_stripped_tool_names(tp)
+    # 优先用调用方算好传进来的那份；没传就退回客户端名单（与生产路径同一口径）。
+    _ghost_names = disabled_names if disabled_names is not None else client_disabled_tools(tp)
     _client_tools = incoming_tools
     if _client_tools is None:
         _client_tools = {t.get("name") for t in parsed.get("tools") or []
@@ -840,7 +835,7 @@ def canonicalize(parsed, rules=None, tool_pruning_cfg=None, stripped_names=None,
     sys_n, _ = map_request_texts(
         parsed, _guard_rule("strip_ghost_tool_instructions",
                             lambda t, legacy: strip_ghost_tool_instructions(
-                                t, tp_cfg=tp, stripped_names=_ghost_names, incoming_tools=_client_tools)),
+                                t, tp_cfg=tp, disabled_names=_ghost_names, incoming_tools=_client_tools)),
         messages=False)
     changed.extend(["strip_ghost_tool_instructions"] * sys_n)
     # 「配对段落没找到」不再单独报警：判据改成缺席驱动之后，「工具没发 + 段落不在」是
@@ -1111,7 +1106,7 @@ def save_session_capture(capture_dir, parsed, kind=None):
 
 
 
-def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cfg=None):
+def stabilize_request(parsed, kind=None, rules=None, tool_pruning_cfg=None):
     """按生产顺序跑一遍稳定化，返回 changed 列表（原地修改 parsed）。
 
     顺序是这里定的，别在别处复刻：
@@ -1127,20 +1122,19 @@ def stabilize_request(parsed, session_id, kind=None, rules=None, tool_pruning_cf
     incoming = {t.get("name") for t in parsed.get("tools") or []
                 if isinstance(t, dict) and t.get("name")}
     ghost = ghost_tool_names(parsed.get("tools"), tp_cfg)
-    changed = prepare_request(parsed, session_id, rules=rules, tool_pruning_cfg=tp_cfg, kind=kind)
+    changed = prepare_request(parsed)
     changed += canonicalize(parsed, rules=rules, tool_pruning_cfg=tp_cfg,
-                            stripped_names=ghost, incoming_tools=incoming, kind=kind)
+                            disabled_names=ghost, incoming_tools=incoming, kind=kind)
     return changed
 
 
-def prepare_request(parsed, session_id, rules=None, tool_pruning_cfg=None, kind=None):
-    """主请求前置稳定化预处理：
-    1. 稳定 tool_result 消息顺序 (消除并发工具调用返回乱序)
-    2. 工具精简不在网关做：开关推导出的名单由配置台写成客户端的 `disabledBuiltinTools`，
-       客户端根本不发 —— 这里不删任何工具。
+def prepare_request(parsed):
+    """主请求前置稳定化预处理：稳定 tool_use / tool_result 块的顺序。
+
+    工具精简不在网关做：开关推导出的名单由配置台写成客户端的 `disabledBuiltinTools`，
+    客户端根本不发 —— 这里不删任何工具，也不读工具配置。
     """
     changed = []
-    r = rules or load_rules_config()
 
     # 1. 稳定 tool_result 与 assistant tool_use 顺序 (消除并发工具调用/返回乱序导致的前缀变化)
     #    Claude Code 使用 Anthropic 协议：并发工具返回位于单条消息内，严格按 id 排序保证对称稳定
@@ -1569,7 +1563,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         rules = load_rules_config()
         try:
-            changed = stabilize_request(parsed, session_id, kind=kind, rules=rules)
+            changed = stabilize_request(parsed, kind=kind, rules=rules)
         except Exception as exc:
             # 两个稳定化函数都原地修改 parsed，失败必须回滚到原始报文：
             # 转发半成品会让同一段对话在不同轮次发出不同字节。

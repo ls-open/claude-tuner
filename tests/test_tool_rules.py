@@ -3,16 +3,16 @@
 
 为什么需要这个文件
 ------------------
-这块的核心风险是**脱节**：工具被剥掉了，解释它的那段系统提示词还留着 ——
-模型读到「请用 X 工具做 Y」，而 X 根本不在工具列表里。这比不剥更糟：
+这块的核心风险是**脱节**：工具已经被客户端挡掉，解释它的那段系统提示词还留着 ——
+模型读到「请用 X 工具做 Y」，而 X 根本不在工具列表里。这比不挡更糟：
 省钱没省到点子上，还把模型引到一个不存在的工具上。
 
-而脱节的入口有两条，第二条以前是漏的：
-1. 类别开关（strip_pr_tools 等）—— 以前就处理了；
-2. **用户自己在页面上勾掉某个工具**（custom_strip_tools）—— 以前完全不处理。
+而脱节的入口有两条：
+1. 类别开关（strip_pr_tools 等）；
+2. **用户自己在页面上勾掉某个工具**（custom_strip_tools）。
 
-所以这里钉住：无论工具是因为哪条路径被剥的，配对段落都跟着走；反过来，
-配对里只剥掉一部分时段落必须原样保留（那时段落仍然成立）。
+所以这里钉住：无论工具是因为哪条路径被挡的，配对段落都跟着走；反过来，
+配对里只挡掉一部分时段落必须原样保留（那时段落仍然成立）。
 
 跑法：
     python3 -m unittest discover -s tests -p "test_*.py"
@@ -43,8 +43,8 @@ def _load(name, filename):
 tr = _load("tool_rules_under_test", "tool_rules.py")
 gw = _load("gateway_under_test_toolrules", "gateway.py")
 
-# 运行目录指向临时目录（模块级，覆盖整个文件）：prepare_request 里的抓包路径会往
-# BASE_DIR 落盘，不隔开就会写进真实 HOME
+# 运行目录指向临时目录（模块级，覆盖整个文件）：网关的日志与抓包都往 BASE_DIR 落盘，
+# 不隔开就会写进真实 HOME
 _ISOLATED_HOME = tempfile.mkdtemp(prefix="claude-tuner-test-")
 gw.BASE_DIR = _ISOLATED_HOME
 gw.CONFIG_FILE = os.path.join(_ISOLATED_HOME, "config.json")
@@ -113,14 +113,14 @@ class TestCategoryFor(unittest.TestCase):
         self.assertFalse(c["strip_view_tools"])          # 开关存在，值是「保留」
         self.assertEqual(tr.category_for("mcp__ccd_view__show_pane"), "strip_view_tools")
         self.assertFalse(tr.should_strip_tool("mcp__ccd_view__show_pane",
-                                              tr.get_stripped_tool_names(c), c))
+                                              tr.client_disabled_tools(c), c))
 
     def test_进度清单与收尾框默认保留(self):
         c = dflt()
         self.assertFalse(c["strip_progress_tools"])
         self.assertEqual(tr.category_for("mcp__ccd_turn__update_plan"), "strip_progress_tools")
         self.assertEqual(tr.category_for("mcp__ccd_turn__wrap_up"), "strip_progress_tools")
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("mcp__ccd_turn__update_plan", "mcp__ccd_turn__wrap_up"):
             self.assertFalse(tr.should_strip_tool(name, names, c))
 
@@ -134,7 +134,7 @@ class TestCategoryFor(unittest.TestCase):
     def test_category_is_named(self):
         """报告出来的是**类别名** —— 页面靠它显示「是这一组把它去掉了」。"""
         c = cfg(strip_terminal_tools=True)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertEqual(tr.strip_reason("mcp__ccd_sidebar__set_view", names, c),
                          "strip_sidebar_tools")
         self.assertEqual(tr.strip_reason("mcp__terminal__read_terminal", names, c),
@@ -142,25 +142,25 @@ class TestCategoryFor(unittest.TestCase):
 
     def test_kept_tool_has_no_reason(self):
         c = cfg(strip_view_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertEqual(tr.strip_reason("Bash", names, c), "")
         self.assertEqual(tr.strip_reason("mcp__ccd_view__show_pane", names, c), "")
 
     def test_custom_list_is_reported_as_custom(self):
         c = cfg(custom_strip_tools=["mcp__some_server__thing"])
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertEqual(tr.strip_reason("mcp__some_server__thing", names, c), "custom")
 
     def test_category_beats_custom(self):
         """一个工具既落在类别里、又被自己勾了 —— 报类别，那才是它被剥的主因。"""
         c = cfg(strip_terminal_tools=True, custom_strip_tools=["mcp__terminal__read_terminal"])
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertEqual(tr.strip_reason("mcp__terminal__read_terminal", names, c),
                          "strip_terminal_tools")
 
     def test_disabled_switch_stops_stripping(self):
         c = cfg(strip_terminal_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertFalse(tr.should_strip_tool("mcp__terminal__read_terminal", names, c))
 
     def test_protected_tools_cannot_be_stripped_by_any_means(self):
@@ -171,7 +171,7 @@ class TestCategoryFor(unittest.TestCase):
         """
         for name in ("Bash", "Read", "Write", "Edit", "Glob", "Grep", "Agent"):
             c = cfg(custom_strip_tools=[name])
-            names = tr.get_stripped_tool_names(c)
+            names = tr.client_disabled_tools(c)
             self.assertEqual(tr.strip_reason(name, names, c), "",
                              "%s 不该被剥掉" % name, )
             self.assertFalse(tr.should_strip_tool(name, names, c))
@@ -179,12 +179,12 @@ class TestCategoryFor(unittest.TestCase):
     def test_sidebar_and_window_are_separate(self):
         """侧栏与窗口是两组：各自成对，互不牵连。"""
         c = cfg(strip_sidebar_tools=True, strip_window_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertTrue(tr.should_strip_tool("mcp__ccd_sidebar__set_view", names, c))
         self.assertFalse(tr.should_strip_tool("mcp__ccd_window__close_split", names, c))
 
         c2 = cfg(strip_sidebar_tools=False, strip_window_tools=True)
-        names2 = tr.get_stripped_tool_names(c2)
+        names2 = tr.client_disabled_tools(c2)
         self.assertFalse(tr.should_strip_tool("mcp__ccd_sidebar__set_view", names2, c2))
         self.assertTrue(tr.should_strip_tool("mcp__ccd_window__close_split", names2, c2))
 
@@ -216,7 +216,7 @@ class TestCategoryFor(unittest.TestCase):
         """会话、起停、计划三组各管一摊：开一组不动另一组。"""
         c = cfg(strip_session_ui_tools=True, strip_session_control_tools=False,
                 strip_session_start_tools=False, strip_plan_mode_tools=False, strip_worktree_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertTrue(tr.should_strip_tool("mcp__ccd_session_mgmt__set_session_title", names, c))
         for other in ("mcp__ccd_session_mgmt__delete_session",
                       "mcp__ccd_session__start_session", "SendMessage", "EnterPlanMode"):
@@ -224,13 +224,13 @@ class TestCategoryFor(unittest.TestCase):
 
         c2 = cfg(strip_session_ui_tools=False, strip_session_control_tools=True,
                  strip_session_start_tools=False, strip_plan_mode_tools=False, strip_worktree_tools=False)
-        names2 = tr.get_stripped_tool_names(c2)
+        names2 = tr.client_disabled_tools(c2)
         self.assertTrue(tr.should_strip_tool("mcp__ccd_session_mgmt__delete_session", names2, c2))
         self.assertFalse(tr.should_strip_tool("mcp__ccd_session_mgmt__set_session_title", names2, c2))
 
     def test_会话管理剩下的是纯界面遥控(self):
         c = cfg()
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         # mark_chapter 已归起停组（提示词要求批量起会话时用它打标题），不在这条线上
         for tool in ("mcp__ccd_session_mgmt__set_session_title",
                      "mcp__ccd_session_mgmt__get_usage", "mcp__ccd_session_mgmt__detach_session",
@@ -255,7 +255,7 @@ class TestCategoryFor(unittest.TestCase):
     def test_protection_does_not_shadow_optional_categories(self):
         """别把保护名单扩大到「本来就可剥」的工具上 —— 那会把对应开关废掉。"""
         c = cfg(strip_progress_tools=True, strip_window_tools=True)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("TaskStop", "ReportFindings", "mcp__ccd_sidebar__set_view"):
             self.assertTrue(tr.should_strip_tool(name, names, c),
                             "%s 是可选类别，不该被保护名单挡住" % name)
@@ -266,7 +266,7 @@ class TestCategoryFor(unittest.TestCase):
         off = [k for k, v in c.items()
                if k.startswith("strip_") and v is not False]
         self.assertEqual(off, [], "默认值里不该有开着的精简开关")
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("SendMessage", "EnterWorktree", "EnterPlanMode", "WebSearch",
                      "mcp__ccd_pr__get_status", "mcp__ccd_sidebar__set_view"):
             self.assertFalse(tr.should_strip_tool(name, names, c), name)
@@ -279,7 +279,7 @@ class TestCategoryFor(unittest.TestCase):
         而且漏掉「启动门」那几种客户端状态（工具本来就可能不在）。
         """
         c = cfg(**{k: True for k in tr.CATEGORY_NAMES})
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertNotIn("strip_workflow_tools", tr.CATEGORY_NAMES)
         self.assertFalse(tr.should_strip_tool("Workflow", names, c),
                          "全部开关都打开，Workflow 也不该被网关剥")
@@ -289,7 +289,7 @@ class TestCategoryFor(unittest.TestCase):
         c = cfg(strip_session_start_tools=True, strip_plan_mode_tools=False, strip_worktree_tools=False,
                 strip_background_tools=False, strip_session_ui_tools=False,
                 strip_session_control_tools=False, strip_view_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("SendMessage", "ListAgents", "mcp__ccd_session__start_session"):
             self.assertTrue(tr.should_strip_tool(name, names, c), name)
         for other in ("EnterWorktree", "EnterPlanMode", "TaskStop", "ReportFindings",
@@ -305,7 +305,7 @@ class TestCategoryFor(unittest.TestCase):
         捆成一个开关时，省这 6.9 KB 就得连计划模式一起放弃。
         """
         c = cfg(strip_worktree_tools=True, strip_plan_mode_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("EnterWorktree", "ExitWorktree"):
             self.assertTrue(tr.should_strip_tool(name, names, c), name)
         for name in ("EnterPlanMode", "ExitPlanMode"):
@@ -315,26 +315,26 @@ class TestCategoryFor(unittest.TestCase):
     def test_paired_switches_take_both_ends(self):
         """配对的两个必须一起进出 —— 只剥一半会留下一个用不了的工具。"""
         c = cfg(strip_session_start_tools=True)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("SendMessage", "ListAgents"):
             self.assertTrue(tr.should_strip_tool(name, names, c), name)
 
         c = cfg(strip_session_start_tools=True)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("EnterWorktree", "ExitWorktree", "EnterPlanMode", "ExitPlanMode"):
             self.assertTrue(tr.should_strip_tool(name, names, c), name)
 
     def test_background_tools_have_their_own_switch(self):
         """Monitor / TaskStop / ReportFindings 合成「后台」一组：都没有独立段落。"""
         c = cfg(strip_background_tools=True, strip_progress_tools=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for name in ("Monitor", "TaskStop", "ReportFindings"):
             self.assertTrue(tr.should_strip_tool(name, names, c), name)
         self.assertFalse(tr.should_strip_tool("mcp__ccd_turn__update_plan", names, c))
 
     def test_master_off_keeps_everything_but_builtin(self):
         c = cfg(enabled=False)
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertFalse(tr.should_strip_tool("mcp__ccd_sidebar__set_view", names, c))
         self.assertTrue(tr.should_strip_tool("WaitForMcpServers", names, c))
 
@@ -342,13 +342,13 @@ class TestCategoryFor(unittest.TestCase):
 class TestPairing(unittest.TestCase):
     def test_pair_orphaned_when_all_its_tools_go(self):
         c = cfg()   # strip_pr_tools 默认开 → get_status 与 bind_pr 都没了
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertTrue(tr.pair_is_orphaned(CCD_PR_PAIR, names, c))
 
     def test_pair_survives_when_onetool_remains(self):
         """只剥掉 get_status 时，bind_pr 还在，那段指引仍然成立 —— 不能删。"""
         c = cfg(strip_pr_tools=False, custom_strip_tools=["mcp__ccd_pr__get_status"])
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertFalse(tr.pair_is_orphaned(CCD_PR_PAIR, names, c))
 
     def test_pair_orphaned_via_custom_only(self):
@@ -356,7 +356,7 @@ class TestPairing(unittest.TestCase):
         会留下孤句。现在必须一样地跟着走。"""
         c = cfg(strip_pr_tools=False,
                 custom_strip_tools=["mcp__ccd_pr__get_status", "mcp__ccd_pr__bind_pr"])
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertTrue(tr.pair_is_orphaned(CCD_PR_PAIR, names, c))
 
 
@@ -424,7 +424,7 @@ class TestLineLevelPairing(unittest.TestCase):
             "tools": [{"name": "Bash"}],
             "messages": [],
         }
-        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+        gw.stabilize_request(parsed, kind="main", rules=dict(gw.DEFAULT_RULES),
                              tool_pruning_cfg=cfg(strip_plan_mode_tools=True))
         text = "\n".join(b.get("text", "") for b in parsed["system"])
         self.assertNotIn("After the user accepts your plan", text)
@@ -445,15 +445,15 @@ class TestGhostInstructionStripping(unittest.TestCase):
         """刚修的那条路：用户自己勾掉的也要连带删。"""
         c = cfg(strip_pr_tools=False,
                 custom_strip_tools=["mcp__ccd_pr__get_status", "mcp__ccd_pr__bind_pr"])
-        names = tr.get_stripped_tool_names(c)
-        out, hit = gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=c, stripped_names=names)
+        names = tr.client_disabled_tools(c)
+        out, hit = gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=c, disabled_names=names)
         self.assertTrue(hit, "自定义剥掉整对工具后，段落必须跟着走")
         self.assertNotIn("After opening a PR", out)
 
     def test_partial_custom_strip_keeps_paragraph(self):
         c = cfg(strip_pr_tools=False, custom_strip_tools=["mcp__ccd_pr__get_status"])
-        names = tr.get_stripped_tool_names(c)
-        out, hit = gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=c, stripped_names=names)
+        names = tr.client_disabled_tools(c)
+        out, hit = gw.strip_ghost_tool_instructions(PR_HEAD, tp_cfg=c, disabled_names=names)
         self.assertFalse(hit)
         self.assertIn("After opening a PR", out)
 
@@ -464,18 +464,18 @@ class TestGhostInstructionStripping(unittest.TestCase):
         它自己也够格被删。要验「不吃邻居」，邻居就不能是**另一个**剥除目标，故关掉终端开关。
         """
         c = cfg(custom_strip_tools=["mcp__ccd_view__show_pane"], strip_terminal_tools=False)
-        names = tr.get_stripped_tool_names(c)
-        out, hit = gw.strip_ghost_tool_instructions(SHOW_PANE, tp_cfg=c, stripped_names=names)
+        names = tr.client_disabled_tools(c)
+        out, hit = gw.strip_ghost_tool_instructions(SHOW_PANE, tp_cfg=c, disabled_names=names)
         self.assertTrue(hit)
         self.assertNotIn("show_pane", out)
         self.assertIn("Link a Terminal panel tab", out)
 
     def test_view_tools_switch_strips_paired_paragraph(self):
         c = cfg(strip_view_tools=True, strip_terminal_tools=False)  # 邻居段见上一条的说明
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         self.assertEqual(tr.strip_reason("mcp__ccd_view__show_pane", names, c), "strip_view_tools")
         self.assertTrue(tr.should_strip_tool("mcp__ccd_view__show_pane", names, c))
-        out, hit = gw.strip_ghost_tool_instructions(SHOW_PANE, tp_cfg=c, stripped_names=names)
+        out, hit = gw.strip_ghost_tool_instructions(SHOW_PANE, tp_cfg=c, disabled_names=names)
         self.assertTrue(hit)
         self.assertNotIn("show_pane", out)
         self.assertIn("Link a Terminal panel tab", out)
@@ -525,7 +525,7 @@ class TestGhostInstructionStripping(unittest.TestCase):
             "tools": [{"name": "Bash"}],
             "messages": [],
         }
-        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+        gw.stabilize_request(parsed, kind="main", rules=dict(gw.DEFAULT_RULES),
                              tool_pruning_cfg=cfg())
         text = "\n".join(b.get("text", "") for b in parsed["system"])
         self.assertNotIn("After opening a PR", text, "这一对的工具没发，解释它的整段必须一起走")
@@ -538,7 +538,7 @@ class TestGhostInstructionStripping(unittest.TestCase):
             "tools": [{"name": "mcp__ccd_pr__get_status"}, {"name": "Bash"}],
             "messages": [],
         }
-        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+        gw.stabilize_request(parsed, kind="main", rules=dict(gw.DEFAULT_RULES),
                              tool_pruning_cfg=cfg())
         text = "\n".join(b.get("text", "") for b in parsed["system"])
         self.assertIn("After opening a PR", text)
@@ -557,7 +557,7 @@ class TestGhostInstructionStripping(unittest.TestCase):
             "messages": [],
         }
         c = cfg(strip_sidebar_tools=True, strip_web_search_tools=True)
-        gw.stabilize_request(parsed, None, kind="main", rules=dict(gw.DEFAULT_RULES),
+        gw.stabilize_request(parsed, kind="main", rules=dict(gw.DEFAULT_RULES),
                              tool_pruning_cfg=c)
         self.assertEqual([t["name"] for t in parsed["tools"]],
                          ["mcp__ccd_sidebar__set_view", "WebSearch", "Bash"])
@@ -600,9 +600,9 @@ class TestPairAnchorTolerance(unittest.TestCase):
     def test_锚点被改写时宁可不动手(self):
         """最坏情况：连锚点都被改写。认不出这段就不动它 —— 误删别的内容比漏删更糟。"""
         c = cfg()
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         rewritten = PR_HEAD.replace("After opening a PR", "Once you open a PR")
-        out, hit = gw.strip_ghost_tool_instructions(rewritten, tp_cfg=c, stripped_names=names)
+        out, hit = gw.strip_ghost_tool_instructions(rewritten, tp_cfg=c, disabled_names=names)
         self.assertFalse(hit)
         self.assertEqual(out, rewritten)
 
@@ -612,7 +612,7 @@ class TestPairAnchorTolerance(unittest.TestCase):
         配置不再参与：工具由客户端在源头挡掉，同一份配置在不同人那里保留的工具不同。
         """
         c = cfg()
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         pair = next(p for p in tr.PROMPT_PAIRS if p["id"] == "ccd_pr")
         self.assertTrue(tr.pair_is_orphaned(pair, names, c, incoming_tools={"Bash"}))
         self.assertFalse(tr.pair_is_orphaned(pair, names, c, incoming_tools={"Bash", "mcp__ccd_pr__bind_pr"}))
@@ -727,8 +727,7 @@ class TestToolBlockOrdering(unittest.TestCase):
 
     def test_always_sorts(self):
         parsed = self._parsed()
-        changed = gw.prepare_request(parsed, "", rules=dict(gw.DEFAULT_RULES),
-                                     tool_pruning_cfg=cfg())
+        changed = gw.prepare_request(parsed)
         ids = [b.get("tool_use_id") for b in parsed["messages"][0]["content"]
                if b.get("type") == "tool_result"]
         self.assertEqual(ids, ["a", "b"])
@@ -739,7 +738,7 @@ class TestIdleSwitchAttribution(unittest.TestCase):
     """开着却没物可剥的开关：**谁让它不发**决定结论是「别删」还是「可删」。
 
     这两种成因混成一句「可考虑删掉该开关」会要人命：被客户端侧拦截挡住的那些，
-    删开关会连 deny 规则一起撤掉，工具当场回来。
+    删开关会连客户端名单里的条目一起撤掉，工具当场回来。
     """
 
     def test_denied_tools_mean_covered_not_stale(self):
@@ -747,7 +746,7 @@ class TestIdleSwitchAttribution(unittest.TestCase):
         self.assertEqual(out["covered"]["strip_notebook_tools"], ["NotebookEdit"])
         self.assertNotIn("strip_notebook_tools", out["stale"])
 
-    def test_without_deny_rule_it_is_stale(self):
+    def test_without_client_list_entry_it_is_stale(self):
         out = tr.idle_switches(cfg(strip_notebook_tools=True), [], [])
         self.assertIn("strip_notebook_tools", out["stale"])
         self.assertNotIn("strip_notebook_tools", out["covered"])
@@ -779,14 +778,14 @@ class TestIdleSwitchAttribution(unittest.TestCase):
         out = tr.idle_switches(cfg(strip_session_ui_tools=True), [], [])
         self.assertEqual(out["stale"].count("strip_session_ui_tools"), 1)
 
-    def test_one_deny_rule_keeps_the_whole_switch(self):
+    def test_one_client_list_entry_keeps_the_whole_switch(self):
         # WebFetch 进客户端名单、同组的 mcp__workspace__web_fetch 进不去（MCP 写不进）——
         # 仍归 covered：删开关会把那一条现成的名单一并带走
         out = tr.idle_switches(cfg(strip_web_fetch_tools=True), [], ["WebFetch"])
         self.assertIn("strip_web_fetch_tools", out["covered"])
         self.assertNotIn("strip_web_fetch_tools", out["stale"])
 
-    def test_deny_leak_detected(self):
+    def test_client_list_leak_detected(self):
         self.assertEqual(tr.client_disabled_leaks(["NotebookEdit", "Bash"], ["NotebookEdit"]), ["NotebookEdit"])
         self.assertEqual(tr.client_disabled_leaks(["Bash"], ["NotebookEdit"]), [])
 
@@ -833,7 +832,7 @@ class TestEveryPruningSwitch(unittest.TestCase):
                 self.assertTrue(samples, "类别表里这一项没写工具名，等于开关无名可剥")
                 c = self._all_off()
                 c[key] = True
-                names = tr.get_stripped_tool_names(c)
+                names = tr.client_disabled_tools(c)
                 denied = tr.client_disabled_tools(c)
                 for s in samples:
                     self.assertEqual(tr.category_for(s), key, "样本的归属跑到了别的开关上")
@@ -859,7 +858,7 @@ class TestEveryPruningSwitch(unittest.TestCase):
                 for k in self._switch_keys():
                     c[k] = True
                 c[key] = False
-                names = tr.get_stripped_tool_names(c)
+                names = tr.client_disabled_tools(c)
                 for s in samples:
                     self.assertFalse(tr.should_strip_tool(s, names, c),
                                      "这个开关关着却被别的开关剥了：%s" % s)
@@ -869,7 +868,7 @@ class TestEveryPruningSwitch(unittest.TestCase):
         for k in self._switch_keys():
             c[k] = True
         c["enabled"] = False
-        names = tr.get_stripped_tool_names(c)
+        names = tr.client_disabled_tools(c)
         for key in self._switch_keys():
             for s in self._samples(key):
                 self.assertFalse(tr.should_strip_tool(s, names, c), "总开关关着还剥了：%s" % s)

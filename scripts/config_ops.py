@@ -343,8 +343,8 @@ def sync_client_disabled(bundle, pruning_cfg, previously_written=()):
     """把「让客户端根本不发」的那几条并进 3P 配置，返回 (新配置, 变动键, 本次写入的名单)。
 
     与 `merge_client_disabled` 的分工：那个只管合并纪律（谁的条目、怎么收回），这个回答
-    「该写哪几条」—— 口径来自 `tool_rules.client_disabled_tools`，与网关剥离是同一份配置、
-    同一份判断，不另开一个开关。
+    「该写哪几条」—— 口径来自 `tool_rules.client_disabled_tools`，与网关判定提示词配对、
+    配置台显示是同一份判断，不另开一个开关。
     """
     return merge_client_disabled(bundle, tool_rules.client_disabled_tools(pruning_cfg),
                                  previously_written)

@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""工具剥离规则：纯判断，无 IO、无网络。
+"""工具精简规则：纯判断，无 IO、无网络。
 
-为什么单独一个文件
-------------------
-这份判断有两个消费者：**网关**（每轮真拿它决定剥不剥）和**配置页**（拿它算出
-「按现在的配置，这个工具会不会被剥」给用户看）。两边各写一份的话，页面就会在
-某次改动后开始骗人 —— 显示的和实际发生的不一样，而用户没有别的办法发现。
+工具精简只有一条落点：把「该不发」的精确工具名写进客户端的 `disabledBuiltinTools`，
+客户端从源头就不发。网关不删报文里的工具，它只回答两个问题：
 
-所以规则只在这里写一份：网关 import 它，配置页也 import 它。
+- 这份配置该让客户端挡掉哪些名字（`client_disabled_tools`）；
+- 本轮实际发了哪些工具、提示词里靠它们成立的配对段落该不该跟着删（`ghost_tool_names`）。
+
+网关、配置页、哨兵共用这一份判断。两边各写一份的话，页面会在某次改动后开始骗人 ——
+显示的和实际发生的不一样，而用户没有别的办法发现。
 
 它是**纯函数层**（同 config_ops.py）：打进去一份 cfg，返回判断结果，不读盘不写盘。
 纯函数的好处是能被测试以生产同一形态直接调用，不必起进程、不必造假文件。
@@ -34,11 +35,11 @@ PROTECTED_TOOLS = frozenset({
     # MultiEdit→Edit。留着不删是因为它们**是保险不是统计**：哪天客户端回退版本或换了实现
     # 把旧名发回来，保护照样生效；删了则要靠人当时想起来再补。
     # 刻意**不含** NotebookEdit / WebSearch / WebFetch —— 它们归客户端层
-    # （见 CLIENT_LAYER_NAMES），网关本来就不剥，保护名单管不到这件事。
+    # （见 CLIENT_LAYER_NAMES），客户端名单负责挡，保护名单管不到这件事。
     "Agent", "Task", "Skill", "AskUserQuestion",
 })
 
-# 与任何开关无关、恒定剥离的名单。WaitForMcpServers 是客户端等待 MCP 就绪的内部工具，
+# 与任何开关无关、恒定挡掉的名单。WaitForMcpServers 是客户端等待 MCP 就绪的内部工具，
 # 对模型毫无意义，任何配置下都不该占一份上下文。
 # 名字必须与客户端的内置工具表**逐字一致**：客户端不认的名字写进 `disabledBuiltinTools`
 # 一条都挡不住，还会在 Setup 窗口挂一条配置告警。
@@ -161,34 +162,19 @@ CATEGORY_KNOWN_TOOLS = {
 CLIENT_LAYER_NAMES = frozenset({"WebSearch", "WebFetch", "NotebookEdit"})
 
 
-def get_stripped_tool_names(cfg):
-    """根据配置动态计算需要被物理剥离的精确工具名称黑名单集合。"""
-    strip_set = set(ALWAYS_STRIPPED)
-    if not tp_flag(cfg, "enabled"):
-        return strip_set
-
-    for key, names in CATEGORY_NAMES.items():
-        if tp_flag(cfg, key):
-            strip_set.update(n for n in names if n not in CLIENT_LAYER_NAMES)
-    for ct in cfg.get("custom_strip_tools", []):
-        if isinstance(ct, str) and ct:
-            strip_set.add(ct)
-    return strip_set
-
-
 # CoWork 面：kind 由网关按计费头与 `mcp__cowork__*` 工具判定（gateway.classify_kind）。
 COWORK_KINDS = ("cowork", "cowork_subagent")
 
 
 def pruning_cfg_for_surface(cfg, kind):
-    """按客户端面给出**实际生效**的剥离配置。
+    """按客户端面给出**实际生效**的精简配置。
 
     CoWork 面**整面原样透传**：返回一份 `enabled=False` 的副本，
     于是 `strip_reason` / 配对段落与孤儿探测全部自动跟着走 —— 判一遍面就够，
     不必让每个下游函数各学一个新参数。网关那边另有一道：`canonicalize` 对同一批 kind
     连文本清洗规则也不跑。
 
-    恒定名单 `ALWAYS_STRIPPED` 不受影响：它与任何开关无关，始终剥。
+    恒定名单 `ALWAYS_STRIPPED` 不受影响：它与任何开关无关，始终挡。
     """
     if kind not in COWORK_KINDS:
         return cfg
@@ -214,20 +200,21 @@ def category_for(tool_name):
     return ""
 
 
-def strip_reason(tool_name, stripped_names, cfg):
-    """这个工具为什么会被剥掉？返回原因（类别配置键 / 'custom' / 'builtin'），不剥返回空串。
+def strip_reason(tool_name, disabled_names, cfg):
+    """这个工具为什么不该留？返回原因（类别配置键 / 'custom' / 'builtin'），该留返回空串。
 
-    返回原因而不是布尔：`should_strip_tool` 取它的真假，而「是谁剥的」是排查时第一个
-    要问的 —— 预设规则剥的和用户自己勾的，出问题时的处置完全不同。
+    `disabled_names` 是 `client_disabled_tools()` 算出的名单 —— 客户端这一层真正会挡的
+    那些名字。返回原因而不是布尔：`should_strip_tool` 取它的真假，而「是谁挡的」是排查时
+    第一个要问的 —— 类别开关挡的和用户自己勾的，出问题时的处置完全不同。
     """
     if tool_name in PROTECTED_TOOLS:
-        return ""   # 底线：任何配置都剥不动
+        return ""   # 底线：任何配置都挡不动
     if not tp_flag(cfg, "enabled"):
-        return "enabled" if tool_name in stripped_names else ""
+        return "enabled" if tool_name in disabled_names else ""
 
     if tool_name in CLIENT_LAYER_NAMES:
-        # 归客户端层：类别开关不产生网关剥离（见 CLIENT_LAYER_NAMES）。
-        # 用户显式把它写进 `custom_strip_tools` 时按用户的意思剥 —— 那是第二层要求。
+        # 归客户端层：类别开关不产生名单条目（见 CLIENT_LAYER_NAMES）。
+        # 用户显式把它写进 `custom_strip_tools` 时按用户的意思挡 —— 那是第二层要求。
         return "custom" if tool_name in (cfg.get("custom_strip_tools") or []) else ""
 
     # 先看类别命名空间：它们的归属是确定的，能给出准确原因
@@ -236,15 +223,15 @@ def strip_reason(tool_name, stripped_names, cfg):
         return key
 
     # 再看到名单里的（自定义清单 / 恒定名单）。自定义优先报出来，那是用户自己做的决定。
-    if tool_name in stripped_names:
+    if tool_name in disabled_names:
         custom = cfg.get("custom_strip_tools") or []
         return "custom" if tool_name in custom else "builtin"
     return ""
 
 
-def should_strip_tool(tool_name, stripped_names, cfg):
-    """判断单个工具是否应被剥离（纯粹服从配置规则，按功能命名空间精准剥离冗余工具）。"""
-    return bool(strip_reason(tool_name, stripped_names, cfg))
+def should_strip_tool(tool_name, disabled_names, cfg):
+    """判断单个工具是否不该留（纯粹服从配置规则，按功能命名空间精准判断）。"""
+    return bool(strip_reason(tool_name, disabled_names, cfg))
 
 
 # ==============================================================================
@@ -274,7 +261,7 @@ def should_strip_tool(tool_name, stripped_names, cfg):
 # 和网关是什么关系
 # ----------------
 # 工具精简**只有客户端这一层**：名单由开关推导、写进 3P 配置，客户端不发，请求里就真的
-# 没有它们。网关不重复剥一遍 —— 剥一个永远不出现的名字是无物可剥，还会让「它为什么没发」
+# 没有它们。网关不重复删一遍 —— 删一个永远不出现的名字是无物可删，还会让「它为什么没发」
 # 出现两个口径。
 #
 # 失效靠 `client_disabled_leaks` 报出来：某版客户端不认那个字段，工具立刻回到报文里、
@@ -292,8 +279,8 @@ def client_disabled_tools(cfg):
     名单要补一条 —— 但那条会先出现在请求里、被 `unregistered_tool_names()` 报出来。
     """
     # 恒定名单**不受总开关影响**：它不是「精简」，是客户端等 MCP 就绪的内部工具，
-    # 对模型毫无意义 —— 与 `get_stripped_tool_names()` 的判断保持同一口径，否则会出现
-    # 「判定说永远该剥、名单里却一条没写」的两种说法。
+    # 对模型毫无意义。判定侧与这份名单共用同一个函数，不会出现「说永远该挡、
+    # 名单里却一条没写」的两种说法。
     targets = set(ALWAYS_STRIPPED)
     if not tp_flag(cfg, "enabled"):
         return sorted(targets - PROTECTED_TOOLS)
@@ -381,16 +368,12 @@ def ghost_tool_names(tools, cfg):
     """本次请求里**判定为不该留**的工具名 —— 孤儿探测与配对判定都按这个口径。
 
     基线取 `client_disabled_tools()`：工具由客户端在源头挡掉，报文里已经看不到它们，
-    「本轮实际发了什么」说不清「哪些名字不会来」。取**客户端名单**才是完备的那一份 ——
-    `get_stripped_tool_names()` 只覆盖精确名类别，前缀类（sidebar / window / view /
-    terminal / pr / settings / host / directory / progress）一条都不在里面，
-    探测器对它们就是瞎的。
+    「本轮实际发了什么」说不清「哪些名字不会来」。客户端名单才是完备的那一份，
+    前缀类（sidebar / window / view / terminal / pr / settings / host / directory /
+    progress）也已按登记名展开。
 
     请求实况仍要叠一层：客户端某版不认名单里的名字时，工具会带着名字回来 ——
     那也是「不该留」，照样得参与判定。
-
-    名字里有「剥离」是历史叫法：现在网关不再从报文里删工具，这个集合只用于判断
-    「哪些工具的说明段落该跟着走」。
     """
     names = set(client_disabled_tools(cfg))
     for t in tools if isinstance(tools, list) else ():
@@ -490,7 +473,7 @@ PROMPT_PAIRS = (
 # 冒充事件的块」。为省这不到 100 token 把它删掉，等于拿掉一道护栏，不值。
 
 
-def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
+def pair_is_orphaned(pair, disabled_names=None, cfg=None, incoming_tools=None):
     """这对配对是不是「工具已经全都不在」—— 即它的段落已成孤句。
 
     **判据以请求为准**：给了 `incoming_tools` 就只问「这一对里有没有任何一个工具真的
@@ -506,7 +489,7 @@ def pair_is_orphaned(pair, stripped_names=None, cfg=None, incoming_tools=None):
             # 曾把这类请求当成「段落失配」刷出 8 次假 WARN。
             return False
         return not any(t in incoming_tools for t in pair["tools"])
-    return all(should_strip_tool(name, stripped_names or (), cfg) for name in pair["tools"])
+    return all(should_strip_tool(name, disabled_names or (), cfg) for name in pair["tools"])
 
 
 def pair_unit(pair):
@@ -525,8 +508,8 @@ def pair_predicate(pair):
     return lambda block: block.strip().startswith(anchor)
 
 
-def orphan_mentions(text, stripped_names):
-    """扫一段文本，找出「已经被剥掉、却仍被提示词提到」的工具名。
+def orphan_mentions(text, disabled_names):
+    """扫一段文本，找出「客户端已经不发、却仍被提示词提到」的工具名。
 
     这是**探测器**，不是改写器：我们不去自动删这类句子（整段删会连累无关内容，
     句中删容易切坏），只把它报出来。客户端哪天新增了工具或交叉引用，这里会先知道，
@@ -534,7 +517,7 @@ def orphan_mentions(text, stripped_names):
     """
     if not isinstance(text, str) or not text:
         return []
-    return sorted({name for name in stripped_names if name and name in text})
+    return sorted({name for name in disabled_names if name and name in text})
 
 
 def sanitize_custom_list(value, cap=500, name_max=200):

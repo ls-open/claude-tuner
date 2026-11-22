@@ -4,7 +4,7 @@
 `audit` 回答一个与版本无关的问题：这份入口报文过完现有规则后，还剩什么会被客户端
 版本或环境改变？留下来的每一样都是前缀缓存杀手。
 
-    · ① 工具面   —— 剥离 N / 保留 M；不在剥离名单内的 `mcp__*` 逐个列出待判定
+    · ① 工具面   —— 已挡 N / 保留 M；不在开关表内的 `mcp__*` 逐个列出待判定
                     （本命令不预设是死重还是生产力工具，判定权在你）
     · ② system 面 —— 清洗后仍残留的易变痕迹（日期 / 路径 / 版本号 / 模型宣称 / 计费头 / token 计数…）
     · ③ messages 面 —— user / system 消息纯文本块里的客户端注入标记（注入实际落在这一面）
@@ -207,7 +207,7 @@ def cleaned_copy(payload, tp_cfg=None, with_changed=False):
     p = copy.deepcopy(payload)
     changed = []
     try:
-        changed = gateway.stabilize_request(p, None, kind=gateway.classify_kind(p), tool_pruning_cfg=tp_cfg)
+        changed = gateway.stabilize_request(p, kind=gateway.classify_kind(p), tool_pruning_cfg=tp_cfg)
     except Exception as exc:  # 清洗器本身出问题时不应阻断哨兵
         print("  ⚠️ stabilize_request() 执行异常: %s" % exc, file=sys.stderr)
     return (p, changed) if with_changed else p
@@ -250,12 +250,12 @@ def unknown_tools(names, cfg):
     每次跟版都被当成新面孔重报一遍，也不需要另维护一份「允许清单」。
 
     **含原生工具**：只看 `mcp__` 前缀会漏掉不在任何开关里的原生工具 —— 它们占着上下文
-    却没人能剥，而这正是最该被看见的一类。
+    却没人能挡，而这正是最该被看见的一类。
     """
-    stripped = gateway.get_stripped_tool_names(cfg)
+    disabled = tool_rules.client_disabled_tools(cfg)
     return [n for n in names
-            if not gateway.should_strip_tool(n, stripped, cfg)
-            and not gateway.category_for(n)
+            if not tool_rules.should_strip_tool(n, disabled, cfg)
+            and not tool_rules.category_for(n)
             and n not in tool_rules.PROTECTED_TOOLS]
 
 
@@ -266,9 +266,9 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
     判为保留也是判定，见 `unknown_tools`。
     """
     cfg = tp_cfg
-    stripped = gateway.get_stripped_tool_names(cfg)
+    disabled = tool_rules.client_disabled_tools(cfg)
     names = extract_tool_names(raw)
-    kept = [n for n in names if not gateway.should_strip_tool(n, stripped, cfg)]
+    kept = [n for n in names if not tool_rules.should_strip_tool(n, disabled, cfg)]
     pending = [] if surface_skipped else unknown_tools(names, cfg)
     # 「类别认得出、但登记名单里没有」——客户端给某一组新增/改名的工具。
     # 它既不会被挡、也不会被报成陌生工具，是跟版时最容易漏的一类。
@@ -283,7 +283,7 @@ def _audit_tools(raw, tp_cfg, surface_skipped=False):
         if len(kept) != len(names) else ""))
     print("  保留：%s" % (", ".join(sorted(kept)) or "(无)"))
     if surface_skipped:
-        print("  ℹ️ CoWork 面按策略**原样透传**：不剥工具，也不跑任何清洗规则，只做模型名映射。")
+        print("  ℹ️ CoWork 面按策略**原样透传**：不挡工具，也不跑任何清洗规则，只做模型名映射。")
         print("     体积与前缀稳定性都由该面自己承担，换掉的是「每个命名空间逐个判定」的维护成本。")
         print("     ⚠️ 下面 System / 消息面报出的易变残留属于**预期**（那一面本来就不洗），")
         print("        不要据此补规则；要判定的是 Code 面（`--model <模型>` 不带 _cowork 后缀）。")
@@ -548,7 +548,7 @@ def cmd_audit(model, session=None, last=False):
         _die_no_capture(model, session)
 
     raw = _load(cur)
-    # 剥离口径走生产同一个函数（`_stabilize` 里那次调用的入口）：CoWork 面原样透传。
+    # 名单口径走生产同一个函数（`_stabilize` 里那次调用的入口）：CoWork 面原样透传。
     base_cfg = gateway.load_tool_pruning_config()
     tp_cfg = gateway.pruning_cfg_for_surface(base_cfg, gateway.classify_kind(raw))
     surface_skipped = tp_cfg is not base_cfg
@@ -581,7 +581,7 @@ def cmd_audit(model, session=None, last=False):
     print("⑤ 结论")
     print("─" * 78)
     if surface_skipped:
-        print("  ℹ️ CoWork 面**原样透传**（不洗、不剥，只做模型名映射）：上面 System / 消息面"
+        print("  ℹ️ CoWork 面**原样透传**（不洗、不挡，只做模型名映射）：上面 System / 消息面"
               "报出的残留是预期内的，不构成待办。")
         print("     要判注入面请审 Code 面那份（`--model <模型>` 不带 _cowork 后缀）。")
     elif findings == 0:
